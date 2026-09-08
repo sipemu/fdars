@@ -4,92 +4,27 @@
 
 - ✅ **v0.40.0 Correctness & Release Hardening** — Phases 78–80 (shipped 2026-09-07)
 - ✅ **v0.41.0 1.0 API Stabilization Pass** — Phases 81–85 (shipped 2026-09-07)
-- 🔵 **v0.42.0 1.0 API Finalization** — Phases 86–89 (active)
+- ✅ **v0.42.0 1.0 API Finalization** — Phases 86–89 (shipped 2026-09-08)
 
 ## Phases
 
-- [x] **Phase 86: Surface Sealing** - Seal the `wire` module `pub(crate)` and mark every public config struct `#[non_exhaustive]` with a `Default`/builder construction escape hatch (completed 2026-09-08)
-- [x] **Phase 87: Targeted Renames** - Consolidate the small `Dim`-dispatch families (`geometric_median`, `hausdorff_*`, `functional_spatial_*`) and rename `LpeerResult` → `LocalPeerResult` (completed 2026-09-08)
-- [x] **Phase 88: Large Suffix Batch** - Consolidate the large remaining lone-`_1d`/`_2d` suffix functions onto `Dim` dispatch and update all 28 examples + docs (highest blast radius) (completed 2026-09-08)
-- [x] **Phase 89: Release Preparation & Verification** - Bump 0.41.0 → 0.42.0, breaking-framed CHANGELOG, whole-crate gates green, ROADMAP-TO-1.0.md API items checked off (completed 2026-09-08)
-
-## Phase Details
-
-### Phase 86: Surface Sealing
-
-**Goal**: The public interchange (`wire`) surface is removed and every public config struct is future-proofed against field additions without breaking external construction.
-**Depends on**: Nothing (first phase of milestone; builds on the shipped v0.41.0 surface)
-**Requirements**: SEAL-01, SEAL-02, SEAL-03
-**Success Criteria** (what must be TRUE):
-
-  1. External callers can no longer name any `wire` type (`pub mod wire` is `pub(crate)`, and all crate-root/prelude re-exports of wire types are gone).
-  2. Every public config struct not already sealed carries `#[non_exhaustive]`, so fields can be added post-1.0 without a breaking change.
-  3. Every newly-sealed config struct can still be constructed by external code via a documented `Default` + `..Default::default()` path (and/or builder) — no `Config { .. }` literal is the only way in.
-  4. The crate, all 28 examples, and all doctests compile with the sealed surfaces; `cargo build --features serde` still compiles.
-
-**Plans**: 1 plan
-
-- [x] 86-01-PLAN.md — Seal `wire` pub(crate) + doctest fix (SEAL-01); mark 38 config structs `#[non_exhaustive]` with documented `Default` path (SEAL-02/03); full-gate verification
-
-### Phase 87: Targeted Renames
-
-**Goal**: The small, low-blast-radius naming inconsistencies are resolved — spatial/median families collapse onto single `Dim`-dispatched signatures and the PEER result type name matches its sibling.
-**Depends on**: Phase 86
-**Requirements**: NAME-01, NAME-02, NAME-03, NAME-05
-**Success Criteria** (what must be TRUE):
-
-  1. `geometric_median` is callable through one `Dim`-dispatched signature (no lone `_1d`/`_2d` public forms), routing to byte-identical private `_impl` bodies.
-  2. The `hausdorff_*` family and the `functional_spatial_*` / `kernel_functional_spatial_*` families are each callable through one `Dim`-dispatched signature, routing to byte-identical private `_impl` bodies.
-  3. The result type is named `LocalPeerResult` (not `LpeerResult`) everywhere — definition, all references, `lib.rs`/`prelude.rs` re-exports, examples, and doctests.
-  4. The crate, all 28 examples, and all doctests compile against the consolidated signatures; a code-review gate confirms no numeric drift.
-
-**Plans**: 1 plan
-
-- [x] 87-01-PLAN.md — NAME-05 LocalPeerResult rename (tracer) + NAME-01/02/03 Dim-dispatch consolidations + all ~35 caller updates and full gate set
-
-### Phase 88: Large Suffix Batch
-
-**Goal**: The remaining crate-wide lone-`_1d`/`_2d` suffix sprawl is unified onto `Dim` dispatch and the entire example/doc surface is migrated to the new signatures.
-**Depends on**: Phase 87
-**Requirements**: NAME-04
-**Success Criteria** (what must be TRUE):
-
-  1. The large remaining batch of lone-`_1d`/`_2d` suffix functions is callable through a single `Dim`-dispatched signature per family, routing to byte-identical private `_impl` bodies.
-  2. All 28 examples and all docs/doctests are updated to the new surface and compile.
-  3. The whole crate compiles with no lingering references to the removed lone-suffix public names; a code-review gate confirms no numeric drift.
-
-**Plans**: 1 plan
-
-- [x] 88-01-PLAN.md — Consolidate all in-scope lone-`_1d`/`_2d` public functions onto `Dim` dispatch (Cat 1/2/3) or plain renames, migrate all 28 examples + tests + benches + doctests, full gate set
-
-### Phase 89: Release Preparation & Verification
-
-**Goal**: The crate is version-bumped, the breaking API changes are documented, every gate is green, and the 1.0 checklist reflects the cleared API items — release-ready for the operator to tag and publish.
-**Depends on**: Phase 86, Phase 87, Phase 88
-**Requirements**: REL-01
-**Success Criteria** (what must be TRUE):
-
-  1. The crate version is bumped 0.41.0 → 0.42.0 with a breaking-framed `[0.42.0]` entry (root + crate-shipped CHANGELOG) explicitly calling out the sealed `wire`/config surfaces and the renames.
-  2. Whole-crate gates are green: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, a `--features serde` build, all 28 examples + doctests, and `cargo package`.
-  3. `documentation/ROADMAP-TO-1.0.md` is updated to check off the cleared API items (AUD-09/12/13/19–23).
-  4. Release-readiness is prepared and verified only — the `git tag v0.42.0` push → crates.io publish is left as the deferred operator step.
-
-**Plans**: TBD
-
-## Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 86. Surface Sealing | 1/1 | Complete    | 2026-09-08 |
-| 87. Targeted Renames | 1/1 | Complete    | 2026-09-08 |
-| 88. Large Suffix Batch | 1/1 | Complete    | 2026-09-08 |
-| 89. Release Preparation & Verification | 1/1 | Complete    | 2026-09-08 |
-
-**Execution order:** 86 → 87 → 88 → 89. 86 first (independent sealing). 87 then 88 sequence the naming work smallest-first, isolating the high-blast-radius suffix batch. 89 last (depends on all sealing + naming phases). All 9 requirements mapped, no orphans, no duplicates.
-
-**Gates (this breaking, API-shape-only milestone):** `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, `cargo test`, plus a `--features serde` build guard. No new crate dependency; `fdars-core` only. All 28 examples + doctests must compile — the compile-time proof each breaking change is complete. Every consolidated signature routes to a byte-identical private `_impl` body (no numeric/behavioral change), confirmed by a code-review gate.
+_No active milestone. Start the next with `/gsd-new-milestone` (questioning → research → requirements → roadmap). Phase numbering continues from 89._
 
 ---
+
+<details>
+<summary>✅ v0.42.0 1.0 API Finalization (Phases 86–89) — SHIPPED 2026-09-08</summary>
+
+The second breaking milestone — clears the entire **API section** of the 1.0 gap checklist (`documentation/ROADMAP-TO-1.0.md`): sealed `wire` `pub(crate)` (SEAL-01), `#[non_exhaustive]` on 38 config structs + the construction-idiom change (SEAL-02/03), and the full `_1d`/`_2d` → `Dim`-dispatch naming unification — `geometric_median`/`hausdorff_*`/`functional_spatial_*` + `LpeerResult`→`LocalPeerResult` (NAME-01/02/03/05) and the large batch of 41 consolidations + 5 plain-renames (NAME-04). API-shape-only — no numeric/behavioral change (byte-identical `_impl` bodies, code-review confirmed; 2857-test non-regression). Full detail: [`milestones/v0.42.0-ROADMAP.md`](milestones/v0.42.0-ROADMAP.md); archived phase artifacts: `milestones/v0.42.0-phases/`.
+
+- [x] Phase 86: Surface Sealing (1/1 plan) — completed 2026-09-08
+- [x] Phase 87: Targeted Renames (1/1 plan) — completed 2026-09-08
+- [x] Phase 88: Large Suffix Batch (1/1 plan) — completed 2026-09-08
+- [x] Phase 89: Release Preparation & Verification (1/1 plan) — completed 2026-09-08
+
+**Requirements:** 9/9 satisfied (SEAL-01/02/03, NAME-01/02/03/04/05, REL-01). Audit: passed. Release-ready — operator `git tag v0.42.0` → crates.io publish pending (the deferred operator step).
+
+</details>
 
 <details>
 <summary>✅ v0.41.0 1.0 API Stabilization Pass (Phases 81–85) — SHIPPED 2026-09-07</summary>

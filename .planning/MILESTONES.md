@@ -1,5 +1,17 @@
 # Milestones
 
+## v0.42.0 1.0 API Finalization (Shipped: 2026-09-08)
+
+**Phases completed:** 4 phases, 4 plans, 17 tasks
+
+**Key accomplishments:**
+
+- Four `_1d`/`_2d` function families (`geometric_median`, `hausdorff_self`/`hausdorff_cross`, `functional_spatial`/`kernel_functional_spatial`) collapsed onto single `Dim`-dispatched signatures with byte-identical private `_impl` bodies, and `LpeerResult` renamed to `LocalPeerResult` — a pure API-shape change proven by 2857 passing lib tests.
+- 41 lone `_1d` functions across depth, metric, and fdata consolidated onto `Dim`-dispatched public signatures (byte-identical `pub(crate)` bodies), and 5 genuinely-1D functions (FPCA/PLS/basis) plain-renamed to drop `_1d` — the crate's terminal naming-unification pass, proven by 2857 passing tests with zero numeric drift.
+- fdars-core v0.42.0 is release-ready: version bumped, all breaking API-shape changes from phases 86–88 documented in a breaking-framed CHANGELOG (root + crate), the 1.0-checklist API section cleared, and every gate — including `cargo package` — green. The `git tag`/publish is left as the deferred operator step.
+
+---
+
 ## v0.41.0 1.0 API Stabilization Pass (Shipped: 2026-09-07)
 
 **Phases completed:** 5 phases (81–85), 9 plans. Milestone audit: 9/9 requirements satisfied, cross-phase integration INTEGRATED. The **first breaking milestone** after a long additive-only run (legitimate under 0.x). Release-ready — operator tag/publish pending.
