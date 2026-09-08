@@ -13,6 +13,9 @@ use crate::helpers::{l2_distance, simpsons_weights};
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Configuration for elastic partial matching.
+///
+/// Construct via `PartialMatchConfig::default()`, then assign the fields you need (e.g. `let mut c = PartialMatchConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartialMatchConfig {
     /// Roughness penalty for elastic alignment (0.0 = no penalty).

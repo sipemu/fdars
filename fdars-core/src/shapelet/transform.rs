@@ -80,7 +80,8 @@ use rayon::iter::ParallelIterator;
 /// }
 /// let data = FdMatrix::from_column_major(flat, n, m).unwrap();
 ///
-/// let cfg = ShapeletDiscoveryConfig { max_shapelets: 3, ..Default::default() };
+/// let mut cfg = ShapeletDiscoveryConfig::default();
+/// cfg.max_shapelets = 3;
 /// let set = discover_shapelets(&data, &labels, &cfg).unwrap();
 ///
 /// let features = shapelet_transform(&set, &data).unwrap();
@@ -229,7 +230,8 @@ impl ShapeletTransformFit {
 /// }
 /// let data = FdMatrix::from_column_major(flat, n, m).unwrap();
 ///
-/// let cfg = ShapeletDiscoveryConfig { max_shapelets: 3, ..Default::default() };
+/// let mut cfg = ShapeletDiscoveryConfig::default();
+/// cfg.max_shapelets = 3;
 /// let fit = shapelet_transform_fit(&data, &labels, &cfg).unwrap();
 ///
 /// // Training features are n×K; reuse the fitted shapelets on new curves.

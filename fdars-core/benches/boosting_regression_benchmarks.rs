@@ -74,9 +74,10 @@ fn bench_boost_fosr(c: &mut Criterion) {
     });
 
     // Lighter mstop=50 variant (executor-tunable knob).
-    let config50 = BoostingConfig {
-        mstop: 50,
-        ..BoostingConfig::default()
+    let config50 = {
+        let mut __cfg17 = BoostingConfig::default();
+        __cfg17.mstop = 50;
+        __cfg17
     };
     group.bench_function("n100_m50_p2_mstop50", |b| {
         b.iter(|| {

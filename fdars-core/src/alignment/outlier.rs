@@ -10,6 +10,9 @@ use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 
 /// Configuration for elastic outlier detection.
+///
+/// Construct via `ElasticOutlierConfig::default()`, then assign the fields you need (e.g. `let mut c = ElasticOutlierConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElasticOutlierConfig {
     /// Roughness penalty for elastic alignment (0.0 = no penalty).

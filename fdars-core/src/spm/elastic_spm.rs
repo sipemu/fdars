@@ -61,6 +61,9 @@ use crate::matrix::FdMatrix;
 use super::phase::{spm_monitor, spm_phase1, SpmChart, SpmConfig, SpmMonitorResult};
 
 /// Configuration for elastic SPM.
+///
+/// Construct via `ElasticSpmConfig::default()`, then assign the fields you need (e.g. `let mut c = ElasticSpmConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElasticSpmConfig {
     /// Base SPM configuration.
@@ -188,7 +191,8 @@ pub struct ElasticSpmMonitorResult {
 ///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-/// let config = ElasticSpmConfig { monitor_phase: false, ..ElasticSpmConfig::default() };
+/// let mut config = ElasticSpmConfig::default();
+/// config.monitor_phase = false;
 /// let chart = elastic_spm_phase1(&data, &argvals, &config).unwrap();
 /// assert!(chart.mean_alignment_residual >= 0.0);
 /// ```

@@ -77,6 +77,9 @@ pub enum DomainCompletion {
 /// For domain fractions below 0.3, all strategies produce increasingly
 /// uncertain estimates. The conditional expectation (BLUP) degrades most
 /// gracefully due to its optimal shrinkage properties.
+///
+/// Construct via `PartialDomainConfig::default()`, then assign the fields you need (e.g. `let mut c = PartialDomainConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PartialDomainConfig {
     /// Number of principal components (default 5).
@@ -143,9 +146,11 @@ pub struct PartialMonitorResult {
 ///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-/// let chart = spm_phase1(&data, &argvals, &SpmConfig { ncomp: 2, ..SpmConfig::default() }).unwrap();
+/// let chart = spm_phase1(&data, &argvals, &{ let mut cfg = SpmConfig::default(); cfg.ncomp = 2; cfg }).unwrap();
 /// let partial_values = vec![0.0, 0.1, 0.2, 0.3, 0.4, 0.0, 0.0, 0.0, 0.0, 0.0];
-/// let config = PartialDomainConfig { ncomp: 2, completion: DomainCompletion::ZeroPad, ..PartialDomainConfig::default() };
+/// let mut config = PartialDomainConfig::default();
+/// config.ncomp = 2;
+/// config.completion = DomainCompletion::ZeroPad;
 /// let result = spm_monitor_partial(&chart, &partial_values, &argvals, 5, &config).unwrap();
 /// assert!(result.domain_fraction > 0.0);
 /// ```

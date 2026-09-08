@@ -14,9 +14,11 @@
 //!
 //! # Example
 //!
-//! ```
-//! use fdars_core::wire::*;
-//! use fdars_core::matrix::FdMatrix;
+//! ```ignore
+//! // `wire` is a crate-internal (`pub(crate)`) module; this example is illustrative
+//! // only and is not compiled as a doctest (its types are not part of the public API).
+//! use crate::wire::*;
+//! use crate::matrix::FdMatrix;
 //!
 //! let mut fd = FdaData::from_curves(
 //!     FdMatrix::zeros(10, 50),
@@ -34,6 +36,13 @@
 //! assert!(fd.has_layer(&LayerKey::Depth));
 //! assert!(!fd.has_layer(&LayerKey::Fpca));
 //! ```
+
+// `wire` is sealed `pub(crate)` (v0.42.0): it is a retained-but-currently-unused
+// interchange surface, kept internal until JS/R bindings need it (a deliberate
+// milestone decision — re-expose then, not now). Its types are intentionally not
+// constructed inside the crate yet, so blanket-allow dead_code for the module
+// rather than sprinkle per-item allows.
+#![allow(dead_code)]
 
 use crate::matrix::FdMatrix;
 use std::collections::HashMap;

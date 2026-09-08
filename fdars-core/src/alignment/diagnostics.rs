@@ -35,6 +35,9 @@ pub struct AlignmentDiagnostic {
 }
 
 /// Configuration for alignment diagnostics.
+///
+/// Construct via `DiagnosticConfig::default()`, then assign the fields you need (e.g. `let mut c = DiagnosticConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiagnosticConfig {
     /// Warp complexity above which the curve is flagged as over-aligned.

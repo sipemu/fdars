@@ -57,6 +57,9 @@ use crate::spm::stats::hotelling_t2;
 /// - `step_size`: Controls window overlap. step_size = window_size gives no overlap
 ///   (independent windows); step_size = 1 gives maximum overlap (smoothest tracking
 ///   but highest autocorrelation). Typical: window_size/2 or window_size/4.
+///
+/// Construct via `ProfileMonitorConfig::default()`, then assign the fields you need (e.g. `let mut c = ProfileMonitorConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProfileMonitorConfig {
     /// FOSR smoothing parameter (default 1e-4).
@@ -177,7 +180,10 @@ pub struct ProfileMonitorResult {
 ///     (0..n).map(|i| i as f64 / n as f64).collect(), n, 1
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m-1) as f64).collect();
-/// let config = ProfileMonitorConfig { window_size: 10, step_size: 5, ncomp: 2, ..ProfileMonitorConfig::default() };
+/// let mut config = ProfileMonitorConfig::default();
+/// config.window_size = 10;
+/// config.step_size = 5;
+/// config.ncomp = 2;
 /// let chart = profile_phase1(&y, &pred, &argvals, &config).unwrap();
 /// assert!(chart.eigenvalues.len() >= 1);
 /// ```

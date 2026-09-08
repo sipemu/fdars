@@ -25,6 +25,9 @@ use super::phase::{center_data, centered_reconstruct, SpmChart};
 use super::stats::spe_univariate;
 
 /// Configuration for CUSUM monitoring.
+///
+/// Construct via `CusumConfig::default()`, then assign the fields you need (e.g. `let mut c = CusumConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CusumConfig {
     /// CUSUM reference value (allowance parameter, default 0.5).
@@ -285,7 +288,7 @@ fn univariate_cusum_core(
 ///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-/// let chart = spm_phase1(&data, &argvals, &SpmConfig { ncomp: 2, ..SpmConfig::default() }).unwrap();
+/// let chart = spm_phase1(&data, &argvals, &{ let mut cfg = SpmConfig::default(); cfg.ncomp = 2; cfg }).unwrap();
 /// let new_data = FdMatrix::from_column_major(
 ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(), 5, 10
 /// ).unwrap();

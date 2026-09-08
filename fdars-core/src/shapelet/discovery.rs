@@ -46,6 +46,9 @@ pub enum QualityMeasure {
 /// resolved at fit time: `max_length = 0` clamps to the series length
 /// (`ncols`), and `max_shapelets = 0` resolves to `min(10 * n_train, 1000)`
 /// (the sktime-style default).
+///
+/// Construct via `ShapeletDiscoveryConfig::default()`, then assign the fields you need (e.g. `let mut c = ShapeletDiscoveryConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ShapeletDiscoveryConfig {
@@ -390,7 +393,8 @@ fn decode_candidate(
 /// }
 /// let data = FdMatrix::from_column_major(data, n, m).unwrap();
 ///
-/// let cfg = ShapeletDiscoveryConfig { max_shapelets: 3, ..Default::default() };
+/// let mut cfg = ShapeletDiscoveryConfig::default();
+/// cfg.max_shapelets = 3;
 /// let set = discover_shapelets(&data, &labels, &cfg).unwrap();
 /// assert!(!set.is_empty());
 /// assert!(set.len() <= 3);

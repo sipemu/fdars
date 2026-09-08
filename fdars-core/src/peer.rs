@@ -34,10 +34,9 @@
 //!     }
 //! }
 //! // Fit PEER with Ridge penalty and a fixed λ.
-//! let config = PeerConfig {
-//!     penalty: PeerPenalty::Ridge,
-//!     lambda: LambdaChoice::Fixed(1e-3),
-//! };
+//! let mut config = PeerConfig::default();
+//! config.penalty = PeerPenalty::Ridge;
+//! config.lambda = LambdaChoice::Fixed(1e-3);
 //! let fit = peer(&data, &y, &argvals, &config).unwrap();
 //! assert_eq!(fit.beta.len(), m);
 //! assert!(fit.fitted_values.iter().all(|v| v.is_finite()));
@@ -127,6 +126,9 @@ pub enum LambdaMethod {
 }
 
 /// Configuration for the [`peer`] estimator.
+///
+/// Construct via `PeerConfig::default()`, then assign the fields you need (e.g. `let mut c = PeerConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PeerConfig {
@@ -445,10 +447,9 @@ pub fn peer(
 ///         y[i] += xi * 0.5;
 ///     }
 /// }
-/// let config = PeerConfig {
-///     penalty: PeerPenalty::Ridge,
-///     lambda: LambdaChoice::Fixed(1e-2),
-/// };
+/// let mut config = PeerConfig::default();
+/// config.penalty = PeerPenalty::Ridge;
+/// config.lambda = LambdaChoice::Fixed(1e-2);
 /// let fit = lpeer(&data, &y, &argvals, &subject_map, &config).unwrap();
 /// assert_eq!(fit.beta.len(), m);
 /// assert!(fit.sigma2_subject >= 0.0);

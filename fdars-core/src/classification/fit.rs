@@ -555,6 +555,9 @@ fn softmax(scores: &[f64]) -> Vec<f64> {
 // ─── Config-based API ───────────────────────────────────────────────────────
 
 /// Configuration for [`fclassif_cv`].
+///
+/// Construct via `ClassifCvConfig::default()`, then assign the fields you need (e.g. `let mut c = ClassifCvConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClassifCvConfig {
     /// Classification method name (one of "lda", "qda", "knn", "kernel", "dd").

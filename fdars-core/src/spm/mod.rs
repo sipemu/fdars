@@ -43,7 +43,9 @@
 //! // Phase I: build chart from in-control data
 //! # let data = FdMatrix::zeros(40, 30);
 //! # let argvals: Vec<f64> = (0..30).map(|i| i as f64 / 29.0).collect();
-//! let config = SpmConfig { ncomp: 3, alpha: 0.05, ..SpmConfig::default() };
+//! let mut config = SpmConfig::default();
+//! config.ncomp = 3;
+//! config.alpha = 0.05;
 //! let chart = spm_phase1(&data, &argvals, &config).unwrap();
 //!
 //! // Phase II: monitor new data

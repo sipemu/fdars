@@ -24,6 +24,9 @@ use super::mfpca::{mfpca, MfpcaConfig, MfpcaResult};
 use super::stats::{hotelling_t2, spe_multivariate, spe_univariate};
 
 /// Configuration for SPM chart construction.
+///
+/// Construct via `SpmConfig::default()`, then assign the fields you need (e.g. `let mut c = SpmConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SpmConfig {
@@ -240,7 +243,8 @@ pub(super) fn center_data(data: &FdMatrix, mean: &[f64]) -> FdMatrix {
 ///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-/// let config = SpmConfig { ncomp: 2, ..SpmConfig::default() };
+/// let mut config = SpmConfig::default();
+/// config.ncomp = 2;
 /// let chart = spm_phase1(&data, &argvals, &config).unwrap();
 /// assert!(chart.eigenvalues.len() <= 2);
 /// assert!(chart.t2_limit.ucl > 0.0);
@@ -349,7 +353,8 @@ pub fn spm_phase1(
 ///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-/// let config = SpmConfig { ncomp: 2, ..SpmConfig::default() };
+/// let mut config = SpmConfig::default();
+/// config.ncomp = 2;
 /// let chart = spm_phase1(&data, &argvals, &config).unwrap();
 /// let new_data = FdMatrix::from_column_major(
 ///     (0..50).map(|i| (i as f64 * 0.1).sin()).collect(), 5, 10
@@ -428,7 +433,8 @@ pub fn spm_monitor(
 ///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-/// let config = SpmConfig { ncomp: 2, ..SpmConfig::default() };
+/// let mut config = SpmConfig::default();
+/// config.ncomp = 2;
 /// let chart = spm_phase1(&data, &argvals, &config).unwrap();
 ///
 /// let new_data = FdMatrix::from_column_major(

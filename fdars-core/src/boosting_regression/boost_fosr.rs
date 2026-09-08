@@ -253,10 +253,15 @@ pub(crate) fn boost_fosr_one_step(
 /// let x_vals: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
 /// let predictors = FdMatrix::from_column_major(x_vals, n, p).unwrap();
 /// let data = FdMatrix::zeros(n, m);
-/// let config = BoostingConfig {
-///     mstop: 10, nu: 0.1, nbasis: 8, order: 4, lfd_order: 2, lambda: 1.0,
-///     ncomp_x: 3, seed: 42,
-/// };
+/// let mut config = BoostingConfig::default();
+/// config.mstop = 10;
+/// config.nu = 0.1;
+/// config.nbasis = 8;
+/// config.order = 4;
+/// config.lfd_order = 2;
+/// config.lambda = 1.0;
+/// config.ncomp_x = 3;
+/// config.seed = 42;
 /// // let result = boost_fosr(&data, &predictors, &argvals, &config)?;
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]

@@ -14,6 +14,9 @@ use crate::warping::normalize_warp;
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Configuration for multi-resolution alignment.
+///
+/// Construct via `MultiresConfig::default()`, then assign the fields you need (e.g. `let mut c = MultiresConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct MultiresConfig {
     /// Coarsening factor: the coarse grid has `m / coarsen_factor` points.

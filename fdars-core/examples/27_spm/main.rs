@@ -36,11 +36,9 @@ fn main() {
         Some(42),
     );
 
-    let config = SpmConfig {
-        ncomp: 3,
-        alpha: 0.05,
-        ..Default::default()
-    };
+    let mut config = SpmConfig::default();
+    config.ncomp = 3;
+    config.alpha = 0.05;
     let chart = spm_phase1(&train_data, &t, &config).unwrap();
 
     println!(
@@ -108,12 +106,11 @@ fn main() {
 
     // ── 4. EWMA monitoring for small shifts ────────────────────────────────
     println!("\n=== EWMA Monitoring ===");
-    let ewma_config = EwmaConfig {
-        lambda: 0.2,
-        ncomp: 3,
-        alpha: 0.05,
-        exact_covariance: false,
-    };
+    let mut ewma_config = EwmaConfig::default();
+    ewma_config.lambda = 0.2;
+    ewma_config.ncomp = 3;
+    ewma_config.alpha = 0.05;
+    ewma_config.exact_covariance = false;
 
     // Small shift — harder for Shewhart, easier for EWMA
     let mut small_shift_flat = vec![0.0; n_new * m];
@@ -137,12 +134,10 @@ fn main() {
 
     // ── 5. CUSUM monitoring ────────────────────────────────────────────────
     println!("\n=== CUSUM Monitoring ===");
-    let cusum_config = CusumConfig {
-        k: 0.5,
-        h: 5.0,
-        ncomp: 3,
-        ..Default::default()
-    };
+    let mut cusum_config = CusumConfig::default();
+    cusum_config.k = 0.5;
+    cusum_config.h = 5.0;
+    cusum_config.ncomp = 3;
     let cusum = spm_cusum_monitor(&chart, &small_shift_data, &t, &cusum_config).unwrap();
     let cusum_alarms: usize = cusum.alarm.iter().filter(|&&a| a).count();
     println!(

@@ -16,6 +16,9 @@ use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 
 /// Configuration for robust Karcher estimation.
+///
+/// Construct via `RobustKarcherConfig::default()`, then assign the fields you need (e.g. `let mut c = RobustKarcherConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct RobustKarcherConfig {
     /// Maximum number of outer iterations.

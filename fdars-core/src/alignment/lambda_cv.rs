@@ -9,6 +9,9 @@ use crate::matrix::FdMatrix;
 // ─── Config / Result ─────────────────────────────────────────────────────────
 
 /// Configuration for lambda cross-validation.
+///
+/// Construct via `LambdaCvConfig::default()`, then assign the fields you need (e.g. `let mut c = LambdaCvConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct LambdaCvConfig {
     /// Candidate lambda values to evaluate.

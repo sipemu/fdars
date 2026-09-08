@@ -377,7 +377,8 @@ pub fn kshape_fd(data: &FdMatrix, config: &KShapeConfig) -> Result<KShapeResult,
 /// }
 /// let data = FdMatrix::from_slice(&flat, n, m).unwrap();
 ///
-/// let cfg = KMedoidsConfig { k: 2, ..Default::default() };
+/// let mut cfg = KMedoidsConfig::default();
+/// cfg.k = 2;
 /// let res = sbd_kmedoids(&data, &cfg).unwrap();
 /// assert_eq!(res.labels.len(), 4);
 /// assert_eq!(res.medoid_indices.len(), 2);

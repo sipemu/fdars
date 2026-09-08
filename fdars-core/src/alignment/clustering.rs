@@ -22,7 +22,8 @@
 //! let labels = cut_dendrogram(&dendro, 2).unwrap();
 //!
 //! // K-medoids — works with any distance matrix
-//! let config = KMedoidsConfig { k: 2, ..Default::default() };
+//! let mut config = KMedoidsConfig::default();
+//! config.k = 2;
 //! let result = kmedoids_from_distances(&dist, &config).unwrap();
 //! ```
 
@@ -34,6 +35,9 @@ use rand::{Rng, SeedableRng};
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Configuration for k-medoids clustering.
+///
+/// Construct via `KMedoidsConfig::default()`, then assign the fields you need (e.g. `let mut c = KMedoidsConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct KMedoidsConfig {
     /// Number of clusters.

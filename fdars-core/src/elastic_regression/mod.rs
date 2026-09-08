@@ -35,6 +35,9 @@ use crate::matrix::FdMatrix;
 // ─── Config Structs ─────────────────────────────────────────────────────────
 
 /// Configuration for [`elastic_regression`] and [`elastic_logistic`].
+///
+/// Construct via `ElasticConfig::default()`, then assign the fields you need (e.g. `let mut c = ElasticConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElasticConfig {
     /// Number of basis functions for the beta coefficient (for elastic_regression).
@@ -59,6 +62,9 @@ impl Default for ElasticConfig {
 }
 
 /// Configuration for [`elastic_pcr`].
+///
+/// Construct via `ElasticPcrConfig::default()`, then assign the fields you need (e.g. `let mut c = ElasticPcrConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElasticPcrConfig {
     /// Number of principal components to retain.
@@ -86,6 +92,9 @@ impl Default for ElasticPcrConfig {
 }
 
 /// Configuration for [`scalar_on_shape()`].
+///
+/// Construct via `ScalarOnShapeConfig::default()`, then assign the fields you need (e.g. `let mut c = ScalarOnShapeConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScalarOnShapeConfig {
     /// Number of Fourier basis functions for the beta representation.

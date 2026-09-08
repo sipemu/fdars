@@ -42,16 +42,18 @@ fn bench_shapelet_classifier_fit(c: &mut Criterion) {
     let mut group = c.benchmark_group("shapelet_classifier_fit");
     // Small dataset keeps the bench quick.
     let (data, labels) = labeled_dataset(24, 24);
-    let cfg = ShapeletClassifierConfig {
-        discovery: ShapeletDiscoveryConfig {
-            min_length: 3,
-            max_length: 6,
-            max_candidates: Some(500),
-            max_shapelets: 4,
-            seed: 0,
-            ..Default::default()
-        },
-        ..Default::default()
+    let cfg = {
+        let mut __cfg18 = ShapeletClassifierConfig::default();
+        __cfg18.discovery = {
+            let mut __cfg19 = ShapeletDiscoveryConfig::default();
+            __cfg19.min_length = 3;
+            __cfg19.max_length = 6;
+            __cfg19.max_candidates = Some(500);
+            __cfg19.max_shapelets = 4;
+            __cfg19.seed = 0;
+            __cfg19
+        };
+        __cfg18
     };
 
     group.bench_function("knn_n24_m24", |b| {

@@ -43,6 +43,9 @@ use crate::matrix::FdMatrix;
 use nalgebra::SVD;
 
 /// Configuration for multivariate FPCA.
+///
+/// Construct via `MfpcaConfig::default()`, then assign the fields you need (e.g. `let mut c = MfpcaConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MfpcaConfig {
@@ -231,7 +234,9 @@ impl MfpcaResult {
 /// use fdars_core::spm::mfpca::{mfpca, MfpcaConfig};
 /// let var1 = FdMatrix::from_column_major(vec![1.0,2.0,3.0,4.0,5.0,6.0], 3, 2).unwrap();
 /// let var2 = FdMatrix::from_column_major(vec![0.5,1.5,2.5,3.5,4.5,5.5], 3, 2).unwrap();
-/// let config = MfpcaConfig { ncomp: 2, weighted: true };
+/// let mut config = MfpcaConfig::default();
+/// config.ncomp = 2;
+/// config.weighted = true;
 /// let result = mfpca(&[&var1, &var2], &config).unwrap();
 /// assert_eq!(result.eigenvalues.len(), 2);
 /// assert!(result.eigenvalues[0] >= result.eigenvalues[1]);

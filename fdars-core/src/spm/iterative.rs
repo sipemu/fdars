@@ -46,6 +46,9 @@ use super::phase::{spm_monitor, spm_phase1, SpmChart, SpmConfig};
 /// When more than `max_removal_fraction` of the original data would be
 /// removed, the procedure stops early, preserving the remaining data
 /// for analysis.
+///
+/// Construct via `IterativePhase1Config::default()`, then assign the fields you need (e.g. `let mut c = IterativePhase1Config::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct IterativePhase1Config {
     /// Base SPM configuration.
@@ -130,10 +133,10 @@ pub struct IterativePhase1Result {
 ///     (0..200).map(|i| (i as f64 * 0.1).sin()).collect(), 20, 10
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..10).map(|i| i as f64 / 9.0).collect();
-/// let config = IterativePhase1Config {
-///     spm: SpmConfig { ncomp: 2, ..SpmConfig::default() },
-///     ..IterativePhase1Config::default()
-/// };
+/// let mut spm = SpmConfig::default();
+/// spm.ncomp = 2;
+/// let mut config = IterativePhase1Config::default();
+/// config.spm = spm;
 /// let result = spm_phase1_iterative(&data, &argvals, &config).unwrap();
 /// assert!(result.n_iterations <= config.max_iterations);
 /// ```

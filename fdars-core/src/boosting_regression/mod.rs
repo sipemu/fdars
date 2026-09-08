@@ -40,6 +40,9 @@ pub mod stability;
 ///
 /// **Divergence from FDboost:** Fixed `nu` and `mstop` rather than CV-based early stopping;
 /// the GCV path is tracked for diagnostic purposes but not used for stopping.
+///
+/// Construct via `BoostingConfig::default()`, then assign the fields you need (e.g. `let mut c = BoostingConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoostingConfig {
     /// Number of boosting iterations (must be ≥ 1).
@@ -90,6 +93,9 @@ impl Default for BoostingConfig {
 /// **Divergence from refund:** refund's Bayesian FOSR uses spline basis priors;
 /// this implementation uses FPCA score compression via `fdata_to_pc_1d` for
 /// simplicity and zero new dependencies.
+///
+/// Construct via `BayesianConfig::default()`, then assign the fields you need (e.g. `let mut c = BayesianConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BayesianConfig {
     /// Number of FPC components for score compression (must be ≥ 1).
@@ -136,6 +142,9 @@ impl Default for BayesianConfig {
 /// Implements the Meinshausen-Bühlmann subsampling scheme with ⌊n/2⌋ rows
 /// per replicate. The PFER bound `E[V] ≤ q² / ((2·π_thr − 1)·p)` is reported
 /// as an informational diagnostic.
+///
+/// Construct via `StabilityConfig::default()`, then assign the fields you need (e.g. `let mut c = StabilityConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct StabilityConfig {
     /// Number of resamples B (must be ≥ 1; default: 100).

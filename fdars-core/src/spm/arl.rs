@@ -39,6 +39,9 @@ use rand::Rng;
 use rand_distr::StandardNormal;
 
 /// Configuration for ARL simulation.
+///
+/// Construct via `ArlConfig::default()`, then assign the fields you need (e.g. `let mut c = ArlConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ArlConfig {
     /// Number of simulation replicates (default 10_000).
@@ -93,7 +96,10 @@ pub struct ArlResult {
 /// use fdars_core::spm::arl::{arl0_t2, ArlConfig};
 /// let eigenvalues = vec![2.0, 1.0];
 /// let ucl = 5.991; // chi2(0.95, 2)
-/// let config = ArlConfig { n_simulations: 1000, max_run_length: 500, seed: 42 };
+/// let mut config = ArlConfig::default();
+/// config.n_simulations = 1000;
+/// config.max_run_length = 500;
+/// config.seed = 42;
 /// let result = arl0_t2(&eigenvalues, ucl, &config).unwrap();
 /// assert!(result.arl > 1.0);
 /// assert!(result.std_dev > 0.0);

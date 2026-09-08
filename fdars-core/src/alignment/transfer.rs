@@ -12,6 +12,9 @@ use rayon::iter::ParallelIterator;
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Configuration for transfer alignment.
+///
+/// Construct via `TransferAlignConfig::default()`, then assign the fields you need (e.g. `let mut c = TransferAlignConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransferAlignConfig {
     /// Roughness penalty for elastic alignment.

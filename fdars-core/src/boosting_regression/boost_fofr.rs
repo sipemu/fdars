@@ -182,10 +182,15 @@ struct ScoreLearner {
 /// let y_argvals: Vec<f64> = (0..m_y).map(|i| i as f64 / (m_y - 1) as f64).collect();
 /// let x = FdMatrix::zeros(n, m_x);
 /// let y = FdMatrix::zeros(n, m_y);
-/// let config = BoostingConfig {
-///     mstop: 10, nu: 0.1, nbasis: 8, order: 4, lfd_order: 2, lambda: 1.0,
-///     ncomp_x: 3, seed: 42,
-/// };
+/// let mut config = BoostingConfig::default();
+/// config.mstop = 10;
+/// config.nu = 0.1;
+/// config.nbasis = 8;
+/// config.order = 4;
+/// config.lfd_order = 2;
+/// config.lambda = 1.0;
+/// config.ncomp_x = 3;
+/// config.seed = 42;
 /// // let result = boost_fofr(&[&x], &[x_argvals.as_slice()], &y, &y_argvals, &config)?;
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]

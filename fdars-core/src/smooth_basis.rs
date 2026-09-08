@@ -830,12 +830,13 @@ pub fn smooth_monotone(
 /// ```no_run
 /// use fdars_core::smooth_basis::{SmoothBasisGcvConfig, BasisType};
 ///
-/// let config = SmoothBasisGcvConfig {
-///     nbasis: 20,
-///     n_grid: 100,
-///     ..SmoothBasisGcvConfig::default()
-/// };
+/// let mut config = SmoothBasisGcvConfig::default();
+/// config.nbasis = 20;
+/// config.n_grid = 100;
 /// ```
+///
+/// Construct via `SmoothBasisGcvConfig::default()`, then assign the fields you need (e.g. `let mut c = SmoothBasisGcvConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SmoothBasisGcvConfig {
     /// Basis type (BSpline or Fourier).
@@ -906,12 +907,13 @@ pub fn smooth_basis_gcv_with_config(
 /// ```no_run
 /// use fdars_core::smooth_basis::{BasisNbasisCvConfig, BasisType, BasisCriterion};
 ///
-/// let config = BasisNbasisCvConfig {
-///     nbasis_range: (5, 25),
-///     criterion: BasisCriterion::Aic,
-///     ..BasisNbasisCvConfig::default()
-/// };
+/// let mut config = BasisNbasisCvConfig::default();
+/// config.nbasis_range = (5, 25);
+/// config.criterion = BasisCriterion::Aic;
 /// ```
+///
+/// Construct via `BasisNbasisCvConfig::default()`, then assign the fields you need (e.g. `let mut c = BasisNbasisCvConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BasisNbasisCvConfig {
     /// Basis type (default: BSpline with order 4).

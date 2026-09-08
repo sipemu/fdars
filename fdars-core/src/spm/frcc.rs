@@ -53,6 +53,9 @@ use super::phase::{center_data, centered_reconstruct, split_indices};
 use super::stats::{hotelling_t2, spe_univariate};
 
 /// Configuration for FRCC chart construction.
+///
+/// Construct via `FrccConfig::default()`, then assign the fields you need (e.g. `let mut c = FrccConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrccConfig {
     /// Number of principal components for residual FPCA (default 5).
@@ -187,7 +190,8 @@ fn compute_residuals(observed: &FdMatrix, predicted: &FdMatrix) -> FdMatrix {
 ///     (0..n).map(|i| i as f64 / n as f64).collect(), n, 1
 /// ).unwrap();
 /// let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m-1) as f64).collect();
-/// let config = FrccConfig { min_r_squared: 0.0, ..FrccConfig::default() };
+/// let mut config = FrccConfig::default();
+/// config.min_r_squared = 0.0;
 /// let chart = frcc_phase1(&y, &pred, &argvals, &config).unwrap();
 /// assert!(chart.fosr_r_squared >= 0.0);
 /// ```

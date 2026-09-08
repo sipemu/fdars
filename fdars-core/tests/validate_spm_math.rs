@@ -336,9 +336,12 @@ fn mfpca_roundtrip_reconstruction() {
     let variables: Vec<&FdMatrix> = vec![&var1, &var2];
     // Use all possible components (min(n, total_cols) = min(20, 55) = 20,
     // but effectively min(n-1, total_cols) components will be meaningful)
-    let config = MfpcaConfig {
-        ncomp: n - 1, // use all available
-        weighted: true,
+    let config = {
+        let mut __cfg1 = MfpcaConfig::default();
+        __cfg1.ncomp = n - 1;
+        __cfg1.// use all available
+        weighted = true;
+        __cfg1
     };
     let result = mfpca(&variables, &config).unwrap();
 
@@ -380,11 +383,13 @@ fn mfpca_roundtrip_reconstruction() {
 #[test]
 fn phase1_in_control_builds_chart() {
     let (data, argvals) = generate_sine_data(40, 50, 42);
-    let config = SpmConfig {
-        ncomp: 3,
-        alpha: 0.05,
-        tuning_fraction: 0.5,
-        seed: 42,
+    let config = {
+        let mut __cfg2 = SpmConfig::default();
+        __cfg2.ncomp = 3;
+        __cfg2.alpha = 0.05;
+        __cfg2.tuning_fraction = 0.5;
+        __cfg2.seed = 42;
+        __cfg2
     };
     let chart = spm_phase1(&data, &argvals, &config);
     assert!(
@@ -400,11 +405,13 @@ fn phase1_in_control_builds_chart() {
 #[test]
 fn monitoring_in_control_data_few_alarms() {
     let (data, argvals) = generate_sine_data(40, 50, 42);
-    let config = SpmConfig {
-        ncomp: 3,
-        alpha: 0.05,
-        tuning_fraction: 0.5,
-        seed: 42,
+    let config = {
+        let mut __cfg3 = SpmConfig::default();
+        __cfg3.ncomp = 3;
+        __cfg3.alpha = 0.05;
+        __cfg3.tuning_fraction = 0.5;
+        __cfg3.seed = 42;
+        __cfg3
     };
     let chart = spm_phase1(&data, &argvals, &config).unwrap();
 
@@ -422,11 +429,13 @@ fn monitoring_in_control_data_few_alarms() {
 #[test]
 fn monitoring_shifted_data_detects_alarms() {
     let (data, argvals) = generate_sine_data(40, 50, 42);
-    let config = SpmConfig {
-        ncomp: 3,
-        alpha: 0.05,
-        tuning_fraction: 0.5,
-        seed: 42,
+    let config = {
+        let mut __cfg4 = SpmConfig::default();
+        __cfg4.ncomp = 3;
+        __cfg4.alpha = 0.05;
+        __cfg4.tuning_fraction = 0.5;
+        __cfg4.seed = 42;
+        __cfg4
     };
     let chart = spm_phase1(&data, &argvals, &config).unwrap();
 
@@ -469,13 +478,14 @@ fn scosh_identity_index_constant_curves_finite_scores() {
         y[i] = freq;
     }
 
-    let config = ScalarOnShapeConfig {
-        nbasis: 7,
-        lambda: 1e-2,
-        index_method: IndexMethod::Identity,
-        max_iter_inner: 5,
-        max_iter_outer: 3,
-        ..ScalarOnShapeConfig::default()
+    let config = {
+        let mut __cfg5 = ScalarOnShapeConfig::default();
+        __cfg5.nbasis = 7;
+        __cfg5.lambda = 1e-2;
+        __cfg5.index_method = IndexMethod::Identity;
+        __cfg5.max_iter_inner = 5;
+        __cfg5.max_iter_outer = 3;
+        __cfg5
     };
 
     let result = scalar_on_shape(&data, &y, &argvals, &config);
@@ -518,13 +528,14 @@ fn scosh_predict_on_training_data_matches_fitted() {
         y[i] = freq;
     }
 
-    let config = ScalarOnShapeConfig {
-        nbasis: 7,
-        lambda: 1e-2,
-        index_method: IndexMethod::Identity,
-        max_iter_inner: 5,
-        max_iter_outer: 3,
-        ..ScalarOnShapeConfig::default()
+    let config = {
+        let mut __cfg6 = ScalarOnShapeConfig::default();
+        __cfg6.nbasis = 7;
+        __cfg6.lambda = 1e-2;
+        __cfg6.index_method = IndexMethod::Identity;
+        __cfg6.max_iter_inner = 5;
+        __cfg6.max_iter_outer = 3;
+        __cfg6
     };
 
     let fit = scalar_on_shape(&data, &y, &argvals, &config).unwrap();
@@ -819,13 +830,14 @@ fn frcc_noise_vs_signal_residuals() {
         }
     }
 
-    let config = FrccConfig {
-        ncomp: 3,
-        fosr_lambda: 1e-3,
-        alpha: 0.05,
-        tuning_fraction: 0.5,
-        seed: 42,
-        ..FrccConfig::default()
+    let config = {
+        let mut __cfg7 = FrccConfig::default();
+        __cfg7.ncomp = 3;
+        __cfg7.fosr_lambda = 1e-3;
+        __cfg7.alpha = 0.05;
+        __cfg7.tuning_fraction = 0.5;
+        __cfg7.seed = 42;
+        __cfg7
     };
 
     // Build charts from each dataset
@@ -888,13 +900,14 @@ fn frcc_monitor_signal_vs_noise_t2() {
         }
     }
 
-    let config = FrccConfig {
-        ncomp: 3,
-        fosr_lambda: 1e-3,
-        alpha: 0.05,
-        tuning_fraction: 0.5,
-        seed: 42,
-        ..FrccConfig::default()
+    let config = {
+        let mut __cfg8 = FrccConfig::default();
+        __cfg8.ncomp = 3;
+        __cfg8.fosr_lambda = 1e-3;
+        __cfg8.alpha = 0.05;
+        __cfg8.tuning_fraction = 0.5;
+        __cfg8.seed = 42;
+        __cfg8
     };
 
     let chart = frcc_phase1(&y_signal, &predictors, &argvals, &config).unwrap();
@@ -976,13 +989,14 @@ fn scosh_y_depends_only_on_amplitude() {
         y[i] = level + noise;
     }
 
-    let config = ScalarOnShapeConfig {
-        nbasis: 7,
-        lambda: 1e-2,
-        index_method: IndexMethod::Identity,
-        max_iter_inner: 5,
-        max_iter_outer: 3,
-        ..ScalarOnShapeConfig::default()
+    let config = {
+        let mut __cfg9 = ScalarOnShapeConfig::default();
+        __cfg9.nbasis = 7;
+        __cfg9.lambda = 1e-2;
+        __cfg9.index_method = IndexMethod::Identity;
+        __cfg9.max_iter_inner = 5;
+        __cfg9.max_iter_outer = 3;
+        __cfg9
     };
 
     let result = scalar_on_shape(&data, &y, &argvals, &config).unwrap();
@@ -1053,22 +1067,24 @@ fn scosh_polynomial_at_least_as_good_as_identity() {
         y[i] = freq + 0.5 * amp;
     }
 
-    let config_identity = ScalarOnShapeConfig {
-        nbasis: 7,
-        lambda: 1e-2,
-        index_method: IndexMethod::Identity,
-        max_iter_inner: 5,
-        max_iter_outer: 5,
-        ..ScalarOnShapeConfig::default()
+    let config_identity = {
+        let mut __cfg10 = ScalarOnShapeConfig::default();
+        __cfg10.nbasis = 7;
+        __cfg10.lambda = 1e-2;
+        __cfg10.index_method = IndexMethod::Identity;
+        __cfg10.max_iter_inner = 5;
+        __cfg10.max_iter_outer = 5;
+        __cfg10
     };
 
-    let config_poly = ScalarOnShapeConfig {
-        nbasis: 7,
-        lambda: 1e-2,
-        index_method: IndexMethod::Polynomial(1),
-        max_iter_inner: 5,
-        max_iter_outer: 5,
-        ..ScalarOnShapeConfig::default()
+    let config_poly = {
+        let mut __cfg11 = ScalarOnShapeConfig::default();
+        __cfg11.nbasis = 7;
+        __cfg11.lambda = 1e-2;
+        __cfg11.index_method = IndexMethod::Polynomial(1);
+        __cfg11.max_iter_inner = 5;
+        __cfg11.max_iter_outer = 5;
+        __cfg11
     };
 
     let fit_identity = scalar_on_shape(&data, &y, &argvals, &config_identity).unwrap();
@@ -1095,11 +1111,13 @@ fn phase1_reproducibility_same_seed() {
     // Running spm_phase1 twice with the same config and seed should produce
     // identical results (deterministic tuning/calibration split and FPCA).
     let (data, argvals) = generate_sine_data(40, 50, 42);
-    let config = SpmConfig {
-        ncomp: 3,
-        alpha: 0.05,
-        tuning_fraction: 0.5,
-        seed: 123,
+    let config = {
+        let mut __cfg12 = SpmConfig::default();
+        __cfg12.ncomp = 3;
+        __cfg12.alpha = 0.05;
+        __cfg12.tuning_fraction = 0.5;
+        __cfg12.seed = 123;
+        __cfg12
     };
 
     let chart1 = spm_phase1(&data, &argvals, &config).unwrap();
@@ -1175,17 +1193,21 @@ fn phase1_different_seeds_differ() {
     // Different seeds should produce different tuning/calibration splits
     // and therefore (likely) different results.
     let (data, argvals) = generate_sine_data(40, 50, 42);
-    let config1 = SpmConfig {
-        ncomp: 3,
-        alpha: 0.05,
-        tuning_fraction: 0.5,
-        seed: 100,
+    let config1 = {
+        let mut __cfg13 = SpmConfig::default();
+        __cfg13.ncomp = 3;
+        __cfg13.alpha = 0.05;
+        __cfg13.tuning_fraction = 0.5;
+        __cfg13.seed = 100;
+        __cfg13
     };
-    let config2 = SpmConfig {
-        ncomp: 3,
-        alpha: 0.05,
-        tuning_fraction: 0.5,
-        seed: 200,
+    let config2 = {
+        let mut __cfg14 = SpmConfig::default();
+        __cfg14.ncomp = 3;
+        __cfg14.alpha = 0.05;
+        __cfg14.tuning_fraction = 0.5;
+        __cfg14.seed = 200;
+        __cfg14
     };
 
     let chart1 = spm_phase1(&data, &argvals, &config1).unwrap();
@@ -1275,11 +1297,13 @@ fn multivariate_spm_shifted_variable_contributes_more_t2() {
         }
     }
 
-    let config = SpmConfig {
-        ncomp: 3,
-        alpha: 0.05,
-        tuning_fraction: 0.5,
-        seed: 42,
+    let config = {
+        let mut __cfg15 = SpmConfig::default();
+        __cfg15.ncomp = 3;
+        __cfg15.alpha = 0.05;
+        __cfg15.tuning_fraction = 0.5;
+        __cfg15.seed = 42;
+        __cfg15
     };
 
     let train_vars: Vec<&FdMatrix> = vec![&var1_train, &var2_train];
@@ -1343,9 +1367,11 @@ fn multivariate_spm_shifted_variable_contributes_more_spe() {
     // Build MFPCA on training data
     let train_vars: Vec<&FdMatrix> = vec![&var1_train, &var2_train];
 
-    let mfpca_config = MfpcaConfig {
-        ncomp: 3,
-        weighted: true,
+    let mfpca_config = {
+        let mut __cfg16 = MfpcaConfig::default();
+        __cfg16.ncomp = 3;
+        __cfg16.weighted = true;
+        __cfg16
     };
     let mfpca_result = mfpca(&train_vars, &mfpca_config).unwrap();
     let ncomp = mfpca_result.eigenvalues.len();

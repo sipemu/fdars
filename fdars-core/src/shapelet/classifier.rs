@@ -58,6 +58,9 @@ impl Default for ShapeletClassifier {
 }
 
 /// Configuration for [`shapelet_classifier_fit`].
+///
+/// Construct via `ShapeletClassifierConfig::default()`, then assign the fields you need (e.g. `let mut c = ShapeletClassifierConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ShapeletClassifierConfig {
@@ -223,10 +226,12 @@ impl ShapeletClassifierFit {
 /// let (train, train_y) = make(24, 24);
 /// let (test, test_y) = make(12, 24);
 ///
-/// let cfg = ShapeletClassifierConfig {
-///     discovery: ShapeletDiscoveryConfig { min_length: 3, max_length: 6, max_shapelets: 4, ..Default::default() },
-///     ..Default::default()
-/// };
+/// let mut discovery = ShapeletDiscoveryConfig::default();
+/// discovery.min_length = 3;
+/// discovery.max_length = 6;
+/// discovery.max_shapelets = 4;
+/// let mut cfg = ShapeletClassifierConfig::default();
+/// cfg.discovery = discovery;
 /// let fit = shapelet_classifier_fit(&train, &train_y, &cfg).unwrap();
 ///
 /// let preds = fit.predict(&test).unwrap();

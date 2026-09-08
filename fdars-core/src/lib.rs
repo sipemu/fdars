@@ -122,7 +122,7 @@ pub mod utility;
 pub mod validation;
 pub mod warping;
 pub mod wavelet;
-pub mod wire;
+pub(crate) mod wire;
 
 // Covariance kernels and Gaussian processes
 pub mod covariance;

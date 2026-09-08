@@ -462,6 +462,9 @@ fn iqr_fence(values: &[f64], factor: f64) -> (f64, f64) {
 }
 
 /// Configuration for [`tvdmss`]. Defaults reproduce the `fdaoutlier` `tvdmss` defaults.
+///
+/// Construct via `TvdMssConfig::default()`, then assign the fields you need (e.g. `let mut c = TvdMssConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TvdMssConfig {
@@ -559,6 +562,9 @@ pub fn tvdmss(data: &FdMatrix, config: TvdMssConfig) -> Result<TvdMssOutliers, F
 }
 
 /// Configuration for [`muod`].
+///
+/// Construct via `MuodConfig::default()`, then assign the fields you need (e.g. `let mut c = MuodConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MuodConfig {
@@ -730,6 +736,9 @@ pub enum SeqTransform {
 /// Configuration for [`sequential_transform_outliers`].
 ///
 /// Not `serde`-serializable — it carries a [`DepthMethod`], which does not derive serde.
+///
+/// Construct via `SeqTransformConfig::default()`, then assign the fields you need (e.g. `let mut c = SeqTransformConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SeqTransformConfig {
     /// Depth method for the per-step functional boxplot. Default [`DepthMethod::ModifiedBand`].
@@ -865,6 +874,9 @@ pub fn sequential_transform_outliers(
 }
 
 /// Configuration for [`depthgram`].
+///
+/// Construct via `DepthgramConfig::default()`, then assign the fields you need (e.g. `let mut c = DepthgramConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DepthgramConfig {

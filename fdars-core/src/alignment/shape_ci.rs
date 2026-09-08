@@ -13,6 +13,9 @@ use rayon::iter::ParallelIterator;
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Configuration for shape bootstrap confidence intervals.
+///
+/// Construct via `ShapeCiConfig::default()`, then assign the fields you need (e.g. `let mut c = ShapeCiConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShapeCiConfig {
     /// Number of bootstrap resamples.

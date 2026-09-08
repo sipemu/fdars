@@ -16,6 +16,9 @@ use rand_distr::StandardNormal;
 // ─── Config / Result ─────────────────────────────────────────────────────────
 
 /// Configuration for Bayesian pairwise alignment.
+///
+/// Construct via `BayesianAlignConfig::default()`, then assign the fields you need (e.g. `let mut c = BayesianAlignConfig::default(); c.field = …;`). This struct is `#[non_exhaustive]`, so external crates cannot build it with a struct literal — not even functional-update `..Default::default()` form.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BayesianAlignConfig {
     /// Number of posterior samples to retain (after burn-in).
