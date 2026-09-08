@@ -24,7 +24,8 @@
   2. Every public config struct not already sealed carries `#[non_exhaustive]`, so fields can be added post-1.0 without a breaking change.
   3. Every newly-sealed config struct can still be constructed by external code via a documented `Default` + `..Default::default()` path (and/or builder) — no `Config { .. }` literal is the only way in.
   4. The crate, all 28 examples, and all doctests compile with the sealed surfaces; `cargo build --features serde` still compiles.
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 86-01-PLAN.md — Seal `wire` pub(crate) + doctest fix (SEAL-01); mark 38 config structs `#[non_exhaustive]` with documented `Default` path (SEAL-02/03); full-gate verification
 
 ### Phase 87: Targeted Renames
 **Goal**: The small, low-blast-radius naming inconsistencies are resolved — spatial/median families collapse onto single `Dim`-dispatched signatures and the PEER result type name matches its sibling.
