@@ -43,7 +43,8 @@
   3. The result type is named `LocalPeerResult` (not `LpeerResult`) everywhere — definition, all references, `lib.rs`/`prelude.rs` re-exports, examples, and doctests.
   4. The crate, all 28 examples, and all doctests compile against the consolidated signatures; a code-review gate confirms no numeric drift.
 
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 87-01-PLAN.md — NAME-05 LocalPeerResult rename (tracer) + NAME-01/02/03 Dim-dispatch consolidations + all ~35 caller updates and full gate set
 
 ### Phase 88: Large Suffix Batch
 
