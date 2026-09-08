@@ -58,7 +58,9 @@
   2. All 28 examples and all docs/doctests are updated to the new surface and compile.
   3. The whole crate compiles with no lingering references to the removed lone-suffix public names; a code-review gate confirms no numeric drift.
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+- [ ] 88-01-PLAN.md — Consolidate all in-scope lone-`_1d`/`_2d` public functions onto `Dim` dispatch (Cat 1/2/3) or plain renames, migrate all 28 examples + tests + benches + doctests, full gate set
 
 ### Phase 89: Release Preparation & Verification
 
