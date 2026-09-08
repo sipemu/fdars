@@ -11,9 +11,9 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Surface Sealing
 
-- [ ] **SEAL-01**: The `wire` module is sealed from the public surface (`pub mod wire` → `pub(crate) mod wire`), its ~24 public interchange types (`src/wire.rs`) no longer reachable by external callers, and any crate-root/prelude re-exports of wire types removed — the crate, all 28 examples, and all doctests still compile. (AUD-09/AUD-13; AUD-13's `#[non_exhaustive]` question becomes moot once sealed.)
-- [ ] **SEAL-02**: Every public config struct that does not already carry `#[non_exhaustive]` is marked `#[non_exhaustive]`, so fields can be added post-1.0 without a breaking change. (AUD-12, attribute half.) *Scope note: the Phase 81 audit estimated ~22 structs; the current tree has ~66 `*Config` definitions with 15 already sealed — the exact target set (public, not `pub(crate)`, not yet sealed) is enumerated during planning.*
-- [ ] **SEAL-03**: Every config struct sealed under SEAL-02 has a non-literal construction escape hatch — `Default` + a documented `..Default::default()` path (and/or a builder) — so external code that can no longer use a `Config { .. }` struct literal has a supported way to construct it. (AUD-12, construction half; ships together with SEAL-02.)
+- [x] **SEAL-01**: The `wire` module is sealed from the public surface (`pub mod wire` → `pub(crate) mod wire`), its ~24 public interchange types (`src/wire.rs`) no longer reachable by external callers, and any crate-root/prelude re-exports of wire types removed — the crate, all 28 examples, and all doctests still compile. (AUD-09/AUD-13; AUD-13's `#[non_exhaustive]` question becomes moot once sealed.)
+- [x] **SEAL-02**: Every public config struct that does not already carry `#[non_exhaustive]` is marked `#[non_exhaustive]`, so fields can be added post-1.0 without a breaking change. (AUD-12, attribute half.) *Scope note: the Phase 81 audit estimated ~22 structs; the current tree has ~66 `*Config` definitions with 15 already sealed — the exact target set (public, not `pub(crate)`, not yet sealed) is enumerated during planning.*
+- [x] **SEAL-03**: Every config struct sealed under SEAL-02 has a non-literal construction escape hatch — `Default` + a documented `..Default::default()` path (and/or a builder) — so external code that can no longer use a `Config { .. }` struct literal has a supported way to construct it. (AUD-12, construction half; ships together with SEAL-02.)
 
 ### Naming Unification
 
@@ -32,18 +32,23 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 Deferred — remain on `documentation/ROADMAP-TO-1.0.md` after this milestone, blocking the 1.0 cut:
 
 ### Quality
+
 - **golden-test flake** — make `golden_co_cluster_parallel` / `golden_co_cluster_below_threshold` / `svd_sign_fpca_two_matrix_bit_identical` deterministic under full parallel `cargo test`.
 
 ### Algorithm
+
 - **SDTW-O1** — replace the `soft_dtw_barycenter` MM-step descent with a proper global optimizer (L-BFGS / multi-restart).
 
 ### Differentiable core
+
 - **DIF-F1** reverse-mode/VJP, **DIF-F2** broaden the differentiable subset, **DIF-F3** generic `f64` hot-path signatures.
 
 ### Ecosystem
+
 - **fdars-j75** — migrate the external `fdars-r` wrapper to the `FdMatrix` API (separate package).
 
 ### Release (terminal)
+
 - **1.0-CUT** — bump to `1.0.0` and declare the API stable, once every checklist item above clears.
 
 ## Out of Scope
@@ -61,9 +66,9 @@ Deferred — remain on `documentation/ROADMAP-TO-1.0.md` after this milestone, b
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEAL-01 | Phase 86 | Pending |
-| SEAL-02 | Phase 86 | Pending |
-| SEAL-03 | Phase 86 | Pending |
+| SEAL-01 | Phase 86 | Complete |
+| SEAL-02 | Phase 86 | Complete |
+| SEAL-03 | Phase 86 | Complete |
 | NAME-01 | Phase 87 | Pending |
 | NAME-02 | Phase 87 | Pending |
 | NAME-03 | Phase 87 | Pending |
@@ -72,6 +77,7 @@ Deferred — remain on `documentation/ROADMAP-TO-1.0.md` after this milestone, b
 | REL-01 | Phase 89 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 9 total
 - Mapped to phases: 9 ✓
 - Unmapped: 0

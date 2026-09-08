@@ -1,38 +1,33 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.41.0 — 1.0 API Stabilization Pass",
+  "milestone": "v0.42.0",
   "phases": [
     {
-      "number": "81",
-      "name": "API Audit & Deprecated-Form Removal",
+      "number": "86",
+      "name": "Surface Sealing",
+      "status": "complete"
+    },
+    {
+      "number": "87",
+      "name": "Targeted Renames",
       "status": "pending"
     },
     {
-      "number": "82",
-      "name": "Public-Surface Sealing & Non-Exhaustive Coverage",
+      "number": "88",
+      "name": "Large Suffix Batch",
       "status": "pending"
     },
     {
-      "number": "83",
-      "name": "Naming Unification",
-      "status": "pending"
-    },
-    {
-      "number": "84",
-      "name": "Stability Deliverables",
-      "status": "pending"
-    },
-    {
-      "number": "85",
+      "number": "89",
       "name": "Release Preparation & Verification",
       "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 87)",
+    "reason": "Phase 87 of 4 — needs a plan"
   },
-  "updated_at": "2026-09-07T13:52:39.102Z"
+  "updated_at": "2026-09-08T19:22:42.095Z"
 }
