@@ -124,7 +124,7 @@ fn test_hausdorff_self_symmetric() {
     let data =
         FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
             .unwrap();
-    let dist = hausdorff_self_1d(&data, &argvals);
+    let dist = hausdorff_self(&data, &argvals, None, crate::dim::Dim::One);
     for i in 0..n {
         for j in 0..n {
             assert!(
@@ -142,7 +142,7 @@ fn test_hausdorff_self_diagonal_zero() {
     let argvals = uniform_grid(m);
     let data =
         FdMatrix::from_column_major((0..(n * m)).map(|i| i as f64 * 0.1).collect(), n, m).unwrap();
-    let dist = hausdorff_self_1d(&data, &argvals);
+    let dist = hausdorff_self(&data, &argvals, None, crate::dim::Dim::One);
     for i in 0..n {
         assert!(dist[(i, i)].abs() < 1e-10, "Self-distance should be zero");
     }
@@ -151,7 +151,7 @@ fn test_hausdorff_self_diagonal_zero() {
 #[test]
 fn test_hausdorff_invalid() {
     let empty = FdMatrix::zeros(0, 0);
-    assert!(hausdorff_self_1d(&empty, &[]).is_empty());
+    assert!(hausdorff_self(&empty, &[], None, crate::dim::Dim::One).is_empty());
 }
 
 #[test]
@@ -305,7 +305,7 @@ fn test_hausdorff_2d_symmetric() {
         n_points,
     )
     .unwrap();
-    let dist = hausdorff_self_2d(&data, &argvals_s, &argvals_t);
+    let dist = hausdorff_self(&data, &argvals_s, Some(&argvals_t), crate::dim::Dim::Two);
     for i in 0..n {
         for j in 0..n {
             assert!(
@@ -319,7 +319,7 @@ fn test_hausdorff_2d_symmetric() {
 #[test]
 fn test_hausdorff_2d_invalid() {
     let empty = FdMatrix::zeros(0, 0);
-    assert!(hausdorff_self_2d(&empty, &[], &[]).is_empty());
+    assert!(hausdorff_self(&empty, &[], Some(&[]), crate::dim::Dim::Two).is_empty());
 }
 
 #[test]
@@ -340,7 +340,7 @@ fn test_hausdorff_cross_1d() {
         m,
     )
     .unwrap();
-    let dist = hausdorff_cross_1d(&data1, &data2, &argvals);
+    let dist = hausdorff_cross(&data1, &data2, &argvals, None, crate::dim::Dim::One);
     assert_eq!(dist.nrows(), n1);
     assert_eq!(dist.ncols(), n2);
     for j in 0..n2 {
@@ -355,8 +355,8 @@ fn test_hausdorff_cross_1d() {
             );
         }
     }
-    let self_dist = hausdorff_self_1d(&data1, &argvals);
-    let cross_self = hausdorff_cross_1d(&data1, &data1, &argvals);
+    let self_dist = hausdorff_self(&data1, &argvals, None, crate::dim::Dim::One);
+    let cross_self = hausdorff_cross(&data1, &data1, &argvals, None, crate::dim::Dim::One);
     for i in 0..n1 {
         assert!(
             (cross_self[(i, i)] - self_dist[(i, i)]).abs() < 1e-10,
@@ -499,7 +499,7 @@ fn test_hausdorff_self_2d_properties() {
         n_points,
     )
     .unwrap();
-    let dist = hausdorff_self_2d(&data, &argvals_s, &argvals_t);
+    let dist = hausdorff_self(&data, &argvals_s, Some(&argvals_t), crate::dim::Dim::Two);
     for i in 0..n {
         assert!(
             dist[(i, i)].abs() < 1e-10,
@@ -541,7 +541,13 @@ fn test_hausdorff_cross_2d() {
         n_points,
     )
     .unwrap();
-    let dist = hausdorff_cross_2d(&data1, &data2, &argvals_s, &argvals_t);
+    let dist = hausdorff_cross(
+        &data1,
+        &data2,
+        &argvals_s,
+        Some(&argvals_t),
+        crate::dim::Dim::Two,
+    );
     assert_eq!(dist.nrows(), n1);
     assert_eq!(dist.ncols(), n2);
     for j in 0..n2 {
@@ -688,7 +694,7 @@ fn test_inf_hausdorff() {
     let mut data_vec = vec![1.0; 2 * m];
     data_vec[0] = f64::INFINITY;
     let data = FdMatrix::from_column_major(data_vec, 2, m).unwrap();
-    let dm = hausdorff_self_1d(&data, &argvals);
+    let dm = hausdorff_self(&data, &argvals, None, crate::dim::Dim::One);
     assert_eq!(dm.nrows(), 2);
     // Should not panic
 }

@@ -39,10 +39,7 @@ pub use modal::{modal, modal_1d};
 pub use random_projection::{random_projection, random_projection_1d, random_projection_1d_seeded};
 pub use random_tukey::{random_tukey, random_tukey_1d, random_tukey_1d_seeded};
 pub use rpd::{rpd_depth_1d, rpd_depth_1d_seeded};
-pub use spatial::{
-    functional_spatial_1d, functional_spatial_2d, kernel_functional_spatial_1d,
-    kernel_functional_spatial_2d,
-};
+pub use spatial::{functional_spatial, kernel_functional_spatial};
 pub use tvd::{total_variation_depth_1d, TvdMssResult};
 
 // ---------------------------------------------------------------------------

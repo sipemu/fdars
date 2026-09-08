@@ -1,10 +1,35 @@
 //! Functional spatial depth measures (FSD and KFSD).
 
+use crate::dim::Dim;
 use crate::helpers::simpsons_weights;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
+
+/// Compute Functional Spatial Depth (FSD), dispatching on [`Dim`].
+///
+/// Uses the L2 norm with Simpson's integration weights (matches R's `depth.FSD()`).
+/// `Dim::One` uses `argvals` (or a uniform grid when `None`); `Dim::Two` treats each row as a
+/// flattened surface and always uses the uniform grid (matching the former `functional_spatial_2d`).
+///
+/// # Arguments
+/// * `data_obj` - Data to compute depth for (nobj x n_points)
+/// * `data_ori` - Reference data (nori x n_points)
+/// * `argvals` - Optional evaluation grid for `Dim::One`; `None` uses a uniform grid
+/// * `dim` - Dimensionality selector ([`Dim::One`] or [`Dim::Two`])
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn functional_spatial(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    argvals: Option<&[f64]>,
+    dim: Dim,
+) -> Vec<f64> {
+    match dim {
+        Dim::One => functional_spatial_impl(data_obj, data_ori, argvals),
+        Dim::Two => functional_spatial_impl(data_obj, data_ori, None),
+    }
+}
 
 /// Compute Functional Spatial Depth for 1D functional data.
 ///
@@ -14,8 +39,7 @@ use rayon::iter::ParallelIterator;
 /// * `data_obj` - Data to compute depth for (nobj x n_points)
 /// * `data_ori` - Reference data (nori x n_points)
 /// * `argvals` - Optional evaluation grid; if None, uses uniform \[0,1\] grid
-#[must_use = "expensive computation whose result should not be discarded"]
-pub fn functional_spatial_1d(
+fn functional_spatial_impl(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
     argvals: Option<&[f64]>,
@@ -70,12 +94,6 @@ pub fn functional_spatial_1d(
             1.0 - avg_norm_sq.sqrt()
         })
         .collect()
-}
-
-/// Compute Functional Spatial Depth for 2D functional data.
-#[must_use = "expensive computation whose result should not be discarded"]
-pub fn functional_spatial_2d(data_obj: &FdMatrix, data_ori: &FdMatrix) -> Vec<f64> {
-    functional_spatial_1d(data_obj, data_ori, None)
 }
 
 /// Compute kernel distance contribution for a single (j,k) pair.
@@ -192,11 +210,37 @@ fn kfsd_weighted(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64, weights: &[f6
         .collect()
 }
 
+/// Compute Kernel Functional Spatial Depth (KFSD), dispatching on [`Dim`].
+///
+/// RKHS-based depth. `Dim::One` uses Simpson's weights derived from `argvals`; `Dim::Two` uses
+/// uniform weights over the flattened surface grid (matching the former `kernel_functional_spatial_2d`).
+///
+/// # Arguments
+/// * `data_obj` - Data to compute depth for
+/// * `data_ori` - Reference data
+/// * `argvals` - Evaluation grid for `Dim::One` (`Some`); ignored for `Dim::Two` (pass `None`)
+/// * `h` - Kernel bandwidth
+/// * `dim` - Dimensionality selector ([`Dim::One`] or [`Dim::Two`])
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn kernel_functional_spatial(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+    argvals: Option<&[f64]>,
+    h: f64,
+    dim: Dim,
+) -> Vec<f64> {
+    match dim {
+        Dim::One => {
+            kernel_functional_spatial_1d_impl(data_obj, data_ori, argvals.unwrap_or(&[]), h)
+        }
+        Dim::Two => kernel_functional_spatial_2d_impl(data_obj, data_ori, h),
+    }
+}
+
 /// Compute Kernel Functional Spatial Depth (KFSD) for 1D functional data.
 ///
 /// Implements the RKHS-based formulation.
-#[must_use = "expensive computation whose result should not be discarded"]
-pub fn kernel_functional_spatial_1d(
+fn kernel_functional_spatial_1d_impl(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
     argvals: &[f64],
@@ -215,8 +259,7 @@ pub fn kernel_functional_spatial_1d(
 }
 
 /// Compute Kernel Functional Spatial Depth (KFSD) for 2D functional data.
-#[must_use = "expensive computation whose result should not be discarded"]
-pub fn kernel_functional_spatial_2d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
+fn kernel_functional_spatial_2d_impl(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<f64> {
     let nobj = data_obj.nrows();
     let nori = data_ori.nrows();
     let n_points = data_obj.ncols();

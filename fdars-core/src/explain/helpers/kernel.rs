@@ -130,7 +130,7 @@ pub(crate) fn compute_score_depths(
         }
         super::super::advanced::DepthType::ModifiedBand => depth::modified_band_1d(scores, scores),
         super::super::advanced::DepthType::FunctionalSpatial => {
-            depth::functional_spatial_1d(scores, scores, None)
+            depth::functional_spatial(scores, scores, None, crate::dim::Dim::One)
         }
     }
 }
@@ -170,7 +170,7 @@ fn compute_single_depth(
         }
         super::super::advanced::DepthType::ModifiedBand => depth::modified_band_1d(row, reference),
         super::super::advanced::DepthType::FunctionalSpatial => {
-            depth::functional_spatial_1d(row, reference, None)
+            depth::functional_spatial(row, reference, None, crate::dim::Dim::One)
         }
     };
     if depths.is_empty() {

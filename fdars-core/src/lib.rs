@@ -612,7 +612,7 @@ pub use optimal_design::{
 
 // Re-export PEER regression types (v0.36.0)
 pub use peer::{
-    lpeer, peer, LambdaChoice, LambdaMethod, LpeerResult, PeerConfig, PeerPenalty, PeerResult,
+    lpeer, peer, LambdaChoice, LambdaMethod, LocalPeerResult, PeerConfig, PeerPenalty, PeerResult,
 };
 
 // Re-export wavelet DWT primitive + wavelet-domain regressors (v0.37.0 WAV, full surface)
@@ -631,12 +631,11 @@ pub use clustering_advanced::{
 // Re-export distance metric types and functions
 pub use metric::{
     dtw_cross_1d, dtw_distance, dtw_self_1d, fourier_cross_1d, fourier_self_1d, gak,
-    gak_gram_matrix, gak_gram_predict, gak_gram_train, hausdorff_3d, hausdorff_cross_1d,
-    hausdorff_cross_2d, hausdorff_self_1d, hausdorff_self_2d, hshift_cross_1d, hshift_self_1d,
-    lp_cross, lp_self, sbd, sbd_distance_matrix, sigma_gak, soft_dtw_barycenter, soft_dtw_cross_1d,
-    soft_dtw_distance, soft_dtw_distance_generic, soft_dtw_div_cross_1d, soft_dtw_div_self_1d,
-    soft_dtw_divergence, soft_dtw_self_1d, GakConfig, GakGramTrain, LpDomain, SbdResult,
-    SoftDtwBarycenterResult,
+    gak_gram_matrix, gak_gram_predict, gak_gram_train, hausdorff_3d, hausdorff_cross,
+    hausdorff_self, hshift_cross_1d, hshift_self_1d, lp_cross, lp_self, sbd, sbd_distance_matrix,
+    sigma_gak, soft_dtw_barycenter, soft_dtw_cross_1d, soft_dtw_distance,
+    soft_dtw_distance_generic, soft_dtw_div_cross_1d, soft_dtw_div_self_1d, soft_dtw_divergence,
+    soft_dtw_self_1d, GakConfig, GakGramTrain, LpDomain, SbdResult, SoftDtwBarycenterResult,
 };
 
 // Re-export depth measure functions
@@ -645,13 +644,12 @@ pub use dim::Dim;
 
 pub use depth::{
     band_1d, epigraph_index_1d, extremal_depth_1d, extreme_rank_length_depth_1d, fraiman_muniz,
-    fraiman_muniz_1d, functional_boxplot, functional_depth, functional_spatial_1d,
-    functional_spatial_2d, half_region_depth_1d, hypograph_index_1d, kernel_functional_spatial_1d,
-    kernel_functional_spatial_2d, linfinity_depth_1d, modal, modal_1d, modified_band_1d,
-    modified_epigraph_index_1d, modified_half_region_depth_1d, modified_hypograph_index_1d,
-    random_projection, random_projection_1d, random_projection_1d_seeded, random_tukey,
-    random_tukey_1d, random_tukey_1d_seeded, total_variation_depth_1d, DepthMethod,
-    FunctionalBoxplotResult, TvdMssResult,
+    fraiman_muniz_1d, functional_boxplot, functional_depth, functional_spatial,
+    half_region_depth_1d, hypograph_index_1d, kernel_functional_spatial, linfinity_depth_1d, modal,
+    modal_1d, modified_band_1d, modified_epigraph_index_1d, modified_half_region_depth_1d,
+    modified_hypograph_index_1d, random_projection, random_projection_1d,
+    random_projection_1d_seeded, random_tukey, random_tukey_1d, random_tukey_1d_seeded,
+    total_variation_depth_1d, DepthMethod, FunctionalBoxplotResult, TvdMssResult,
 };
 
 // Re-export outlier detection functions
@@ -672,8 +670,8 @@ pub use utility::{
 // Re-export functional data operation types and functions.
 pub use fdata::{
     center_1d, depth_based_median, deriv, functional_covariance, functional_std,
-    functional_variance, geometric_median_1d, geometric_median_2d, mean, mean_1d, norm_lp_1d,
-    normalize, normalize_with_argvals, trim_mean, Deriv2DResult, DerivDomain, DerivResult,
+    functional_variance, geometric_median, mean, mean_1d, norm_lp_1d, normalize,
+    normalize_with_argvals, trim_mean, Deriv2DResult, DerivDomain, DerivResult,
     NormalizationMethod,
 };
 

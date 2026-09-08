@@ -192,7 +192,7 @@ pub struct PeerResult {
 #[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[must_use = "expensive computation whose result should not be discarded"]
-pub struct LpeerResult {
+pub struct LocalPeerResult {
     /// Estimated coefficient function β(t), length m (on the argvals grid).
     pub beta: Vec<f64>,
     /// Intercept (= ȳ, the mean of the response vector). Matches `peer()` convention.
@@ -463,7 +463,7 @@ pub fn lpeer(
     argvals: &[f64],
     subject_map: &[usize],
     config: &PeerConfig,
-) -> Result<LpeerResult, FdarError> {
+) -> Result<LocalPeerResult, FdarError> {
     let (n, m) = data.shape();
 
     // --- Entry validation (mirrors peer()) ---
@@ -691,7 +691,7 @@ pub fn lpeer(
         .map(|i| base + (0..m).map(|j| data[(i, j)] * w[j] * beta[j]).sum::<f64>())
         .collect();
 
-    Ok(LpeerResult {
+    Ok(LocalPeerResult {
         beta,
         intercept: y_bar,
         w_bar,
@@ -706,7 +706,7 @@ pub fn lpeer(
     })
 }
 
-impl LpeerResult {
+impl LocalPeerResult {
     /// Predict scalar responses for new functional observations (marginal prediction).
     ///
     /// Applies the fitted coefficient function β(t) to `new_data` via the same
@@ -1160,7 +1160,7 @@ fn select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: us
 // Shared prediction helper
 // ---------------------------------------------------------------------------
 
-/// Shared prediction core for both `PeerResult` and `LpeerResult`.
+/// Shared prediction core for both `PeerResult` and `LocalPeerResult`.
 ///
 /// Computes out-of-sample predictions via
 /// `ŷ*[i] = (intercept − w_bar·β) + Σ_j x*[i,j] · w[j] · β[j]`
@@ -2094,7 +2094,7 @@ mod tests {
 
     #[test]
     fn test_lpeer_predict_self_consistent() {
-        // LpeerResult::predict on training data must reproduce fitted_values within 1e-9.
+        // LocalPeerResult::predict on training data must reproduce fitted_values within 1e-9.
         let (data, y, t, subject_map, _) = make_lpeer_fixture();
         let config = PeerConfig {
             penalty: PeerPenalty::Ridge,
@@ -2104,12 +2104,12 @@ mod tests {
             .expect("lpeer() should succeed on longitudinal fixture");
         let preds = fit
             .predict(&data, &t)
-            .expect("LpeerResult::predict on training data should succeed");
+            .expect("LocalPeerResult::predict on training data should succeed");
         assert_eq!(preds.len(), fit.fitted_values.len());
         for (i, (p, f)) in preds.iter().zip(&fit.fitted_values).enumerate() {
             assert!(
                 (p - f).abs() < 1e-9,
-                "LpeerResult::predict vs fitted_values mismatch at row {i}: {p} vs {f}"
+                "LocalPeerResult::predict vs fitted_values mismatch at row {i}: {p} vs {f}"
             );
         }
     }
@@ -2136,7 +2136,7 @@ mod tests {
             &[f64],
             &[usize],
             &PeerConfig,
-        ) -> Result<LpeerResult, FdarError> = crate::peer::lpeer;
+        ) -> Result<LocalPeerResult, FdarError> = crate::peer::lpeer;
 
         // Verify enum/struct variants compile
         let _lc = LambdaChoice::Fixed(1.0);
@@ -2146,9 +2146,9 @@ mod tests {
             penalty: _pp,
             lambda: _lc,
         };
-        // Verify LpeerResult and PeerResult are constructible via the module path
+        // Verify LocalPeerResult and PeerResult are constructible via the module path
         let _ = std::mem::size_of::<PeerResult>();
-        let _ = std::mem::size_of::<LpeerResult>();
+        let _ = std::mem::size_of::<LocalPeerResult>();
     }
 
     #[test]
@@ -2166,7 +2166,7 @@ mod tests {
             &[f64],
             &[usize],
             &PeerConfig,
-        ) -> Result<LpeerResult, FdarError> = lpeer;
+        ) -> Result<LocalPeerResult, FdarError> = lpeer;
 
         let _lc = LambdaChoice::Gcv;
         let _lm = LambdaMethod::Gcv;
@@ -2176,6 +2176,6 @@ mod tests {
             lambda: _lc,
         };
         let _ = std::mem::size_of::<PeerResult>();
-        let _ = std::mem::size_of::<LpeerResult>();
+        let _ = std::mem::size_of::<LocalPeerResult>();
     }
 }

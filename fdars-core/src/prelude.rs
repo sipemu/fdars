@@ -38,8 +38,8 @@ pub use crate::explain_generic::{FpcPredictor, TaskType};
 
 // Depth functions.
 pub use crate::depth::{
-    band_1d, fraiman_muniz_1d, functional_spatial_1d, functional_spatial_2d, modal_1d,
-    modified_band_1d, random_projection_1d, random_tukey_1d, rpd_depth_1d,
+    band_1d, fraiman_muniz_1d, functional_spatial, modal_1d, modified_band_1d,
+    random_projection_1d, random_tukey_1d, rpd_depth_1d,
 };
 
 // Metric functions
@@ -114,7 +114,7 @@ pub use crate::coclustering::{CoClusterConfig, CoClusterResult, CoClusterSelectR
 
 // PEER regression (v0.36.0)
 pub use crate::peer::{
-    lpeer, peer, LambdaChoice, LambdaMethod, LpeerResult, PeerConfig, PeerPenalty, PeerResult,
+    lpeer, peer, LambdaChoice, LambdaMethod, LocalPeerResult, PeerConfig, PeerPenalty, PeerResult,
 };
 
 // Wavelet-domain regression (v0.37.0)

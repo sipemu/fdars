@@ -1066,6 +1066,36 @@ fn deriv_2d_impl(
 
 /// Compute the geometric median (L1 median) of functional data using Weiszfeld's algorithm.
 ///
+/// The geometric median minimizes the sum of L2 distances to all curves. Dispatches on
+/// [`Dim`]: `Dim::One` uses Simpson's 1D integration weights over `argvals`; `Dim::Two`
+/// treats each row as a flattened `argvals` (s) x `argvals_t` (t) surface and uses the
+/// 2D Simpson's weights.
+///
+/// # Arguments
+/// * `data` - Functional data matrix (n x m)
+/// * `argvals` - Evaluation points (the s-direction grid for `Dim::Two`)
+/// * `argvals_t` - Second-dimension (t) grid for `Dim::Two`; ignored for `Dim::One` (pass `None`)
+/// * `max_iter` - Maximum iterations
+/// * `tol` - Convergence tolerance
+/// * `dim` - Dimensionality selector ([`Dim::One`] or [`Dim::Two`])
+pub fn geometric_median(
+    data: &FdMatrix,
+    argvals: &[f64],
+    argvals_t: Option<&[f64]>,
+    max_iter: usize,
+    tol: f64,
+    dim: Dim,
+) -> Vec<f64> {
+    match dim {
+        Dim::One => geometric_median_1d_impl(data, argvals, max_iter, tol),
+        Dim::Two => {
+            geometric_median_2d_impl(data, argvals, argvals_t.unwrap_or(&[]), max_iter, tol)
+        }
+    }
+}
+
+/// Compute the geometric median (L1 median) of functional data using Weiszfeld's algorithm.
+///
 /// The geometric median minimizes sum of L2 distances to all curves.
 ///
 /// # Arguments
@@ -1073,7 +1103,7 @@ fn deriv_2d_impl(
 /// * `argvals` - Evaluation points for integration
 /// * `max_iter` - Maximum iterations
 /// * `tol` - Convergence tolerance
-pub fn geometric_median_1d(
+fn geometric_median_1d_impl(
     data: &FdMatrix,
     argvals: &[f64],
     max_iter: usize,
@@ -1098,7 +1128,7 @@ pub fn geometric_median_1d(
 /// * `argvals_t` - Grid points in t direction (length m2)
 /// * `max_iter` - Maximum iterations
 /// * `tol` - Convergence tolerance
-pub fn geometric_median_2d(
+fn geometric_median_2d_impl(
     data: &FdMatrix,
     argvals_s: &[f64],
     argvals_t: &[f64],
@@ -1293,7 +1323,7 @@ mod tests {
             }
         }
         let mat = FdMatrix::from_column_major(data, n, m).unwrap();
-        let median = geometric_median_1d(&mat, &argvals, 100, 1e-6);
+        let median = geometric_median(&mat, &argvals, None, 100, 1e-6, crate::dim::Dim::One);
         for j in 0..m {
             let expected = (2.0 * PI * argvals[j]).sin();
             assert!(
@@ -1315,14 +1345,22 @@ mod tests {
             }
         }
         let mat = FdMatrix::from_column_major(data, n, m).unwrap();
-        let median = geometric_median_1d(&mat, &argvals, 100, 1e-6);
+        let median = geometric_median(&mat, &argvals, None, 100, 1e-6, crate::dim::Dim::One);
         assert_eq!(median.len(), m);
         assert!(median.iter().all(|&x| x.is_finite()));
     }
 
     #[test]
     fn test_geometric_median_invalid() {
-        assert!(geometric_median_1d(&FdMatrix::zeros(0, 0), &[], 100, 1e-6).is_empty());
+        assert!(geometric_median(
+            &FdMatrix::zeros(0, 0),
+            &[],
+            None,
+            100,
+            1e-6,
+            crate::dim::Dim::One
+        )
+        .is_empty());
     }
 
     // ============== 2D derivative tests ==============
@@ -1543,7 +1581,14 @@ mod tests {
         }
 
         let mat = FdMatrix::from_column_major(data, n, m).unwrap();
-        let median = geometric_median_2d(&mat, &argvals_s, &argvals_t, 100, 1e-6);
+        let median = geometric_median(
+            &mat,
+            &argvals_s,
+            Some(&argvals_t),
+            100,
+            1e-6,
+            crate::dim::Dim::Two,
+        );
         assert_eq!(median.len(), m);
 
         // Check that median equals the surface

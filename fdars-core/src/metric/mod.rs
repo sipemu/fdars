@@ -142,9 +142,7 @@ pub use fourier::{fourier_cross_1d, fourier_self_1d};
 pub use gak::{
     gak, gak_gram_matrix, gak_gram_predict, gak_gram_train, sigma_gak, GakConfig, GakGramTrain,
 };
-pub use hausdorff::{
-    hausdorff_3d, hausdorff_cross_1d, hausdorff_cross_2d, hausdorff_self_1d, hausdorff_self_2d,
-};
+pub use hausdorff::{hausdorff_3d, hausdorff_cross, hausdorff_self};
 pub use hshift::{hshift_cross_1d, hshift_self_1d};
 pub use kl::{kl_cross_1d, kl_self_1d};
 pub use lp::{lp_cross, lp_self, LpDomain};

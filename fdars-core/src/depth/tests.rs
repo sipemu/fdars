@@ -140,7 +140,7 @@ fn test_functional_spatial_range() {
     let n = 15;
     let m = 20;
     let data = generate_centered_data(n, m);
-    let depths = functional_spatial_1d(&data, &data, None);
+    let depths = functional_spatial(&data, &data, None, crate::dim::Dim::One);
 
     for d in &depths {
         assert!(*d >= 0.0 && *d <= 1.0, "Spatial depth should be in [0, 1]");
@@ -150,7 +150,7 @@ fn test_functional_spatial_range() {
 #[test]
 fn test_functional_spatial_invalid() {
     let empty = FdMatrix::zeros(0, 0);
-    assert!(functional_spatial_1d(&empty, &empty, None).is_empty());
+    assert!(functional_spatial(&empty, &empty, None, crate::dim::Dim::One).is_empty());
 }
 
 // ============== Band depth tests ==============
@@ -239,7 +239,7 @@ fn test_kfsd_1d_range() {
     let m = 20;
     let argvals = uniform_grid(m);
     let data = generate_centered_data(n, m);
-    let depths = kernel_functional_spatial_1d(&data, &data, &argvals, 0.5);
+    let depths = kernel_functional_spatial(&data, &data, Some(&argvals), 0.5, crate::dim::Dim::One);
 
     assert_eq!(depths.len(), n);
     for d in &depths {
@@ -275,7 +275,7 @@ fn test_kfsd_1d_identical() {
 
     // When all curves are identical, kernel distances are all 1.0
     // and denom_j_sq = K(x,x) + K(y,y) - 2*K(x,y) = 1 + 1 - 2*1 = 0
-    let depths = kernel_functional_spatial_1d(&data, &data, &argvals, 0.5);
+    let depths = kernel_functional_spatial(&data, &data, Some(&argvals), 0.5, crate::dim::Dim::One);
 
     assert_eq!(depths.len(), n);
     for d in &depths {
@@ -290,9 +290,19 @@ fn test_kfsd_1d_identical() {
 fn test_kfsd_1d_invalid() {
     let argvals = uniform_grid(10);
     let empty = FdMatrix::zeros(0, 0);
-    assert!(kernel_functional_spatial_1d(&empty, &empty, &argvals, 0.5).is_empty());
+    assert!(
+        kernel_functional_spatial(&empty, &empty, Some(&argvals), 0.5, crate::dim::Dim::One)
+            .is_empty()
+    );
     let empty_obj = FdMatrix::zeros(0, 0);
-    assert!(kernel_functional_spatial_1d(&empty_obj, &empty_obj, &argvals, 0.5).is_empty());
+    assert!(kernel_functional_spatial(
+        &empty_obj,
+        &empty_obj,
+        Some(&argvals),
+        0.5,
+        crate::dim::Dim::One
+    )
+    .is_empty());
 }
 
 // ============== KFSD 2D tests ==============
@@ -302,7 +312,7 @@ fn test_kfsd_2d_range() {
     let n = 8;
     let m = 15;
     let data = generate_centered_data(n, m);
-    let depths = kernel_functional_spatial_2d(&data, &data, 0.5);
+    let depths = kernel_functional_spatial(&data, &data, None, 0.5, crate::dim::Dim::Two);
 
     assert_eq!(depths.len(), n);
     for d in &depths {
@@ -322,8 +332,8 @@ fn test_functional_spatial_2d_delegates() {
     let n = 10;
     let m = 15;
     let data = generate_centered_data(n, m);
-    let depths_1d = functional_spatial_1d(&data, &data, None);
-    let depths_2d = functional_spatial_2d(&data, &data);
+    let depths_1d = functional_spatial(&data, &data, None, crate::dim::Dim::One);
+    let depths_2d = functional_spatial(&data, &data, None, crate::dim::Dim::Two);
     assert_eq!(depths_1d, depths_2d);
 }
 
@@ -421,7 +431,7 @@ fn test_n1_depths() {
     assert_eq!(fm.len(), 1);
     let modal = modal_1d(&data, &data, 0.5);
     assert_eq!(modal.len(), 1);
-    let spatial = functional_spatial_1d(&data, &data, None);
+    let spatial = functional_spatial(&data, &data, None, crate::dim::Dim::One);
     assert_eq!(spatial.len(), 1);
 }
 
@@ -443,7 +453,7 @@ fn test_inf_spatial_depth() {
     let mut data_vec = vec![1.0; n * m];
     data_vec[0] = f64::INFINITY;
     let data = FdMatrix::from_column_major(data_vec, n, m).unwrap();
-    let depths = functional_spatial_1d(&data, &data, None);
+    let depths = functional_spatial(&data, &data, None, crate::dim::Dim::One);
     assert_eq!(depths.len(), n);
     // Should not panic
 }

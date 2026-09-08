@@ -2,6 +2,8 @@
 
 use crate::matrix::FdMatrix;
 
+use crate::dim::Dim;
+
 use super::{cross_distance_matrix, self_distance_matrix};
 
 /// Precompute squared time differences for Hausdorff distance.
@@ -40,10 +42,28 @@ fn directed_hausdorff_sq(
         .fold(f64::NEG_INFINITY, f64::max)
 }
 
+/// Compute the Hausdorff self-distance matrix, dispatching on [`Dim`].
+///
+/// `Dim::One` treats each row as a curve sampled at `argvals`; `Dim::Two` treats each
+/// row as a flattened `argvals` (s) x `argvals_t` (t) surface (pass the t-grid via
+/// `argvals_t`). Curves/surfaces are treated as point sets and compared by the Hausdorff
+/// metric.
+pub fn hausdorff_self(
+    data: &FdMatrix,
+    argvals: &[f64],
+    argvals_t: Option<&[f64]>,
+    dim: Dim,
+) -> FdMatrix {
+    match dim {
+        Dim::One => hausdorff_self_1d_impl(data, argvals),
+        Dim::Two => hausdorff_self_2d_impl(data, argvals, argvals_t.unwrap_or(&[])),
+    }
+}
+
 /// Compute Hausdorff distance matrix for self-distances (symmetric).
 ///
 /// The Hausdorff distance treats curves as sets of points (t, f(t)) in 2D space.
-pub fn hausdorff_self_1d(data: &FdMatrix, argvals: &[f64]) -> FdMatrix {
+fn hausdorff_self_1d_impl(data: &FdMatrix, argvals: &[f64]) -> FdMatrix {
     let n = data.nrows();
     let m = data.ncols();
 
@@ -59,8 +79,25 @@ pub fn hausdorff_self_1d(data: &FdMatrix, argvals: &[f64]) -> FdMatrix {
     })
 }
 
+/// Compute the Hausdorff cross-distance matrix between two datasets, dispatching on [`Dim`].
+///
+/// `Dim::One` treats rows as curves sampled at `argvals`; `Dim::Two` treats rows as flattened
+/// `argvals` (s) x `argvals_t` (t) surfaces (pass the t-grid via `argvals_t`).
+pub fn hausdorff_cross(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    argvals: &[f64],
+    argvals_t: Option<&[f64]>,
+    dim: Dim,
+) -> FdMatrix {
+    match dim {
+        Dim::One => hausdorff_cross_1d_impl(data1, data2, argvals),
+        Dim::Two => hausdorff_cross_2d_impl(data1, data2, argvals, argvals_t.unwrap_or(&[])),
+    }
+}
+
 /// Compute Hausdorff cross-distances for 1D functional data.
-pub fn hausdorff_cross_1d(data1: &FdMatrix, data2: &FdMatrix, argvals: &[f64]) -> FdMatrix {
+fn hausdorff_cross_1d_impl(data1: &FdMatrix, data2: &FdMatrix, argvals: &[f64]) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
     let m = data1.ncols();
@@ -134,7 +171,7 @@ fn extract_surfaces(
 }
 
 /// Compute Hausdorff self-distance for 2D surfaces.
-pub fn hausdorff_self_2d(data: &FdMatrix, argvals_s: &[f64], argvals_t: &[f64]) -> FdMatrix {
+fn hausdorff_self_2d_impl(data: &FdMatrix, argvals_s: &[f64], argvals_t: &[f64]) -> FdMatrix {
     let n = data.nrows();
     let n_points = argvals_s.len() * argvals_t.len();
     if n == 0 || n_points == 0 || data.ncols() != n_points {
@@ -145,7 +182,7 @@ pub fn hausdorff_self_2d(data: &FdMatrix, argvals_s: &[f64], argvals_t: &[f64]) 
 }
 
 /// Compute Hausdorff cross-distance for 2D surfaces.
-pub fn hausdorff_cross_2d(
+fn hausdorff_cross_2d_impl(
     data1: &FdMatrix,
     data2: &FdMatrix,
     argvals_s: &[f64],
