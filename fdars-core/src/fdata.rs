@@ -477,7 +477,7 @@ pub fn depth_based_median(data: &FdMatrix) -> Result<usize, FdarError> {
 ///
 /// Excludes the `floor(alpha * n)` least-deep curves (by Fraiman-Muniz depth) and
 /// returns the pointwise mean of the remaining curves. With `alpha = 0`, all curves
-/// are retained and the result equals [`mean_1d`] exactly.
+/// are retained and the result equals [`mean`] exactly.
 ///
 /// # Arguments
 /// * `data` - Functional data matrix (n x m), requires n >= 1.
@@ -495,14 +495,15 @@ pub fn depth_based_median(data: &FdMatrix) -> Result<usize, FdarError> {
 ///
 /// ```
 /// use fdars_core::matrix::FdMatrix;
-/// use fdars_core::fdata::{trim_mean, mean_1d};
+/// use fdars_core::fdata::{trim_mean, mean};
+/// use fdars_core::dim::Dim;
 ///
 /// let data = FdMatrix::from_column_major(
 ///     vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 3, 2,
 /// ).unwrap();
 /// // alpha=0 => no trimming => equals mean
 /// let tm = trim_mean(&data, 0.0).unwrap();
-/// let mu = mean_1d(&data);
+/// let mu = mean(&data, Dim::One);
 /// for j in 0..2 {
 ///     assert!((tm[j] - mu[j]).abs() < 1e-10);
 /// }
