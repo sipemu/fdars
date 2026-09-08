@@ -231,7 +231,22 @@ pub fn kernel_functional_spatial(
 ) -> Vec<f64> {
     match dim {
         Dim::One => {
-            kernel_functional_spatial_1d_impl(data_obj, data_ori, argvals.unwrap_or(&[]), h)
+            // Mirror `functional_spatial`: when no grid is supplied, fall back to a
+            // uniform [0,1] grid so `Dim::One` + `None` is well-defined (the former
+            // `kernel_functional_spatial_1d` required an explicit `argvals`, so this
+            // input combination did not exist before consolidation).
+            let default_argvals: Vec<f64>;
+            let av = match argvals {
+                Some(a) => a,
+                None => {
+                    let n_points = data_obj.ncols();
+                    default_argvals = (0..n_points)
+                        .map(|i| i as f64 / (n_points - 1).max(1) as f64)
+                        .collect();
+                    &default_argvals
+                }
+            };
+            kernel_functional_spatial_1d_impl(data_obj, data_ori, av, h)
         }
         Dim::Two => kernel_functional_spatial_2d_impl(data_obj, data_ori, h),
     }
