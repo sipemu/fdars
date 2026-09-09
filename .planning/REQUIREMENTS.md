@@ -14,8 +14,8 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### Robustness (suite-wide sweep)
 
-- [ ] **ROBUST-01**: Audit the whole test suite for other fragile bit-identity, nondeterministic, or environment/BLAS/disk-dependent assertions; produce a findings list.
-- [ ] **ROBUST-02**: Fix each additional fragile test found (or document why it is safe to leave) so the suite is reliably green under full parallel runs.
+- [x] **ROBUST-01**: Audit the whole test suite for other fragile bit-identity, nondeterministic, or environment/BLAS/disk-dependent assertions; produce a findings list.
+- [x] **ROBUST-02**: Fix each additional fragile test found (or document why it is safe to leave) so the suite is reliably green under full parallel runs.
 
 ### CI (regression guardrail)
 
@@ -69,8 +69,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 |-------------|-------|--------|
 | FLAKE-01 | Phase 90 | Complete |
 | FLAKE-02 | Phase 90 | Complete |
-| ROBUST-01 | Phase 91 | Pending |
-| ROBUST-02 | Phase 91 | Pending |
+| ROBUST-01 | Phase 91 | Complete |
+| ROBUST-02 | Phase 91 | Complete |
 | CI-01 | Phase 92 | Pending |
 | REL-01 | Phase 93 | Pending |
 | REL-02 | Phase 93 | Pending |

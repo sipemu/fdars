@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v0.43.0
 milestone_name: Test Determinism & Release Hardening
-current_phase: 91
-current_phase_name: Suite-Wide Robustness Sweep
+current_phase: 92
+current_phase_name: CI Determinism Guardrail
 status: planning
-stopped_at: Phase 90 complete, ready to plan Phase 91
-last_updated: "2026-09-09T07:53:14.608Z"
+stopped_at: Phase 91 complete, ready to plan Phase 92
+last_updated: "2026-09-09T10:24:41.684Z"
 last_activity: 2026-09-09
-last_activity_desc: Phase 90 complete, transitioned to Phase 91
-state_head: 1c559e1fa9c4c0b72e54a66b1a1654f490168be0
+last_activity_desc: Phase 91 complete, transitioned to Phase 92
+state_head: 51e75d10773589951abc578e8edc1a25a25c3826
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 25
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-09)
 
 ## Current Position
 
-Phase: 91 — Suite-Wide Robustness Sweep
+Phase: 92 — CI Determinism Guardrail
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-09 — Phase 90 complete, transitioned to Phase 91
+Last activity: 2026-09-09 — Phase 91 complete, transitioned to Phase 92
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -118,7 +118,7 @@ Items acknowledged and deferred, most recent first:
 ## Session Continuity
 
 Last session: 2026-09-09T00:00:00.000Z
-Stopped at: Phase 90 complete, ready to plan Phase 91
+Stopped at: Phase 91 complete, ready to plan Phase 92
 Resume file: None
 
 ## Operator Next Steps

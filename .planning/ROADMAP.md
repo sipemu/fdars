@@ -16,7 +16,7 @@
 **Phase Numbering:** Integer phases are planned work; decimal phases (e.g., 90.1) are urgent insertions in numeric order. Numbering never resets.
 
 - [x] **Phase 90: Golden-Flake Root-Cause & Deterministic Fix** - Diagnose why the three golden tests flake under full parallel `cargo test`, then fix them deterministically. (completed 2026-09-09)
-- [ ] **Phase 91: Suite-Wide Robustness Sweep** - Audit the whole suite for other fragile/nondeterministic/env-dependent assertions and fix or justify each.
+- [x] **Phase 91: Suite-Wide Robustness Sweep** - Audit the whole suite for other fragile/nondeterministic/env-dependent assertions and fix or justify each. (completed 2026-09-09)
 - [ ] **Phase 92: CI Determinism Guardrail** - Add a CI gate exercising the full parallel `cargo test` path so a determinism regression fails CI.
 - [ ] **Phase 93: Release Preparation & Readiness Verification** - Bump to 0.43.0, CHANGELOG/docs, clear the Quality checklist item, and verify all release gates green.
 
@@ -51,7 +51,7 @@ Notes: FLAKE-01's diagnosis gates FLAKE-02's fix approach — they share this ph
 
 **Plans**: 1 plan
 
-- [ ] 91-01-PLAN.md — Audit-and-document the whole suite (config-matrix reproduction of both CI configs + thread/repeated-run determinism sweep), write committed `91-AUDIT.md` with per-class dispositions, and apply a conditional Phase-90-style guard if any new unguarded fragile test leaks (none expected)
+- [x] 91-01-PLAN.md — Audit-and-document the whole suite (config-matrix reproduction of both CI configs + thread/repeated-run determinism sweep), write committed `91-AUDIT.md` with per-class dispositions, and apply a conditional Phase-90-style guard if any new unguarded fragile test leaks (none expected)
 
 Notes: Reuses the diagnosis technique established in Phase 90; sequenced after the golden-flake fix so the known case informs what to look for. Same build/disk hazards as Phase 90 apply. Additive/non-breaking — test + possibly minor `src/` determinism changes only. Orchestrator pre-gathered evidence shows both CI configs green + thread-order-independent → expected outcome is zero code changes (a documented audit).
 
@@ -132,6 +132,6 @@ v0.43.0 phases execute in numeric order: 90 → 91 → 92 → 93
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 90. Golden-Flake Root-Cause & Deterministic Fix | v0.43.0 | 1/1 | Complete    | 2026-09-09 |
-| 91. Suite-Wide Robustness Sweep | v0.43.0 | 0/1 | Not started | - |
+| 91. Suite-Wide Robustness Sweep | v0.43.0 | 1/1 | Complete    | 2026-09-09 |
 | 92. CI Determinism Guardrail | v0.43.0 | 0/TBD | Not started | - |
 | 93. Release Preparation & Readiness Verification | v0.43.0 | 0/TBD | Not started | - |
