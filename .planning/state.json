@@ -16,7 +16,7 @@
     {
       "number": "92",
       "name": "CI Determinism Guardrail",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "93",
@@ -26,8 +26,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 92)",
-    "reason": "Phase 92 of 4 — needs a plan"
+    "label": "Advance to the next step (plan phase 93)",
+    "reason": "Phase 93 of 4 — needs a plan"
   },
-  "updated_at": "2026-09-09T10:24:41.694Z"
+  "updated_at": "2026-09-09T12:13:44.307Z"
 }

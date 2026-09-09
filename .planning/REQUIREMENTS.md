@@ -19,7 +19,7 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### CI (regression guardrail)
 
-- [ ] **CI-01**: Add a CI guardrail that exercises the full parallel `cargo test` path (cross-binary interference) and/or a nextest serialization group, so a determinism regression fails CI rather than silently returning.
+- [x] **CI-01**: Add a CI guardrail that exercises the full parallel `cargo test` path (cross-binary interference) and/or a nextest serialization group, so a determinism regression fails CI rather than silently returning.
 
 ### Release
 
@@ -71,7 +71,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | FLAKE-02 | Phase 90 | Complete |
 | ROBUST-01 | Phase 91 | Complete |
 | ROBUST-02 | Phase 91 | Complete |
-| CI-01 | Phase 92 | Pending |
+| CI-01 | Phase 92 | Complete |
 | REL-01 | Phase 93 | Pending |
 | REL-02 | Phase 93 | Pending |
 

@@ -17,7 +17,7 @@
 
 - [x] **Phase 90: Golden-Flake Root-Cause & Deterministic Fix** - Diagnose why the three golden tests flake under full parallel `cargo test`, then fix them deterministically. (completed 2026-09-09)
 - [x] **Phase 91: Suite-Wide Robustness Sweep** - Audit the whole suite for other fragile/nondeterministic/env-dependent assertions and fix or justify each. (completed 2026-09-09)
-- [ ] **Phase 92: CI Determinism Guardrail** - Add a CI gate exercising the full parallel `cargo test` path so a determinism regression fails CI.
+- [x] **Phase 92: CI Determinism Guardrail** - Add a CI gate exercising the full parallel `cargo test` path so a determinism regression fails CI. (completed 2026-09-09)
 - [ ] **Phase 93: Release Preparation & Readiness Verification** - Bump to 0.43.0, CHANGELOG/docs, clear the Quality checklist item, and verify all release gates green.
 
 #### Phase 90: Golden-Flake Root-Cause & Deterministic Fix
@@ -67,7 +67,8 @@ Notes: Reuses the diagnosis technique established in Phase 90; sequenced after t
   3. A reintroduced determinism regression would fail this CI gate rather than pass silently (the gate targets the specific failure mode diagnosed in Phase 90).
 
 **Plans**: 1 plan
-- [ ] 92-01-PLAN.md — Add the `determinism-guardrail` CI job (repeat loop + RAYON_NUM_THREADS=1 + anti-silent-skip golden assertions) and validate its shell locally
+
+- [x] 92-01-PLAN.md — Add the `determinism-guardrail` CI job (repeat loop + RAYON_NUM_THREADS=1 + anti-silent-skip golden assertions) and validate its shell locally
 
 Notes: Lands after the fixes exist so the gate reflects a green baseline (a guardrail added before the fix would start red). CI config change (`.github/workflows/`); std-only shell loop, NO nextest/serial_test (locked in 92-CONTEXT.md). Clippy in CI uses `--all-targets --features linalg,parallel -- -D warnings` (lints test/bench code).
 
@@ -134,5 +135,5 @@ v0.43.0 phases execute in numeric order: 90 → 91 → 92 → 93
 |-------|-----------|----------------|--------|-----------|
 | 90. Golden-Flake Root-Cause & Deterministic Fix | v0.43.0 | 1/1 | Complete    | 2026-09-09 |
 | 91. Suite-Wide Robustness Sweep | v0.43.0 | 1/1 | Complete    | 2026-09-09 |
-| 92. CI Determinism Guardrail | v0.43.0 | 0/TBD | Not started | - |
+| 92. CI Determinism Guardrail | v0.43.0 | 1/1 | Complete    | 2026-09-09 |
 | 93. Release Preparation & Readiness Verification | v0.43.0 | 0/TBD | Not started | - |
