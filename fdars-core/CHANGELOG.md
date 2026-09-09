@@ -5,6 +5,43 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.43.0] - 2026-09-09
+
+**Test Determinism & Release Hardening.** Docs/tests/CI only — no numeric or behavioral
+change to `fdars-core`; MSRV unchanged (1.81 crate / 1.84 for `linalg`). Clears the
+**Quality** blocker on the 1.0 gap checklist.
+
+### Fixed
+
+- **Golden-test flake (`co_cluster` / `svd_sign`) — root-caused and fixed.** The three
+  golden bit-identity tests (`golden_co_cluster_parallel`,
+  `golden_co_cluster_below_threshold`, `svd_sign_fpca_two_matrix_bit_identical`) were not
+  an environmental/disk-pressure flake (hypothesis overturned). Their reference values
+  were captured under the `faer` SVD backend (`--features linalg`); a build without
+  `linalg` routes `fdata_to_pc` through the `nalgebra` backend, which diverges the FPCA
+  rotation categorically. Fixed with a test-side `#[cfg_attr(not(feature = "linalg"),
+  ignore)]` guard on exactly those three tests — no new dependency, no tolerance
+  relaxation, no `src/` change. They pass under both documented `linalg` configs and are
+  reported *ignored* (not failed) without `linalg`; the PACE sibling is left unguarded.
+
+### Added
+
+- **CI `determinism-guardrail` job** (`rust-ci.yml`): runs the full parallel
+  `cargo test --features linalg,parallel,serde` repeatedly and once with
+  `RAYON_NUM_THREADS=1`, and positively asserts the golden tests actually ran under
+  `linalg` (anti-silent-skip). Gates the `publish` job. Catches a reintroduced
+  determinism regression loudly instead of silently.
+
+### Notes
+
+- A suite-wide robustness audit (integration + lib + doctests) found **zero further
+  fragile tests**: backend-fragility fully covered, RNG/thread-order robust under a
+  `RAYON_NUM_THREADS` sweep, no env/disk dependence.
+- **0.43.0 supersedes the unpublished 0.41.0 and 0.42.0** (registry at 0.40.0 — one
+  publish catches all three up). The operator-driven `git tag v0.43.0` → crates.io
+  publish (auto via `release.yml`) is the sole remaining step, not performed in any
+  development phase.
+
 ## [0.42.0] - 2026-09-08
 
 **BREAKING — 1.0 API Finalization Pass.** The second breaking release: it clears the

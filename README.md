@@ -81,7 +81,7 @@ For WASM builds, disable default features:
 
 ```toml
 [dependencies]
-fdars-core = { version = "0.41", default-features = false }
+fdars-core = { version = "0.43", default-features = false }
 ```
 
 ## Data Layout

@@ -11,6 +11,45 @@ signatures and dependencies, with one intentional exception: the v0.40.0 soft-DT
 barycenter correction changes convergence behavior intentionally (see [0.40.0]
 Changed below).
 
+## [0.43.0] - 2026-09-09
+
+**Test Determinism & Release Hardening.** A quality + release-hardening release —
+docs, tests, and CI only; **no numeric or behavioral change** to `fdars-core`, and
+**MSRV is unchanged** (1.81 crate / 1.84 for the `linalg` feature). It clears the
+**Quality** blocker on the 1.0 gap checklist (`documentation/ROADMAP-TO-1.0.md`).
+
+- **Golden-flake root cause (finally diagnosed).** The long-standing
+  `golden_co_cluster_parallel`, `golden_co_cluster_below_threshold`
+  (`equivalence_phase48`) and `svd_sign_fpca_two_matrix_bit_identical`
+  (`equivalence_phase49`) flakes are **not** an environmental / disk-pressure /
+  thread-scheduling flake (that historical hypothesis is overturned). They are a
+  *deterministic* faer-vs-nalgebra SVD backend divergence in `fdata_to_pc`: the golden
+  reference values were captured under the `faer` backend (`--features linalg`), and a
+  build without `linalg` routes through the `nalgebra` backend, which diverges the FPCA
+  rotation categorically (co_cluster lands in a different CEM basin; svd_sign flips a
+  near-zero column sign). The "intermittent under full parallel `cargo test`" symptom
+  was simply whether `--features linalg` was present in a given invocation.
+- **Fix — least invasive.** A test-side `#[cfg_attr(not(feature = "linalg"), ignore)]`
+  guard on exactly the three affected golden tests — **no new dependency, no tolerance
+  relaxation, no `src/` change**. The tests run and pass under both documented `linalg`
+  configs and are *ignored* (not failed) without `linalg`. The PACE sibling is
+  unaffected and left unguarded.
+- **Suite-wide robustness audit.** A sweep across the whole suite (integration + lib +
+  doctests) found **zero further fragile tests**: the backend-fragility class is fully
+  covered (this fix plus pre-existing guards), RNG/thread-order is robust (bit-identical
+  passed counts under a `RAYON_NUM_THREADS` sweep), and no env/disk dependence remains.
+- **CI determinism guardrail.** A new `determinism-guardrail` job in `rust-ci.yml`
+  exercises the full parallel `cargo test` path (repeated runs + a `RAYON_NUM_THREADS=1`
+  run) and *positively asserts the golden tests actually ran* under `linalg`
+  (anti-silent-skip) — so a future regression fails CI loudly. It also gates the
+  crates.io `publish` job.
+
+**Publishing note.** 0.43.0 **supersedes the unpublished 0.41.0 and 0.42.0** — the
+crates.io registry is still at 0.40.0, so a single publish catches all three up (0.43.0
+is a strict superset). Per project convention the operator-driven `git tag v0.43.0` push
+→ crates.io publish (auto via `release.yml`) is the **sole remaining step**; it is not
+performed as part of any development phase.
+
 ## [0.42.0] - 2026-09-08
 
 **BREAKING — 1.0 API Finalization Pass.** The second breaking release: it clears the
