@@ -673,6 +673,41 @@ The second breaking milestone, clearing the entire API section of the 1.0 checkl
 - Notable: the single fresh-context impl agent handled the ~250k-token Phase 88 mechanical batch without polluting orchestrator context — the key efficiency lever for the milestone's biggest phase.
 
 
+## Milestone: v0.43.0 — Test Determinism & Release Hardening
+
+**Shipped:** 2026-09-09 (code-complete; operator tag/publish deferred)
+**Phases:** 4 (90–93) | **Plans:** 4 | **Tasks:** 10
+
+### What Was Built
+The quality + release-hardening milestone that cleared the **Quality** blocker on the 1.0 checklist. Root-caused the long-standing `co_cluster`/`svd_sign` golden flake as a *deterministic* faer-vs-nalgebra SVD backend divergence in `fdata_to_pc` (NOT the hypothesized environmental/disk-pressure flake) and fixed it with a test-side `#[cfg_attr(not(feature = "linalg"), ignore)]` guard (90, FLAKE-01/02); a suite-wide audit across all three fragility classes found zero further fragile tests (91, ROBUST-01/02); a std-only `determinism-guardrail` CI job — 3× repeat + `RAYON_NUM_THREADS=1` + anti-silent-skip golden assertions — now gates the publish (92, CI-01); version bump + both CHANGELOGs + 1.0-checklist Quality tick + all 6 gates green incl. `cargo package` (93, REL-01/02). Tests/CI/docs only; no `src/` change, no new dependency.
+
+### What Worked
+- **Evidence-first diagnosis overturned a long-standing wrong hypothesis.** A one-line reproduction (`cargo test --features parallel` without `linalg`) deterministically reproduced the "intermittent" flake and pinned the exact `fdata_to_pc` backend branch — the "disk-pressure" theory carried in MEMORY.md for two milestones was simply wrong. Reproduce-before-fix paid for itself.
+- **The orchestrator pre-gathering the decisive evidence** (config matrix + thread sweep + structural grep) before spawning the Phase-91 planner made that plan concrete and the execution a near-no-op — the audit was essentially done before planning finished.
+- **Least-invasive fix bias held.** The categorical (not ULP) delta ruled out tolerance relaxation cleanly; a cfg-guard matching the tests' already-documented `linalg` requirement was the whole fix — zero blast radius on R/WASM/examples.
+- **Pre-approving the diagnosis-gate checkpoint** (converting a blocking-human gate to a conditional-escalation) let the autonomous run complete unattended while preserving the "stop if evidence contradicts" safety.
+- **Code review caught a real gap on the CI change** — the guardrail job wasn't in `publish`'s `needs:`; one-line fix.
+
+### What Was Inefficient
+- **The Bash tool's default 2-min limit truncated the first full-suite run** — every heavy `cargo test`/`cargo package` gate needs an explicit 600s tool timeout, and the 10× acceptance loop had to be batched 3-per-call to fit.
+- **MEMORY.md's stale root-cause note** ("env/BLAS/disk-pressure dependent") had propagated into REQUIREMENTS.md and the 1.0-roadmap item text; clearing the milestone meant *correcting* those, not just checking a box.
+
+### Patterns Established
+- **Backend-bound golden test:** when a golden asserts bit-identity against a feature-gated numeric backend, gate the test on that feature (`#[cfg_attr(not(feature = "X"), ignore)]`) so it is ignored (not failed) under the other backend.
+- **CI determinism guardrail (std-only):** repeat (intermittency) + single-threaded (reduction-order) + positive-run assertion (anti-silent-skip), no new tooling.
+- **Orchestrator-scouts-then-plans:** for evidence-driven audit phases, gather the decisive measurement inline first so the planner and executor work from data, not hypotheses.
+
+### Key Lessons
+- A flake called "environmental/intermittent" in tribal memory may be a deterministic configuration artifact — reproduce it under controlled feature/thread configs before believing the label.
+- Checking off a 1.0-checklist item includes correcting its now-falsified description, or the record misleads the next reader.
+- On this repo, execute inline and drive heavy cargo gates from the main loop with explicit 600s timeouts — subagent executors stall on long fdars builds.
+
+### Cost Observations
+- Model mix: opus (orchestrator + planners), sonnet (researcher/verifiers/reviewers), haiku (plan-checker, Phase 90 only).
+- Sessions: 1 autonomous run (all 4 phases + lifecycle).
+- Notable: Phases 91–93 skipped the plan-checker subagent (audit/CI/docs plans the orchestrator authored the evidence for and validated inline) — a deliberate spawn-conservation tradeoff; verification subagents still ran per phase.
+
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
