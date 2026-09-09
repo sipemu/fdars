@@ -29,7 +29,8 @@
   2. The fix approach (tolerance-comparison vs. serialization) is chosen from and justified by that diagnosis, not guessed.
   3. The three affected tests pass across repeated full parallel `cargo test` runs (no flake reproduced over multiple consecutive runs).
   4. If any dependency was added to achieve determinism, it is dev-only and its necessity is justified against the diagnosis; otherwise no new dependency was introduced.
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 90-01-PLAN.md — Diagnose the golden-test flake (reproduce + reconcile intermittent-vs-deterministic + commit 90-DIAGNOSIS.md), then apply the evidence-chosen cfg-guard fix and prove it (10 consecutive green full-parallel runs + per-binary green)
 
 Notes: FLAKE-01's diagnosis gates FLAKE-02's fix approach — they share this phase because the fix design is wholly determined by the evidence. The flake has stood since at least v0.41.0 (logged on the 1.0 checklist); per MEMORY.md it fails ONLY under full `cargo test`, passing per-binary in isolation — treat as an environment/cross-binary-interference flake, not a numeric regression. No new crate dependency UNLESS the fix genuinely needs one (`serial_test` / nextest serialization — decided here); if added it must be dev-only. Build hazards: `/tmp` tmpfs is small (doctests link there); `target/` can fill `/home` (`rm -rf target/debug/{incremental,examples}` to free space); prefer inline execution + `commit --no-verify` after out-of-band gates (the pre-commit hook runs the full cargo gate and times out).
 
