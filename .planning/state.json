@@ -6,7 +6,7 @@
     {
       "number": "90",
       "name": "Golden-Flake Root-Cause & Deterministic Fix",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "91",
@@ -26,8 +26,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step",
-    "reason": "Phase 90 of 4 · 0% · executing"
+    "label": "Advance to the next step (plan phase 91)",
+    "reason": "Phase 91 of 4 — needs a plan"
   },
-  "updated_at": "2026-09-09T07:13:05.764Z"
+  "updated_at": "2026-09-09T07:53:14.621Z"
 }

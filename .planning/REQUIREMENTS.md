@@ -9,8 +9,8 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### Flake (golden-test determinism)
 
-- [ ] **FLAKE-01**: Root-cause *why* `golden_co_cluster_parallel` / `golden_co_cluster_below_threshold` (`equivalence_phase48`) and `svd_sign_fpca_two_matrix_bit_identical` (`equivalence_phase49`) pass per-binary but flake under full parallel `cargo test` — produce an evidence-backed diagnosis (BLAS threading / SVD sign / test ordering / disk pressure) recorded as an artifact.
-- [ ] **FLAKE-02**: Deterministically fix the three affected tests (tolerance-comparison vs serialization, chosen from FLAKE-01's diagnosis) so they pass reliably under repeated full parallel `cargo test` runs.
+- [x] **FLAKE-01**: Root-cause *why* `golden_co_cluster_parallel` / `golden_co_cluster_below_threshold` (`equivalence_phase48`) and `svd_sign_fpca_two_matrix_bit_identical` (`equivalence_phase49`) pass per-binary but flake under full parallel `cargo test` — produce an evidence-backed diagnosis (BLAS threading / SVD sign / test ordering / disk pressure) recorded as an artifact.
+- [x] **FLAKE-02**: Deterministically fix the three affected tests (tolerance-comparison vs serialization, chosen from FLAKE-01's diagnosis) so they pass reliably under repeated full parallel `cargo test` runs.
 
 ### Robustness (suite-wide sweep)
 
@@ -67,8 +67,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FLAKE-01 | Phase 90 | Pending |
-| FLAKE-02 | Phase 90 | Pending |
+| FLAKE-01 | Phase 90 | Complete |
+| FLAKE-02 | Phase 90 | Complete |
 | ROBUST-01 | Phase 91 | Pending |
 | ROBUST-02 | Phase 91 | Pending |
 | CI-01 | Phase 92 | Pending |
@@ -76,6 +76,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REL-02 | Phase 93 | Pending |
 
 **Coverage:**
+
 - v0.43.0 requirements: 7 total
 - Mapped to phases: 7 ✓
 - Unmapped: 0 ✓
