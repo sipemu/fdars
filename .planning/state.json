@@ -1,33 +1,33 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.42.0",
+  "milestone": "v0.43.0 — Test Determinism & Release Hardening",
   "phases": [
     {
-      "number": "86",
-      "name": "Surface Sealing",
-      "status": "complete"
+      "number": "90",
+      "name": "Golden-Flake Root-Cause & Deterministic Fix",
+      "status": "pending"
     },
     {
-      "number": "87",
-      "name": "Targeted Renames",
-      "status": "complete"
+      "number": "91",
+      "name": "Suite-Wide Robustness Sweep",
+      "status": "pending"
     },
     {
-      "number": "88",
-      "name": "Large Suffix Batch",
-      "status": "complete"
+      "number": "92",
+      "name": "CI Determinism Guardrail",
+      "status": "pending"
     },
     {
-      "number": "89",
-      "name": "Release Preparation & Verification",
-      "status": "complete"
+      "number": "93",
+      "name": "Release Preparation & Readiness Verification",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 90 of 4 · 0% · executing"
   },
-  "updated_at": "2026-09-08T21:21:06.134Z"
+  "updated_at": "2026-09-09T07:13:05.764Z"
 }

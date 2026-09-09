@@ -2,13 +2,18 @@
 gsd_state_version: 1.0
 milestone: v0.43.0
 milestone_name: Test Determinism & Release Hardening
-status: planning
-last_updated: "2026-09-09T00:00:00.000Z"
+current_phase: 90
+current_phase_name: Golden-Flake Root-Cause & Deterministic Fix
+status: executing
+stopped_at: v0.43.0 roadmap created — 4 phases (90–93), 7 requirements mapped, no orphans
+last_updated: "2026-09-09T07:13:05.745Z"
 last_activity: 2026-09-09
+last_activity_desc: Phase 90 execution started
+state_head: 113ed45fc9556a302bbe7708b86a0f46a48fcbd6
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 1
   completed_plans: 0
   percent: 0
 ---
@@ -20,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-09)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library. This milestone clears the **Quality** blocker on the 1.0 gap checklist (`documentation/ROADMAP-TO-1.0.md`) — make `cargo test` reliably deterministic under full parallel runs, harden CI against determinism regressions, and prepare a release that supersets the unpublished 0.41.0/0.42.0. Implementation milestone, additive/non-breaking, mostly `tests/` + CI (possibly minor `src/`).
-**Current focus:** Phase 90 — Golden-Flake Root-Cause & Deterministic Fix (ready to plan)
+**Current focus:** Phase 90 — Golden-Flake Root-Cause & Deterministic Fix
 
 ## Current Position
 
-Phase: 90 of 93 (Golden-Flake Root-Cause & Deterministic Fix)
-Plan: — of — (roadmap just created)
-Status: Ready to plan
-Last activity: 2026-09-09 — Roadmap created (4 phases, 7 requirements mapped)
+Phase: 90 (Golden-Flake Root-Cause & Deterministic Fix) — EXECUTING
+Plan: 1 of 1
+Status: Executing Phase 90
+Last activity: 2026-09-09 — Phase 90 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
