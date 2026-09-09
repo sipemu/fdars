@@ -84,7 +84,9 @@ Notes: Lands after the fixes exist so the gate reflects a green baseline (a guar
   3. All release gates pass green: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test` (the determinism proof), `--features serde` build, all 28 examples + doctests, and `cargo package`.
   4. The CHANGELOG/notes frame 0.43.0 as superseding the unpublished 0.41.0/0.42.0 (registry still at 0.40.0 — one publish catches it up), and the operator-driven `git tag v0.43.0` → crates.io publish is documented as the remaining step (not performed in any phase).
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+- [ ] 93-01-PLAN.md — Bump to 0.43.0 + [0.43.0] entry in BOTH changelogs + clear/rewrite the ROADMAP-TO-1.0 Quality item + README version, then run all 6 release gates green (docs/version REL-01, gate verification REL-02); tag/publish deferred to operator
 
 Notes: **Must land last** — REL-02's full-suite gate is the evidence the flake fix holds end-to-end. Per project convention the `git tag v0.43.0` push auto-publishes via `release.yml`, so tagging/publishing is deliberately NOT done inside a phase (GSD `git.create_tag` is off for this repo). Run `cargo fmt` per commit to avoid the `--no-verify` fmt-drift trap; keep the `--features serde` build green (repaired in v0.40.0 — do not regress). Watch `/tmp` and `target/` disk pressure on the full gate run.
 
