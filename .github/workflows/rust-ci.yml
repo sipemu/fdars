@@ -57,6 +57,68 @@ jobs:
       - name: Run tests (sequential mode)
         run: cargo test --no-default-features --features linalg
 
+  determinism-guardrail:
+    name: Determinism Guardrail
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fdars-core
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            fdars-core/target/
+          key: ${{ runner.os }}-cargo-determinism-${{ hashFiles('**/Cargo.lock') }}
+
+      # Guardrail for the Phase 90 golden flake (co_cluster / svd_sign bit-identity).
+      # Catch INTERMITTENT nondeterminism: a regression that only sometimes reproduces
+      # surfaces within a handful of full parallel runs. dhat-heap is excluded (its
+      # #[global_allocator] panics under parallel dhat tests); js is WASM-only.
+      - name: Repeated full parallel run (intermittency)
+        run: |
+          for i in 1 2 3; do
+            echo "=== determinism run $i/3 ==="
+            cargo test --features linalg,parallel,serde 2>&1 | tee /tmp/dg_$i.log
+            if grep -q "test result: FAILED" /tmp/dg_$i.log; then
+              echo "RUN $i had a FAILED test result"; exit 1
+            fi
+          done
+          echo ALL_3_RUNS_GREEN
+
+      # Catch PARALLEL-REDUCTION-ORDER sensitivity: if any golden ever depended on
+      # rayon reduction order, forcing single-threaded reduction would drift it.
+      - name: Single-threaded reduction-order run
+        run: |
+          RAYON_NUM_THREADS=1 cargo test --features linalg,parallel,serde 2>&1 | tee /tmp/dg_st.log
+          if grep -q "test result: FAILED" /tmp/dg_st.log; then
+            echo "single-threaded run had a FAILED test result"; exit 1
+          fi
+          echo SINGLE_THREADED_GREEN
+
+      # Anti-silent-skip: assert the faer-backend golden tests actually RAN under
+      # linalg (not silently `ignored` by a cfg-guard / feature-wiring regression —
+      # the exact Phase 90 failure surface).
+      - name: Assert golden tests actually ran (anti-silent-skip)
+        run: |
+          cargo test --features linalg,parallel --test equivalence_phase48 -- golden_co_cluster 2>&1 | tee /tmp/dg_p48.log
+          grep -Eq "test result: ok\. 2 passed; 0 failed; 0 ignored" /tmp/dg_p48.log \
+            || { echo "phase48 co_cluster goldens did not run as expected (silently ignored?)"; exit 1; }
+          echo PHASE48_GOLDENS_RAN
+          cargo test --features linalg,parallel --test equivalence_phase49 -- svd_sign_fpca_two_matrix_bit_identical 2>&1 | tee /tmp/dg_p49.log
+          grep -Eq "test result: ok\. 1 passed; 0 failed; 0 ignored" /tmp/dg_p49.log \
+            || { echo "phase49 svd_sign golden did not run as expected (silently ignored?)"; exit 1; }
+          echo PHASE49_GOLDEN_RAN
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
