@@ -66,9 +66,10 @@ Notes: Reuses the diagnosis technique established in Phase 90; sequenced after t
   2. The guardrail passes against the now-green baseline from Phases 90–91.
   3. A reintroduced determinism regression would fail this CI gate rather than pass silently (the gate targets the specific failure mode diagnosed in Phase 90).
 
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 92-01-PLAN.md — Add the `determinism-guardrail` CI job (repeat loop + RAYON_NUM_THREADS=1 + anti-silent-skip golden assertions) and validate its shell locally
 
-Notes: Lands after the fixes exist so the gate reflects a green baseline (a guardrail added before the fix would start red). CI config change (`.github/workflows/`); if a nextest serialization group is used, its config must align with whatever dependency decision was made in Phase 90. Clippy in CI uses `--all-targets --features linalg,parallel -- -D warnings` (lints test/bench code).
+Notes: Lands after the fixes exist so the gate reflects a green baseline (a guardrail added before the fix would start red). CI config change (`.github/workflows/`); std-only shell loop, NO nextest/serial_test (locked in 92-CONTEXT.md). Clippy in CI uses `--all-targets --features linalg,parallel -- -D warnings` (lints test/bench code).
 
 #### Phase 93: Release Preparation & Readiness Verification
 
