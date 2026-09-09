@@ -1,5 +1,18 @@
 # Milestones
 
+## v0.43.0 Test Determinism & Release Hardening (Shipped: 2026-09-09)
+
+**Phases completed:** 4 phases, 4 plans, 10 tasks
+
+**Key accomplishments:**
+
+- The three long-standing golden-test flakes are root-caused as a deterministic faer-vs-nalgebra SVD backend divergence (not an environmental flake) and fixed with a test-side cfg-guard, proven by 10 consecutive green full-parallel runs.
+- A suite-wide fragility audit across all three classes finds zero additional fragile tests — the whole suite is green under both CI configs and thread-count-independent, with the backend class fully covered by Phase 90 + pre-existing guards.
+- A dedicated `determinism-guardrail` CI job now exercises the full parallel `cargo test` path (repeated + single-threaded) and positively asserts the three faer-backend golden tests actually run under linalg — so a reintroduced Phase-90-style regression fails CI loudly instead of returning silently.
+- fdars-core is release-ready at 0.43.0 — version bumped, both CHANGELOGs written, the 1.0 Quality (golden-flake) blocker cleared with corrected root-cause text, and all six whole-crate release gates green (the full-suite test standing as end-to-end proof the flake fix holds). The git tag → crates.io publish is the deferred operator step.
+
+---
+
 ## v0.42.0 1.0 API Finalization (Shipped: 2026-09-08)
 
 **Phases completed:** 4 phases, 4 plans, 17 tasks

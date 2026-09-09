@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.43.0
 milestone_name: Test Determinism & Release Hardening
-current_phase: 93
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 93 complete — all phases complete
-last_updated: "2026-09-09T13:10:03.362Z"
+last_updated: "2026-09-09T13:12:14.680Z"
 last_activity: 2026-09-09
-last_activity_desc: Phase 93 complete
-state_head: c978a05bf5d047314aa47106a329065dce7021eb
+last_activity_desc: Milestone v0.43.0 completed and archived
+state_head: aacc7574892f01bd6f659d7e27f27c8008635a74
 progress:
   total_phases: 4
   completed_phases: 4
   total_plans: 4
   completed_plans: 4
   percent: 100
+current_phase: 93
 ---
 
 # Project State
@@ -28,12 +28,10 @@ See: .planning/PROJECT.md (updated 2026-09-09)
 
 ## Current Position
 
-Phase: 93
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-09-09 — Phase 93 complete
-
-Progress: [░░░░░░░░░░] 0%
+Phase: Milestone v0.43.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-09 — Milestone v0.43.0 completed and archived
 
 ## Milestone Roadmap (v0.43.0)
 
@@ -122,5 +120,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Plan the first phase with /gsd-plan-phase 90
-- Deferred ship steps: `git tag v0.41.0` / `v0.42.0` / (eventually) `v0.43.0` → push → crates.io publish, on a disk-healthy machine after a clean full `cargo test`
+- Start the next milestone with /gsd-new-milestone
