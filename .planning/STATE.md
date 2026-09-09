@@ -1,19 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.42.0
-status: Awaiting next milestone
-stopped_at: Phase 89 complete — all phases complete
-last_updated: "2026-09-08T21:21:06.119Z"
-last_activity: 2026-09-08
-last_activity_desc: Milestone v0.42.0 completed and archived
-state_head: a0fb3587e0f044058d9e0dda5db46f74953c8ab4
+milestone: v0.43.0
+milestone_name: Test Determinism & Release Hardening
+status: planning
+last_updated: "2026-09-09T05:21:12.264Z"
+last_activity: 2026-09-09
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 4
-  completed_plans: 4
-milestone_name: 1.0 API Finalization
-current_phase: 89
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-07)
 
 ## Current Position
 
-Phase: Milestone v0.42.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-08 — Milestone v0.42.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-09 — Milestone v0.43.0 started
 
 ## Milestone Roadmap (v0.42.0)
 
