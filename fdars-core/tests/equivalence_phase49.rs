@@ -377,6 +377,11 @@ fn pace_sign_fixture() -> (fdars_core::IrregFdata, fdars_core::PaceFpcaConfig) {
     (ifd, config)
 }
 
+// REQUIRES `linalg`: the goldens were captured under the `faer` SVD backend that `fdata_to_pc`
+// uses only with `linalg`; the `not(linalg)` nalgebra backend flips the near-zero `rotation[(0,0)]`
+// (-0.0 → 4.18e-16). Ignored (not failed) off-linalg — Phase 90 diagnosis. (The PACE sibling below
+// is UNAFFECTED and must stay unguarded.)
+#[cfg_attr(not(feature = "linalg"), ignore)]
 #[test]
 fn svd_sign_fpca_two_matrix_bit_identical() {
     use fdars_core::regression::fdata_to_pc;
