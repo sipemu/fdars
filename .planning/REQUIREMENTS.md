@@ -23,8 +23,8 @@ Requirements for this milestone. Each maps to a roadmap phase.
 
 ### Release
 
-- [ ] **REL-01**: Bump crate 0.42.0 → 0.43.0, write CHANGELOG `[0.43.0]`, refresh docs, and check off the **Quality** item in `documentation/ROADMAP-TO-1.0.md`.
-- [ ] **REL-02**: Verify release-readiness — whole-crate gates green (`cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, `--features serde` build, all 28 examples + doctests, `cargo package`); prepare the operator-driven `git tag v0.43.0` → crates.io publish (0.43.0 supersets the unpublished 0.41.0/0.42.0 — registry is still at 0.40.0).
+- [x] **REL-01**: Bump crate 0.42.0 → 0.43.0, write CHANGELOG `[0.43.0]`, refresh docs, and check off the **Quality** item in `documentation/ROADMAP-TO-1.0.md`.
+- [x] **REL-02**: Verify release-readiness — whole-crate gates green (`cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, `--features serde` build, all 28 examples + doctests, `cargo package`); prepare the operator-driven `git tag v0.43.0` → crates.io publish (0.43.0 supersets the unpublished 0.41.0/0.42.0 — registry is still at 0.40.0).
 
 ## Future Requirements
 
@@ -72,8 +72,8 @@ Which phases cover which requirements. Filled during roadmap creation.
 | ROBUST-01 | Phase 91 | Complete |
 | ROBUST-02 | Phase 91 | Complete |
 | CI-01 | Phase 92 | Complete |
-| REL-01 | Phase 93 | Pending |
-| REL-02 | Phase 93 | Pending |
+| REL-01 | Phase 93 | Complete |
+| REL-02 | Phase 93 | Complete |
 
 **Coverage:**
 

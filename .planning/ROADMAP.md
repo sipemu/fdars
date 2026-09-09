@@ -18,7 +18,7 @@
 - [x] **Phase 90: Golden-Flake Root-Cause & Deterministic Fix** - Diagnose why the three golden tests flake under full parallel `cargo test`, then fix them deterministically. (completed 2026-09-09)
 - [x] **Phase 91: Suite-Wide Robustness Sweep** - Audit the whole suite for other fragile/nondeterministic/env-dependent assertions and fix or justify each. (completed 2026-09-09)
 - [x] **Phase 92: CI Determinism Guardrail** - Add a CI gate exercising the full parallel `cargo test` path so a determinism regression fails CI. (completed 2026-09-09)
-- [ ] **Phase 93: Release Preparation & Readiness Verification** - Bump to 0.43.0, CHANGELOG/docs, clear the Quality checklist item, and verify all release gates green.
+- [x] **Phase 93: Release Preparation & Readiness Verification** - Bump to 0.43.0, CHANGELOG/docs, clear the Quality checklist item, and verify all release gates green. (completed 2026-09-09)
 
 #### Phase 90: Golden-Flake Root-Cause & Deterministic Fix
 
@@ -86,7 +86,7 @@ Notes: Lands after the fixes exist so the gate reflects a green baseline (a guar
 
 **Plans**: 1 plan
 
-- [ ] 93-01-PLAN.md — Bump to 0.43.0 + [0.43.0] entry in BOTH changelogs + clear/rewrite the ROADMAP-TO-1.0 Quality item + README version, then run all 6 release gates green (docs/version REL-01, gate verification REL-02); tag/publish deferred to operator
+- [x] 93-01-PLAN.md — Bump to 0.43.0 + [0.43.0] entry in BOTH changelogs + clear/rewrite the ROADMAP-TO-1.0 Quality item + README version, then run all 6 release gates green (docs/version REL-01, gate verification REL-02); tag/publish deferred to operator
 
 Notes: **Must land last** — REL-02's full-suite gate is the evidence the flake fix holds end-to-end. Per project convention the `git tag v0.43.0` push auto-publishes via `release.yml`, so tagging/publishing is deliberately NOT done inside a phase (GSD `git.create_tag` is off for this repo). Run `cargo fmt` per commit to avoid the `--no-verify` fmt-drift trap; keep the `--features serde` build green (repaired in v0.40.0 — do not regress). Watch `/tmp` and `target/` disk pressure on the full gate run.
 
@@ -138,4 +138,4 @@ v0.43.0 phases execute in numeric order: 90 → 91 → 92 → 93
 | 90. Golden-Flake Root-Cause & Deterministic Fix | v0.43.0 | 1/1 | Complete    | 2026-09-09 |
 | 91. Suite-Wide Robustness Sweep | v0.43.0 | 1/1 | Complete    | 2026-09-09 |
 | 92. CI Determinism Guardrail | v0.43.0 | 1/1 | Complete    | 2026-09-09 |
-| 93. Release Preparation & Readiness Verification | v0.43.0 | 0/TBD | Not started | - |
+| 93. Release Preparation & Readiness Verification | v0.43.0 | 1/1 | Complete    | 2026-09-09 |
