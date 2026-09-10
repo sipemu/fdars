@@ -17,8 +17,8 @@ pub use crate::function_on_scalar::FosrResult;
 pub use crate::regression::RidgeResult;
 pub use crate::regression::{project_scores_generic, FpcaResult, PlsResult};
 
-// Forward-mode automatic-differentiation core (v0.39.0 DIF-04)
-pub use crate::autodiff::{diff, directional_derivative, grad, jacobian, Dual, Scalar};
+// Automatic-differentiation core: forward-mode (v0.39.0 DIF-04) + reverse-mode (v0.44.0 RAD)
+pub use crate::autodiff::{diff, directional_derivative, grad, jacobian, vjp, Dual, Scalar, Var};
 pub use crate::scalar_on_function::{FregreLmResult, FunctionalLogisticResult};
 
 // Boosting and Bayesian functional regression results (Phase 43 REG-06)
