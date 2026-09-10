@@ -97,11 +97,11 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
   3. Reverse-mode gradients match the forward-mode `Dual` path and central finite differences within tolerance on elastic soft-DTW distance and FPCA scores (the existing differentiable subset).
   4. No new crate dependency is added (the tape is hand-written in-crate, matching how `Dual` was built).
 
-**Plans**: 2/4 plans executed
+**Plans**: 3/4 plans executed
 
 - [x] 94-01-tracer-tape-skeleton-PLAN.md — TRACER: refactor autodiff.rs → autodiff/{mod,forward}, stand up reverse.rs skeleton (Var/Tape/Node/Mul/minimal vjp) + end-to-end known-answer test (RAD-01, RAD-02)
 - [x] 94-02-full-op-set-PLAN.md — full op set on Var (arithmetic + transcendentals), complete Scalar impl, Tier-1 known-answer + Tier-2 singular-point tests (RAD-01)
-- [ ] 94-03-vjp-hardening-agreement-PLAN.md — harden vjp lifecycle (double-clear, edge cases) + Tier-3 reverse-vs-Dual agreement tests (RAD-02)
+- [x] 94-03-vjp-hardening-agreement-PLAN.md — harden vjp lifecycle (double-clear, edge cases) + Tier-3 reverse-vs-Dual agreement tests (RAD-02)
 - [ ] 94-04-validation-prelude-PLAN.md — Tier-4 FD cross-checks (soft_dtw + FPCA scores + composed objective) + prelude re-exports + vjp doctest (RAD-03)
 
 ### Phase 95: Generic Scalar Hot-Path Signatures
@@ -196,7 +196,7 @@ Phases execute in numeric order: 94 → 95 → 96 → 97 → 98 → 99 → 100
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 2/4 | In Progress|  |
+| 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 3/4 | In Progress|  |
 | 95. Generic Scalar Hot-Path Signatures | v0.44.0 | 0/? | Not started | - |
 | 96. Differentiable Basis Evaluation & Inner Products | v0.44.0 | 0/? | Not started | - |
 | 97. Differentiable Regression Prediction & Smoothing Penalties | v0.44.0 | 0/? | Not started | - |

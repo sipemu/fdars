@@ -5,16 +5,16 @@ milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
 current_phase: 94
 current_phase_name: Reverse-Mode Autodiff Core (VJP Tape)
 status: executing
-stopped_at: Completed 94-02-full-op-set-PLAN.md
-last_updated: "2026-09-10T20:41:56.927Z"
+stopped_at: Completed 94-03-vjp-hardening-agreement-PLAN.md
+last_updated: "2026-09-10T20:49:33.370Z"
 last_activity: 2026-09-10
 last_activity_desc: Phase 94 execution started
-state_head: dc087a6036d343234d790433659b6fdb1711a049
+state_head: f9b58e3ac4ec7aab1bc9056fafcb402c1a4cab41
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-09)
 ## Current Position
 
 Phase: 94 (Reverse-Mode Autodiff Core (VJP Tape)) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-09-10 — Phase 94 execution started
 
@@ -85,6 +85,7 @@ Seven phases, 11 requirements — an implementation milestone completing the dif
 |------|----------|-------|-------|
 | Phase 94 P01 | 7min | 3 tasks | 4 files |
 | Phase 94 P02 | 4min | 2 tasks | 1 files |
+| Phase 94 P03 | 5min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,8 @@ Decisions relevant to current work (v0.44.0):
 - [Phase 94]: Tape fully opaque (not exported from prelude); only vjp is the public entry point — Per CONTEXT.md discretion: Tape is fully hidden behind vjp; Phase 99 can add inspection if needed
 - [Phase 94]: Div three-case constant-folding for Var: both-const→SENTINEL, rhs-const→push_unary(1/v), general→push_binary quotient rule (common x/gamma path is the rhs-const fast path)
 - [Phase 94]: signum for Var returns SENTINEL constant (no tape node) — piecewise-constant function has zero gradient, matches Dual zero-tangent convention
+- [Phase 94]: Double-clear tape lifecycle was already correct in Plan 02 — confirmed by repeated-call stability tests showing zero gradient drift across 3 successive vjp calls
+- [Phase 94]: Tier-3 agreement tests import crate::autodiff::{Dual, grad} from inside reverse.rs tests — valid because autodiff/mod.rs re-exports both at crate::autodiff path
 
 ### Pending Todos
 
@@ -131,8 +134,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-10T20:41:56.910Z
-Stopped at: Completed 94-02-full-op-set-PLAN.md
+Last session: 2026-09-10T20:49:33.352Z
+Stopped at: Completed 94-03-vjp-hardening-agreement-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
