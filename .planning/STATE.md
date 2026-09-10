@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-09-10T18:26:02.168Z"
 last_activity: 2026-09-10
 progress:
-  total_phases: 0
+  total_phases: 7
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,36 +19,39 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-09-09)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library. This milestone clears the **Quality** blocker on the 1.0 gap checklist (`documentation/ROADMAP-TO-1.0.md`) — make `cargo test` reliably deterministic under full parallel runs, harden CI against determinism regressions, and prepare a release that supersets the unpublished 0.41.0/0.42.0. Implementation milestone, additive/non-breaking, mostly `tests/` + CI (possibly minor `src/`).
-**Current focus:** Phase 90 — Golden-Flake Root-Cause & Deterministic Fix
+**Core value:** A comprehensive, fast Rust functional-data-analysis library. This milestone completes the **differentiable-core** section of the 1.0 gap checklist (`documentation/ROADMAP-TO-1.0.md`, DIF-F1/F2/F3) — an in-crate reverse-mode (VJP) autodiff core alongside the v0.39.0 forward-mode `Dual`, a broadened differentiable operation set across four algorithm families, and generic-over-scalar hot-path signatures. Implementation milestone, **strictly additive/non-breaking** (defaulted type params `T = f64` — protects R + WASM bindings + 28 examples), **no new crate dependency** (in-crate hand-written tape).
+**Current focus:** Phase 94 — Reverse-Mode Autodiff Core (VJP Tape)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started (roadmap complete; ready to plan Phase 94)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-09-10 — Milestone v0.44.0 started
+Status: Roadmap created — awaiting phase planning
+Last activity: 2026-09-10 — Milestone v0.44.0 roadmap created (7 phases, 94–100)
 
-## Milestone Roadmap (v0.43.0)
+## Milestone Roadmap (v0.44.0)
 
-Four phases, 7 requirements — an **investigate-first** quality + release-hardening milestone. Additive/non-breaking (protects R + WASM + 28 examples). No new crate dependency UNLESS the flake fix genuinely needs one (dev-only; `serial_test`/nextest — decided in Phase 90). Fine granularity; the four tightly-coupled requirement pairs/singletons (diagnose→fix, audit→fix, guardrail, prep→verify) form four coherent phases. Phase numbering continues from v0.42.0 (ended at 89) → **Phase 90**.
+Seven phases, 11 requirements — an implementation milestone completing the differentiable-core section of `documentation/ROADMAP-TO-1.0.md` (DIF-F1/F2/F3). Strictly additive/non-breaking (defaulted type params `T = f64`; protects R + WASM + 28 examples). No new crate dependency (in-crate hand-written reverse-mode tape, exactly as forward-mode `Dual` was built in v0.39.0). Fine granularity. Phase numbering continues from v0.43.0 (ended at 93) → **Phase 94**. No reset.
 
 | Phase | Requirements | Notes |
 |-------|--------------|-------|
-| 90 — Golden-Flake Root-Cause & Deterministic Fix | FLAKE-01, FLAKE-02 | **Investigate-first.** FLAKE-01 (evidence-backed diagnosis of why the three golden tests pass per-binary but flake under full parallel `cargo test`) **gates** FLAKE-02 (the deterministic fix — tolerance vs. serialization chosen from the evidence). They share a phase because the fix design is wholly determined by the diagnosis. First phase; no dependency. |
-| 91 — Suite-Wide Robustness Sweep | ROBUST-01, ROBUST-02 | Audit the whole suite for other fragile bit-identity / nondeterministic / env-BLAS-disk-dependent assertions (ROBUST-01) and fix or justify each (ROBUST-02). Reuses the Phase 90 diagnosis technique; sequenced after the golden-flake fix. Depends on 90. |
-| 92 — CI Determinism Guardrail | CI-01 | Add a CI gate exercising the full parallel `cargo test` path (cross-binary interference) and/or a nextest serialization group, so a determinism regression fails CI instead of silently returning. Lands after the fixes so the gate reflects a green baseline. Depends on 91. |
-| 93 — Release Preparation & Readiness Verification | REL-01, REL-02 | **Must land last.** Bump 0.42.0 → 0.43.0, CHANGELOG `[0.43.0]` + docs, check off the **Quality** item in `ROADMAP-TO-1.0.md` (REL-01); verify all gates green — fmt/clippy `--all-targets`/full `cargo test`/`--features serde` build/28 examples+doctests/`cargo package` — with the full-suite gate as the proof the flake is fixed (REL-02). The `git tag v0.43.0` → crates.io publish is the deferred operator step. Depends on 90, 91, 92. |
+| 94 — Reverse-Mode Autodiff Core (VJP Tape) | RAD-01, RAD-02, RAD-03 | **DIF-F1.** In-crate Wengert-list tape (`Var`) + full op set (RAD-01), backward pass + `vjp` entry point for many-input→scalar objectives (RAD-02), validated vs forward-mode `Dual` and finite differences on the existing differentiable subset — elastic soft-DTW + FPCA scores (RAD-03). Largely independent; sequenced first because RAD-03 validates against the already-shipped v0.39.0 subset. No new crate dependency. First phase. |
+| 95 — Generic Scalar Hot-Path Signatures | GEN-01 | **DIF-F3 enabler.** Generalize targeted hot-path signatures over the scalar type via defaulted type params (`T = f64`) so every existing f64 call site, R + WASM binding, and all 28 examples compile unchanged. GEN-01 is the compile-time proof of non-breakingness and the substrate the DOP families are written against. Depends on 94 (both autodiff types validated to flow). |
+| 96 — Differentiable Basis Evaluation & Inner Products | DOP-01 | **DIF-F2 family 1.** Basis eval (B-spline/Fourier) + functional inner products generic over `Scalar` and differentiable; f64 path reproduces current numerics. Depends on 95. |
+| 97 — Differentiable Regression Prediction & Smoothing Penalties | DOP-02, DOP-03 | **DIF-F2 families 2+3.** `fregre_lm`/FPCR prediction differentiable w.r.t. inputs (DOP-02) + roughness-penalty evaluation differentiable (DOP-03); f64 parity preserved, both FD-checked. Grouped because prediction composes the penalty/basis machinery. Depends on 96. |
+| 98 — Differentiable Depth & Curve Distances | DOP-04 | **DIF-F2 family 4.** Functional depth + curve distances (beyond soft-DTW) generic over `Scalar` and differentiable; FD-checked, f64 parity preserved. Independent of 96/97 — only needs the 95 substrate. Depends on 95. |
+| 99 — End-to-End Autodiff Flow & Gradient API | GEN-02, API-01 | **DIF-F3 + API.** Autodiff types flow through the generalized hot-paths end-to-end; a composed objective yields FD-checked gradients (GEN-02). Unified `grad`/`jacobian`/`vjp` entry points + worked composition demo + full crate-root/prelude re-exports + running module doctest (API-01). Depends on 96, 97, 98 (composition exercises the broadened subset) and 94 (`vjp`). |
+| 100 — Release Preparation & Verification | REL-01 | **Terminal.** Bump 0.43.0 → 0.44.0, CHANGELOG `[0.44.0]` (root + crate), check off DIF-F1/F2/F3 on `ROADMAP-TO-1.0.md`; all whole-crate gates green — fmt/clippy `--all-targets`/full `cargo test`/`--features serde` build/28 examples+doctests/`cargo package`. The full-suite gate is the end-to-end proof of the milestone. The `git tag v0.44.0` → crates.io publish is the DEFERRED operator step. Depends on all prior phases. |
 
-**Execution order:** 90 → 91 → 92 → 93. Investigate-first (diagnose before fix), reuse the technique in the sweep, lock the green baseline with CI, then prep + verify release last. All 7 requirements mapped, no orphans, no duplicates.
+**Execution order:** 94 → 95 → 96 → 97 → 98 → 99 → 100. Reverse-mode core first (validates against the shipped subset), then the generic hot-path enabler (GEN-01), then the four DOP families (96/97 chained, 98 independent), then end-to-end flow + gradient API, then release prep last. All 11 requirements mapped, no orphans, no duplicates.
 
-**Gates (this additive, non-breaking milestone):** `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — use `--all-targets`), full `cargo test` (the determinism proof), a `--features serde` build guard, all 28 examples + doctests, and `cargo package`. No new crate dependency unless the flake fix genuinely needs one (dev-only).
+**Gates (this additive, non-breaking milestone):** `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code — use `--all-targets`), full `cargo test` (the differentiability + non-regression proof), a `--features serde` build guard, all 28 examples + doctests, and `cargo package`. **No new crate dependency** (in-crate tape).
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 125+ (across v0.14.0–v0.42.0)
+- Total plans completed: 129+ (across v0.14.0–v0.43.0)
 - Average duration: — min
 - Total execution time: — hours
 
@@ -62,12 +65,13 @@ Four phases, 7 requirements — an **investigate-first** quality + release-harde
 | 78–80 | v0.40.0 | 5 |
 | 81–85 | v0.41.0 | 9 |
 | 86–89 | v0.42.0 | 4 |
-| 90–93 | v0.43.0 | 0/? (planned) |
+| 90–93 | v0.43.0 | 4 |
+| 94–100 | v0.44.0 | 0/? (planned) |
 
 **Recent Trend:**
 
-- Last milestone: v0.42.0 (phases 86–89, 4 plans) — audit 9/9, release-ready (operator tag/publish pending).
-- Trend: v0.43.0 is a quality + release-hardening milestone — investigate-first, additive/non-breaking. The long-standing `co_cluster`/`svd_sign` golden flake (logged on the 1.0 checklist since v0.41.0) is finally root-caused and fixed here.
+- Last milestone: v0.43.0 (phases 90–93, 4 plans) — audit 7/7, release-ready (operator tag/publish pending). Cleared the **Quality** blocker on the 1.0 checklist.
+- Trend: v0.44.0 is an implementation milestone completing the **differentiable-core** section of the 1.0 checklist — additive/non-breaking, no new crate dependency, building on the v0.39.0 forward-mode AD core. After this, only SDTW-O1 (algorithm) and fdars-j75 (R ecosystem) remain before the terminal 1.0-CUT.
 
 *Updated after each plan completion*
 
@@ -75,26 +79,29 @@ Four phases, 7 requirements — an **investigate-first** quality + release-harde
 
 ### Decisions
 
-Decisions relevant to current work (v0.43.0):
+Decisions relevant to current work (v0.44.0):
 
-- **Investigate-first** — FLAKE-01's evidence-backed diagnosis gates FLAKE-02's fix approach; they share Phase 90 because the tolerance-vs-serialization choice depends entirely on the root cause.
-- **REL-01/REL-02 land last (Phase 93)** — REL-02's full-suite `cargo test` gate is the proof the flake is fixed; release prep only happens once all test/CI work is green.
-- **ROBUST sweep after the golden-flake fix (Phase 91)** — reuses the same diagnosis technique; CI-01 guardrail (Phase 92) lands after the fixes so the gate reflects a green baseline.
-- **No new crate dependency unless the fix genuinely needs one** — `serial_test`/nextest serialization decided during FLAKE-01; if added it must be dev-only and justified.
-- **Additive/non-breaking** — mostly `tests/` + CI config, possibly minor `src/` determinism changes; protects R + WASM bindings + 28 examples.
-- **0.43.0 supersets the unpublished 0.41.0/0.42.0** — registry is still at 0.40.0; one publish catches it up. The `git tag v0.43.0` push → crates.io publish is the deferred OPERATOR step (GSD `git.create_tag` is off because `release.yml` couples tag-push to publish) — never tagged/published inside a phase.
-- **Phase numbering continues** — v0.42.0 ended at Phase 89 → v0.43.0 starts at Phase 90. No reset.
-- **7 requirements → 4 phases:** 90 FLAKE-01/02; 91 ROBUST-01/02; 92 CI-01; 93 REL-01/02. All mapped, no orphans, no duplicates.
+- **Strictly additive/non-breaking** — all generalization via defaulted type params (`T = f64`); existing f64 signatures, R + WASM bindings, and all 28 examples must compile unchanged. GEN-01 (Phase 95) is the compile-time proof.
+- **No new crate dependency** — the reverse-mode tape (RAD, Phase 94) is hand-written in-crate, matching how the forward-mode `Dual` was built in v0.39.0.
+- **GEN-01 lands early as the enabler (Phase 95)** — you cannot make an operation differentiable (DOP) without its hot path first being generic over the scalar type; the DOP families (96/97/98) are written against the generic substrate.
+- **Reverse-mode core first (Phase 94)** — RAD-01/02/03 are largely independent, but RAD-03 validates against the *existing* differentiable subset (soft-DTW, FPCA scores), which already exists from v0.39.0; sequenced first.
+- **DOP families split by natural boundary** — 96 (basis eval + inner products), 97 (regression prediction + smoothing penalties, grouped because prediction composes the penalty/basis machinery), 98 (depth + curve distances, independent of 96/97).
+- **API-01 + GEN-02 land together (Phase 99)** — the composition demo exercises the broadened subset end-to-end and uses the reverse-mode `vjp` entry point; near-last.
+- **REL-01 lands last (Phase 100)** — bump/CHANGELOG/checklist/gates are the final proof; the full-suite `cargo test` gate is the end-to-end milestone proof. The `git tag v0.44.0` → crates.io publish is the DEFERRED operator step (GSD `git.create_tag` is off because `release.yml` couples tag-push to publish) — never tagged/published inside a phase.
+- **Phase numbering continues** — v0.43.0 ended at Phase 93 → v0.44.0 starts at Phase 94. No reset.
+- **11 requirements → 7 phases:** 94 RAD-01/02/03; 95 GEN-01; 96 DOP-01; 97 DOP-02/03; 98 DOP-04; 99 GEN-02/API-01; 100 REL-01. All mapped, no orphans, no duplicates.
 
 ### Pending Todos
 
-- **Operator ship steps still pending** — `git tag v0.41.0` and `git tag v0.42.0` → push → crates.io publish not yet performed; 0.43.0's single publish supersets both (registry at 0.40.0).
-- **Migrate `fdars-r` R wrapper to the `FdMatrix` API** (issue `fdars-j75`) — carried forward; separate package, out of `fdars-core` scope.
+- **Operator ship steps still pending** — `git tag v0.41.0`, `git tag v0.42.0`, `git tag v0.43.0` → push → crates.io publish not yet performed; registry is still at 0.40.0. A future 0.44.0 publish (or an earlier catch-up publish) supersets the unpublished versions.
+- **Migrate `fdars-r` R wrapper to the `FdMatrix` API** (issue `fdars-j75`) — carried forward; separate package, out of `fdars-core` scope; a 1.0-ecosystem gap.
 
 ### Blockers/Concerns
 
-- **No research/SUMMARY.md** — intentional: internal quality + release-hardening milestone, not an ecosystem-parity audit. Non-blocking for the roadmap.
-- **The golden-test flake is the central target** — `co_cluster`/`svd_sign` (equivalence_phase48/49) fails ONLY under full parallel `cargo test`, passes per-binary in isolation (MEMORY.md). Treat as an environment/cross-binary-interference flake, not a numeric regression. Verify fixes via repeated full runs AND isolated binaries.
+- **No research/SUMMARY.md** — intentional: internal extension of the v0.39.0 forward-mode AD core, not an ecosystem-parity audit. Reference baseline is the existing v0.39.0 design (`Scalar` trait, `Dual<T>`, `grad`/`jacobian`) plus the Julia ForwardDiff / reverse-mode idiom. Non-blocking for the roadmap.
+- **Non-breakingness is the central constraint** — GEN-01 (Phase 95) is the compile-time proof: all 28 examples + R/WASM bindings + every f64 call site must compile unchanged. Guard it at every DOP phase (f64 parity preserved).
+- **Warp-searched `elastic_distance` (the DP) stays non-differentiable** — deferred at v0.39.0 (DIF-02) and unchanged here; the amplitude-at-warp / soft-DTW surrogates remain the differentiable paths. Do NOT try to differentiate the discrete DP argmin.
+- **`soft_dtw_barycenter` optimizer redesign (SDTW-O1) is out of scope** — differentiability of the distance is in scope; the barycenter optimizer is a separate algorithm-quality item.
 - Historical build/CI hazards (MEMORY.md) apply: run clippy `--all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code); run `cargo fmt` per commit (`--no-verify` commits leave fmt drift → CI fmt-check fails); keep the `--features serde` build green (repaired v0.40.0 — do not regress); watch `/tmp` and `target/` disk pressure on full builds (`rm -rf target/debug/{incremental,examples}` to free space; doctests link in a small `/tmp` tmpfs); the pre-commit hook runs the full cargo gate and times out — prefer inline execution + `commit --no-verify` after out-of-band gates; full combined gate as one background bash gets killed mid-run — run gates per-gate FOREGROUND with 600s timeout.
 
 ## Deferred Items
@@ -105,15 +112,14 @@ Items acknowledged and deferred, most recent first:
 |----------|------|--------|-------------|-----------|
 | 1.0-cut | 1.0-CUT — bump to 1.0.0 and declare the public API stable, once every ROADMAP-TO-1.0.md item clears | Deferred | v0.41.0 | future (deliberate 1.0 cut) |
 | Algorithm | SDTW-O1 — replace the `soft_dtw_barycenter` MM-step descent with a proper global optimizer (L-BFGS / multi-restart) | Deferred | v0.40.0 | future milestone |
-| Differentiable-core | DIF-F1 (reverse-mode/VJP), DIF-F2 (broaden differentiable subset), DIF-F3 (generic f64 hot-path signatures) | Deferred | v0.39.0 | future milestone |
 | fdars-r | `fdars-r` FdMatrix migration (issue `fdars-j75`) — migrate the external R wrapper to the `FdMatrix` API; separate package, out of `fdars-core` scope | Deferred | v0.41.0 | future milestone |
 
 ## Session Continuity
 
-Last session: 2026-09-09T00:00:00.000Z
-Stopped at: Phase 93 complete — all phases complete
+Last session: 2026-09-10T18:26:02.168Z
+Stopped at: v0.44.0 roadmap created — 7 phases (94–100), 11/11 requirements mapped
 Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Review the v0.44.0 roadmap (`.planning/ROADMAP.md`), then plan the first phase with `/gsd-plan-phase 94`.

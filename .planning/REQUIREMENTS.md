@@ -65,23 +65,23 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RAD-01 | TBD | Pending |
-| RAD-02 | TBD | Pending |
-| RAD-03 | TBD | Pending |
-| DOP-01 | TBD | Pending |
-| DOP-02 | TBD | Pending |
-| DOP-03 | TBD | Pending |
-| DOP-04 | TBD | Pending |
-| GEN-01 | TBD | Pending |
-| GEN-02 | TBD | Pending |
-| API-01 | TBD | Pending |
-| REL-01 | TBD | Pending |
+| RAD-01 | Phase 94 | Pending |
+| RAD-02 | Phase 94 | Pending |
+| RAD-03 | Phase 94 | Pending |
+| DOP-01 | Phase 96 | Pending |
+| DOP-02 | Phase 97 | Pending |
+| DOP-03 | Phase 97 | Pending |
+| DOP-04 | Phase 98 | Pending |
+| GEN-01 | Phase 95 | Pending |
+| GEN-02 | Phase 99 | Pending |
+| API-01 | Phase 99 | Pending |
+| REL-01 | Phase 100 | Pending |
 
 **Coverage:**
 - v0.44.0 requirements: 11 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 11 ⚠️
+- Mapped to phases: 11 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-10*
-*Last updated: 2026-09-10 after initial definition*
+*Last updated: 2026-09-10 after roadmap creation (7 phases 94–100; 11/11 mapped)*
