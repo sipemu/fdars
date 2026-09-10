@@ -15,6 +15,7 @@ v0.44.0 completes the entire **differentiable-core** section of `documentation/R
 ## Phases
 
 **Phase Numbering:**
+
 - Integer phases (94, 95, …): Planned milestone work
 - Decimal phases (94.1, …): Urgent insertions (marked INSERTED)
 
@@ -85,81 +86,103 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
 ## Phase Details
 
 ### Phase 94: Reverse-Mode Autodiff Core (VJP Tape)
+
 **Goal**: An in-crate reverse-mode (vector-Jacobian-product) autodiff core exists alongside the forward-mode `Dual`, with backward-pass gradient accumulation validated against the existing differentiable subset.
 **Depends on**: Nothing (first phase of this milestone; builds on the shipped v0.39.0 `Scalar`/`Dual` design, which already exists)
 **Requirements**: RAD-01, RAD-02, RAD-03
 **Success Criteria** (what must be TRUE):
+
   1. A reverse-mode tape (Wengert-list) records operations on a `Var`/tape scalar type supporting the full forward-mode operation set (±, ×, ÷, sqrt, exp, ln, sin/cos, powf, abs, comparisons).
   2. A backward pass seeds the output adjoint and accumulates input gradients, exposed through a `vjp` entry point efficient for many-input→scalar objectives.
   3. Reverse-mode gradients match the forward-mode `Dual` path and central finite differences within tolerance on elastic soft-DTW distance and FPCA scores (the existing differentiable subset).
   4. No new crate dependency is added (the tape is hand-written in-crate, matching how `Dual` was built).
-**Plans**: 4 plans
-- [ ] 94-01-tracer-tape-skeleton-PLAN.md — TRACER: refactor autodiff.rs → autodiff/{mod,forward}, stand up reverse.rs skeleton (Var/Tape/Node/Mul/minimal vjp) + end-to-end known-answer test (RAD-01, RAD-02)
+
+**Plans**: 1/4 plans executed
+
+- [x] 94-01-tracer-tape-skeleton-PLAN.md — TRACER: refactor autodiff.rs → autodiff/{mod,forward}, stand up reverse.rs skeleton (Var/Tape/Node/Mul/minimal vjp) + end-to-end known-answer test (RAD-01, RAD-02)
 - [ ] 94-02-full-op-set-PLAN.md — full op set on Var (arithmetic + transcendentals), complete Scalar impl, Tier-1 known-answer + Tier-2 singular-point tests (RAD-01)
 - [ ] 94-03-vjp-hardening-agreement-PLAN.md — harden vjp lifecycle (double-clear, edge cases) + Tier-3 reverse-vs-Dual agreement tests (RAD-02)
 - [ ] 94-04-validation-prelude-PLAN.md — Tier-4 FD cross-checks (soft_dtw + FPCA scores + composed objective) + prelude re-exports + vjp doctest (RAD-03)
 
 ### Phase 95: Generic Scalar Hot-Path Signatures
+
 **Goal**: Targeted f64 hot-path signatures are generalized over the scalar type via defaulted type params (`T = f64`), proven non-breaking at compile time — the enabling substrate the DOP families are written against.
 **Depends on**: Phase 94 (both autodiff scalar types — `Dual` and reverse-mode `Var` — should be the concrete types the generalized signatures are validated to flow)
 **Requirements**: GEN-01
 **Success Criteria** (what must be TRUE):
+
   1. The targeted hot-path signatures accept a scalar type parameter defaulted to `f64` (`T = f64`), so unannotated call sites resolve exactly as before.
   2. Every existing f64 call site inside `fdars-core` compiles unchanged (no signature churn at call sites).
   3. All 28 examples and the R + WASM binding surfaces compile unchanged against the generalized signatures.
   4. The `--features serde` build stays green (no regression from the generalization).
+
 **Plans**: TBD
 
 ### Phase 96: Differentiable Basis Evaluation & Inner Products
+
 **Goal**: Basis evaluation (B-spline / Fourier) and functional inner products are generic over `Scalar` and differentiable, with f64 numerics preserved (family 1 of DIF-F2).
 **Depends on**: Phase 95 (needs the generic hot-path substrate)
 **Requirements**: DOP-01
 **Success Criteria** (what must be TRUE):
+
   1. Basis evaluation (B-spline and Fourier) is generic over `Scalar`; at `f64` it reproduces the current numerics bit-for-bit (or within documented tolerance).
   2. Functional inner products are generic over `Scalar` and differentiable through their inputs.
   3. Gradients of a basis-eval / inner-product objective match finite differences within tolerance at both `Dual` and reverse-mode `Var`.
+
 **Plans**: TBD
 
 ### Phase 97: Differentiable Regression Prediction & Smoothing Penalties
+
 **Goal**: Scalar-on-function regression prediction (`fregre_lm`/FPCR path) and smoothing/roughness-penalty evaluation are generic over `Scalar` and differentiable w.r.t. inputs, with f64 parity preserved (families 2 and 3 of DIF-F2).
 **Depends on**: Phase 96 (regression prediction composes basis eval / inner products / FPCA projection)
 **Requirements**: DOP-02, DOP-03
 **Success Criteria** (what must be TRUE):
+
   1. Scalar-on-function regression prediction (`fregre_lm` / FPCR path) is generic over `Scalar` and differentiable w.r.t. inputs; f64 predictions are unchanged.
   2. Smoothing / roughness-penalty evaluation is generic over `Scalar` and differentiable (penalty w.r.t. curve values / smoothing inputs); f64 penalty values are unchanged.
   3. Gradients of both the prediction and the penalty match central finite differences within tolerance.
+
 **Plans**: TBD
 
 ### Phase 98: Differentiable Depth & Curve Distances
+
 **Goal**: Functional depth measures and curve distances (beyond the existing soft-DTW) are generic over `Scalar` and differentiable, with f64 parity preserved (family 4 of DIF-F2).
 **Depends on**: Phase 95 (needs the generic hot-path substrate; independent of Phases 96–97)
 **Requirements**: DOP-04
 **Success Criteria** (what must be TRUE):
+
   1. At least one functional depth measure is generic over `Scalar` and differentiable w.r.t. curve values; f64 depth values are unchanged.
   2. At least one curve distance beyond soft-DTW is generic over `Scalar` and differentiable.
   3. Gradients of the depth and distance paths match central finite differences within tolerance at both `Dual` and reverse-mode `Var`.
+
 **Plans**: TBD
 
 ### Phase 99: End-to-End Autodiff Flow & Gradient API
+
 **Goal**: Autodiff types flow through the generalized hot-paths end-to-end into a composed scalar objective, exposed through an ergonomic unified gradient API with a worked, finite-difference-checked composition demo.
 **Depends on**: Phases 96, 97, 98 (composition demo exercises the broadened differentiable subset); Phase 94 (uses the `vjp` entry point)
 **Requirements**: GEN-02, API-01
 **Success Criteria** (what must be TRUE):
+
   1. Both autodiff types (`Dual` and reverse-mode `Var`) flow through the generalized hot-paths end-to-end; a composed objective built from the broadened subset yields correct gradients validated by finite differences.
   2. Ergonomic gradient entry points (`grad` / `jacobian` / `vjp`) are exposed and full crate-root + prelude re-exports cover all new public surface.
   3. A worked end-to-end composition demo (composing differentiable ops into a scalar objective and taking its gradient) exists and is finite-difference-checked.
   4. A running module doctest demonstrates the gradient API and passes under `cargo test`.
+
 **Plans**: TBD
 
 ### Phase 100: Release Preparation & Verification
+
 **Goal**: fdars-core is release-ready at 0.44.0 with the differentiable-core section of the 1.0 checklist cleared and every whole-crate gate green — the full-suite gate standing as end-to-end proof of the milestone.
 **Depends on**: Phases 94, 95, 96, 97, 98, 99 (terminal phase; its full-suite gate proves the whole milestone)
 **Requirements**: REL-01
 **Success Criteria** (what must be TRUE):
+
   1. The crate is bumped 0.43.0 → 0.44.0 with a `[0.44.0]` entry in both CHANGELOGs (root + crate).
   2. The differentiable-core items (DIF-F1 / DIF-F2 / DIF-F3) are checked off on `documentation/ROADMAP-TO-1.0.md`.
   3. All whole-crate gates pass: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, a `--features serde` build guard, all 28 examples + doctests, and `cargo package`.
   4. The `git tag v0.44.0` → crates.io publish is left as the deferred operator step (never tagged/published inside the phase — `git.create_tag` is off because `release.yml` couples tag-push to publish).
+
 **Plans**: TBD
 
 ## Progress
@@ -173,7 +196,7 @@ Phases execute in numeric order: 94 → 95 → 96 → 97 → 98 → 99 → 100
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 0/4 | Not started | - |
+| 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 1/4 | In Progress|  |
 | 95. Generic Scalar Hot-Path Signatures | v0.44.0 | 0/? | Not started | - |
 | 96. Differentiable Basis Evaluation & Inner Products | v0.44.0 | 0/? | Not started | - |
 | 97. Differentiable Regression Prediction & Smoothing Penalties | v0.44.0 | 0/? | Not started | - |

@@ -2,14 +2,19 @@
 gsd_state_version: 1.0
 milestone: v0.44.0
 milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
-status: planning
-last_updated: "2026-09-10T18:26:02.168Z"
+current_phase: 94
+current_phase_name: Reverse-Mode Autodiff Core (VJP Tape)
+status: executing
+stopped_at: Completed 94-01-tracer-tape-skeleton-PLAN.md
+last_updated: "2026-09-10T20:34:32.390Z"
 last_activity: 2026-09-10
+last_activity_desc: Phase 94 execution started
+state_head: 892ae6cf880780bc56f7760af5b894b361ffa931
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 4
+  completed_plans: 1
   percent: 0
 ---
 
@@ -24,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-09)
 
 ## Current Position
 
-Phase: Not started (roadmap complete; ready to plan Phase 94)
-Plan: —
-Status: Roadmap created — awaiting phase planning
-Last activity: 2026-09-10 — Milestone v0.44.0 roadmap created (7 phases, 94–100)
+Phase: 94 (Reverse-Mode Autodiff Core (VJP Tape)) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-09-10 — Phase 94 execution started
 
 ## Milestone Roadmap (v0.44.0)
 
@@ -74,6 +79,11 @@ Seven phases, 11 requirements — an implementation milestone completing the dif
 - Trend: v0.44.0 is an implementation milestone completing the **differentiable-core** section of the 1.0 checklist — additive/non-breaking, no new crate dependency, building on the v0.39.0 forward-mode AD core. After this, only SDTW-O1 (algorithm) and fdars-j75 (R ecosystem) remain before the terminal 1.0-CUT.
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 94 P01 | 7min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -90,6 +100,8 @@ Decisions relevant to current work (v0.44.0):
 - **REL-01 lands last (Phase 100)** — bump/CHANGELOG/checklist/gates are the final proof; the full-suite `cargo test` gate is the end-to-end milestone proof. The `git tag v0.44.0` → crates.io publish is the DEFERRED operator step (GSD `git.create_tag` is off because `release.yml` couples tag-push to publish) — never tagged/published inside a phase.
 - **Phase numbering continues** — v0.43.0 ended at Phase 93 → v0.44.0 starts at Phase 94. No reset.
 - **11 requirements → 7 phases:** 94 RAD-01/02/03; 95 GEN-01; 96 DOP-01; 97 DOP-02/03; 98 DOP-04; 99 GEN-02/API-01; 100 REL-01. All mapped, no orphans, no duplicates.
+- [Phase 94]: Scalar trait moved to mod.rs (shared between forward and reverse modes) — Enables both forward.rs and reverse.rs to share the same trait definition without duplication
+- [Phase 94]: Tape fully opaque (not exported from prelude); only vjp is the public entry point — Per CONTEXT.md discretion: Tape is fully hidden behind vjp; Phase 99 can add inspection if needed
 
 ### Pending Todos
 
@@ -116,8 +128,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-10T18:26:02.168Z
-Stopped at: v0.44.0 roadmap created — 7 phases (94–100), 11/11 requirements mapped
+Last session: 2026-09-10T20:34:32.372Z
+Stopped at: Completed 94-01-tracer-tape-skeleton-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

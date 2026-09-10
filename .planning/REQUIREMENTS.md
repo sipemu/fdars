@@ -9,8 +9,8 @@ This is an **implementation milestone**: real `fdars-core/src/` changes, **stric
 
 ### Reverse-Mode Autodiff (RAD) — DIF-F1
 
-- [ ] **RAD-01**: An in-crate reverse-mode tape (Wengert-list) core records operations on a `Var`/tape scalar type, supporting the same operation set as the forward-mode `Dual` (±, ×, ÷, sqrt, exp, ln, sin/cos, powf, abs, comparisons).
-- [ ] **RAD-02**: A backward pass seeds the output adjoint and accumulates input gradients, exposing a vector-Jacobian-product (VJP) entry point efficient for many-input→scalar objectives.
+- [x] **RAD-01**: An in-crate reverse-mode tape (Wengert-list) core records operations on a `Var`/tape scalar type, supporting the same operation set as the forward-mode `Dual` (±, ×, ÷, sqrt, exp, ln, sin/cos, powf, abs, comparisons).
+- [x] **RAD-02**: A backward pass seeds the output adjoint and accumulates input gradients, exposing a vector-Jacobian-product (VJP) entry point efficient for many-input→scalar objectives.
 - [ ] **RAD-03**: Reverse-mode gradients match the forward-mode `Dual` path and finite differences within tolerance on the existing differentiable subset (elastic soft-DTW distance, FPCA scores).
 
 ### Differentiable Operations (DOP) — DIF-F2 (four families)
@@ -65,8 +65,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RAD-01 | Phase 94 | Pending |
-| RAD-02 | Phase 94 | Pending |
+| RAD-01 | Phase 94 | Complete |
+| RAD-02 | Phase 94 | Complete |
 | RAD-03 | Phase 94 | Pending |
 | DOP-01 | Phase 96 | Pending |
 | DOP-02 | Phase 97 | Pending |
@@ -78,6 +78,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | REL-01 | Phase 100 | Pending |
 
 **Coverage:**
+
 - v0.44.0 requirements: 11 total
 - Mapped to phases: 11 ✓
 - Unmapped: 0 ✓
