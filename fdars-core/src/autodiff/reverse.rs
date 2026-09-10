@@ -84,6 +84,8 @@ fn push_binary(dep0: usize, w0: f64, dep1: usize, w1: f64) -> usize {
 /// Record a unary operation on the tape and return its new node index.
 ///
 /// The second slot is set to `SENTINEL` / `0.0` (no second parent).
+// Used by transcendental op impls added in Plan 02.
+#[allow(dead_code)]
 fn push_unary(dep0: usize, w0: f64) -> usize {
     TAPE.with(|cell| {
         let mut tape = cell.borrow_mut();
@@ -141,14 +143,14 @@ impl PartialOrd for Var {
 
 impl Add for Var {
     type Output = Self;
-    fn add(self, rhs: Self) -> Self {
+    fn add(self, _rhs: Self) -> Self {
         unimplemented!("Add for Var — implemented in Plan 02")
     }
 }
 
 impl Sub for Var {
     type Output = Self;
-    fn sub(self, rhs: Self) -> Self {
+    fn sub(self, _rhs: Self) -> Self {
         unimplemented!("Sub for Var — implemented in Plan 02")
     }
 }
@@ -179,7 +181,7 @@ impl Mul for Var {
 
 impl Div for Var {
     type Output = Self;
-    fn div(self, rhs: Self) -> Self {
+    fn div(self, _rhs: Self) -> Self {
         unimplemented!("Div for Var — implemented in Plan 02")
     }
 }
@@ -284,7 +286,7 @@ impl Scalar for Var {
 }
 
 // ---------------------------------------------------------------------------
-// vjp entry point — stub, filled in Task 3
+// vjp entry point
 // ---------------------------------------------------------------------------
 
 /// Compute a scalar objective's value and its full gradient over an `m`-vector
@@ -293,13 +295,122 @@ impl Scalar for Var {
 /// This is `O(cost(f))` regardless of the number of inputs `m`, versus the
 /// `O(m · cost(f))` cost of forward-mode [`super::grad`].
 ///
-/// Returns `(value, gradient)` where `gradient.len() == x.len()`.
+/// Returns `(value, gradient)` where `gradient.len() == x.len()`. An empty
+/// input yields `(f(&[]).value, Vec::new())`.
 ///
-/// See `autodiff::grad` for the equivalent forward-mode entry point.
+/// # Lifecycle
+///
+/// The thread-local tape is cleared before the forward pass (safe re-entry
+/// after a prior panic) and again after the backward pass (prevents leakage
+/// into the next `vjp` call). Never call `vjp` recursively or concurrently
+/// on the same thread.
+///
+/// # Example
+///
+/// ```
+/// use fdars_core::autodiff::vjp;
+///
+/// // f(x) = x^2, f'(x) = 2x. At x = 3: f = 9, f' = 6.
+/// let (value, gradient) = vjp(|x| x[0] * x[0], &[3.0]);
+/// assert!((value - 9.0).abs() < 1e-10);
+/// assert!((gradient[0] - 6.0).abs() < 1e-10);
+/// ```
 #[must_use]
 pub fn vjp<F: Fn(&[Var]) -> Var>(f: F, x: &[f64]) -> (f64, Vec<f64>) {
-    // Full implementation added in Task 3.
-    let _ = f;
-    let _ = x;
-    unimplemented!("vjp — full implementation added in Task 3")
+    // Step 1: Clear tape from any prior call (panic-safe double-clear pattern).
+    TAPE.with(|cell| cell.borrow_mut().clear());
+
+    let m = x.len();
+    if m == 0 {
+        // Empty input: run forward to get primal, no gradients.
+        let out = f(&[]);
+        TAPE.with(|cell| cell.borrow_mut().clear());
+        return (out.value, Vec::new());
+    }
+
+    // Step 2: Seed one REAL leaf node per input.
+    //
+    // Each input leaf is pushed as push_binary(SENTINEL, 0.0, SENTINEL, 0.0):
+    // a real node with a valid tape index so its adjoint accumulates, but with
+    // both deps = SENTINEL and both weights = 0.0 so it contributes nothing
+    // to the backward propagation of further-upstream nodes.
+    //
+    // NEVER use from_f64 or Scalar constants for inputs: those carry
+    // node=SENTINEL and would yield all-zero gradients (Pitfall 2).
+    let vars: Vec<Var> = x
+        .iter()
+        .map(|&v| {
+            let node = push_binary(SENTINEL, 0.0, SENTINEL, 0.0);
+            Var { value: v, node }
+        })
+        .collect();
+
+    // Step 3: Forward pass — runs f, recording every op on the tape.
+    let output = f(&vars);
+    let primal = output.value;
+
+    // Steps 4–6: Backward pass inside a single TAPE borrow.
+    let gradient = TAPE.with(|cell| {
+        let tape = cell.borrow();
+        let n = tape.len();
+
+        // Step 4: Allocate adjoint table, seed output adjoint = 1.0.
+        let mut adjoints = vec![0.0_f64; n];
+        if output.node != SENTINEL {
+            adjoints[output.node] = 1.0;
+        }
+
+        // Step 5: Reverse sweep — evaluation order equals topological order,
+        // so plain reverse iteration is sufficient (no graph analysis needed).
+        for i in (0..n).rev() {
+            let node = tape[i];
+            let adj = adjoints[i];
+            for slot in 0..2 {
+                if node.deps[slot] != SENTINEL {
+                    adjoints[node.deps[slot]] += adj * node.weights[slot];
+                }
+            }
+        }
+
+        // Step 6: Collect gradient — adjoint at each input leaf's tape index.
+        vars.iter()
+            .map(|v| {
+                if v.node == SENTINEL {
+                    0.0
+                } else {
+                    adjoints[v.node]
+                }
+            })
+            .collect()
+    });
+
+    // Step 7: Clear tape after reading (prevent leakage into next call).
+    TAPE.with(|cell| cell.borrow_mut().clear());
+
+    (primal, gradient)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TOL: f64 = 1e-10;
+
+    /// End-to-end tracer test: f(x) = x^2, df/dx = 2x.
+    /// At x = 3: f = 9, df/dx = 6.
+    /// Proves the full record→seed→backward→read-adjoint loop through Mul.
+    #[test]
+    fn var_mul_known_answer() {
+        let (value, grad) = vjp(|x| x[0] * x[0], &[3.0]);
+        assert!((value - 9.0).abs() < TOL, "primal {} != 9.0", value);
+        assert!(
+            (grad[0] - 6.0).abs() < TOL,
+            "gradient[0] {} != 6.0",
+            grad[0]
+        );
+    }
 }
