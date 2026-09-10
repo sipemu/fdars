@@ -93,7 +93,11 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
   2. A backward pass seeds the output adjoint and accumulates input gradients, exposed through a `vjp` entry point efficient for many-input→scalar objectives.
   3. Reverse-mode gradients match the forward-mode `Dual` path and central finite differences within tolerance on elastic soft-DTW distance and FPCA scores (the existing differentiable subset).
   4. No new crate dependency is added (the tape is hand-written in-crate, matching how `Dual` was built).
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 94-01-tracer-tape-skeleton-PLAN.md — TRACER: refactor autodiff.rs → autodiff/{mod,forward}, stand up reverse.rs skeleton (Var/Tape/Node/Mul/minimal vjp) + end-to-end known-answer test (RAD-01, RAD-02)
+- [ ] 94-02-full-op-set-PLAN.md — full op set on Var (arithmetic + transcendentals), complete Scalar impl, Tier-1 known-answer + Tier-2 singular-point tests (RAD-01)
+- [ ] 94-03-vjp-hardening-agreement-PLAN.md — harden vjp lifecycle (double-clear, edge cases) + Tier-3 reverse-vs-Dual agreement tests (RAD-02)
+- [ ] 94-04-validation-prelude-PLAN.md — Tier-4 FD cross-checks (soft_dtw + FPCA scores + composed objective) + prelude re-exports + vjp doctest (RAD-03)
 
 ### Phase 95: Generic Scalar Hot-Path Signatures
 **Goal**: Targeted f64 hot-path signatures are generalized over the scalar type via defaulted type params (`T = f64`), proven non-breaking at compile time — the enabling substrate the DOP families are written against.
@@ -169,7 +173,7 @@ Phases execute in numeric order: 94 → 95 → 96 → 97 → 98 → 99 → 100
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 0/? | Not started | - |
+| 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 0/4 | Not started | - |
 | 95. Generic Scalar Hot-Path Signatures | v0.44.0 | 0/? | Not started | - |
 | 96. Differentiable Basis Evaluation & Inner Products | v0.44.0 | 0/? | Not started | - |
 | 97. Differentiable Regression Prediction & Smoothing Penalties | v0.44.0 | 0/? | Not started | - |
