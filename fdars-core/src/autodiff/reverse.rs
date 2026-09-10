@@ -588,4 +588,162 @@ mod tests {
         assert!((value - 10.0).abs() < TOL, "primal {} != 10.0", value);
         assert!((grad[0] - 2.0).abs() < TOL, "grad[0] {} != 2.0", grad[0]);
     }
+
+    // -------------------------------------------------------------------------
+    // Tier 1 — transcendental known-answer tests (added in Task 2, Plan 02)
+    // -------------------------------------------------------------------------
+
+    /// sqrt: f(x) = sqrt(x), df/dx = 1/(2*sqrt(x)).
+    /// At x = 4: f = 2, df/dx = 0.25.
+    #[test]
+    fn var_sqrt_known_answer() {
+        let (value, grad) = vjp(|x| Scalar::sqrt(x[0]), &[4.0]);
+        assert!((value - 2.0).abs() < TOL, "primal {} != 2.0", value);
+        assert!((grad[0] - 0.25).abs() < TOL, "grad[0] {} != 0.25", grad[0]);
+    }
+
+    /// exp: f(x) = exp(x), df/dx = exp(x).
+    /// At x = 1: f = e, df/dx = e.
+    #[test]
+    fn var_exp_known_answer() {
+        let e = std::f64::consts::E;
+        let (value, grad) = vjp(|x| Scalar::exp(x[0]), &[1.0]);
+        assert!((value - e).abs() < TOL, "primal {} != e", value);
+        assert!((grad[0] - e).abs() < TOL, "grad[0] {} != e", grad[0]);
+    }
+
+    /// ln: f(x) = ln(x), df/dx = 1/x.
+    /// At x = 2: f = ln(2), df/dx = 0.5.
+    #[test]
+    fn var_ln_known_answer() {
+        let (value, grad) = vjp(|x| Scalar::ln(x[0]), &[2.0]);
+        assert!(
+            (value - 2.0_f64.ln()).abs() < TOL,
+            "primal {} != ln(2)",
+            value
+        );
+        assert!((grad[0] - 0.5).abs() < TOL, "grad[0] {} != 0.5", grad[0]);
+    }
+
+    /// sin: f(x) = sin(x), df/dx = cos(x).
+    /// At x = PI/4: f = sqrt(2)/2, df/dx = sqrt(2)/2.
+    #[test]
+    fn var_sin_known_answer() {
+        use std::f64::consts::PI;
+        let expected = 2.0_f64.sqrt() / 2.0;
+        let (value, grad) = vjp(|x| Scalar::sin(x[0]), &[PI / 4.0]);
+        assert!(
+            (value - expected).abs() < TOL,
+            "primal {} != sqrt(2)/2",
+            value
+        );
+        assert!(
+            (grad[0] - expected).abs() < TOL,
+            "grad[0] {} != sqrt(2)/2",
+            grad[0]
+        );
+    }
+
+    /// cos: f(x) = cos(x), df/dx = -sin(x).
+    /// At x = PI/4: f = sqrt(2)/2, df/dx = -sqrt(2)/2.
+    #[test]
+    fn var_cos_known_answer() {
+        use std::f64::consts::PI;
+        let expected = 2.0_f64.sqrt() / 2.0;
+        let (value, grad) = vjp(|x| Scalar::cos(x[0]), &[PI / 4.0]);
+        assert!(
+            (value - expected).abs() < TOL,
+            "primal {} != sqrt(2)/2",
+            value
+        );
+        assert!(
+            (grad[0] + expected).abs() < TOL,
+            "grad[0] {} != -sqrt(2)/2",
+            grad[0]
+        );
+    }
+
+    /// powf: f(x) = x^3, df/dx = 3*x^2.
+    /// At x = 2: f = 8, df/dx = 12.
+    #[test]
+    fn var_powf_known_answer() {
+        let (value, grad) = vjp(|x| Scalar::powf(x[0], 3.0), &[2.0]);
+        assert!((value - 8.0).abs() < TOL, "primal {} != 8.0", value);
+        assert!((grad[0] - 12.0).abs() < TOL, "grad[0] {} != 12.0", grad[0]);
+    }
+
+    /// abs: f(x) = |x|, df/dx = sign(x) (subdifferential: 0 at 0).
+    /// At x = -3: f = 3, df/dx = -1.
+    #[test]
+    fn var_abs_known_answer() {
+        let (value, grad) = vjp(|x| Scalar::abs(x[0]), &[-3.0]);
+        assert!((value - 3.0).abs() < TOL, "primal {} != 3.0", value);
+        assert!((grad[0] + 1.0).abs() < TOL, "grad[0] {} != -1.0", grad[0]);
+        // Positive branch
+        let (vp, gp) = vjp(|x| Scalar::abs(x[0]), &[4.0]);
+        assert!((vp - 4.0).abs() < TOL);
+        assert!((gp[0] - 1.0).abs() < TOL);
+    }
+
+    /// abs at zero: subdifferential selects 0 (not ±1).
+    #[test]
+    fn var_abs_at_zero_gradient_is_zero() {
+        let (value, grad) = vjp(|x| Scalar::abs(x[0]), &[0.0]);
+        assert_eq!(value, 0.0);
+        assert_eq!(grad[0], 0.0, "abs'(0) must be 0 (subdifferential)");
+    }
+
+    /// signum: gradient is 0 everywhere (piecewise constant).
+    #[test]
+    fn var_signum_gradient_is_zero() {
+        let (vp, gp) = vjp(|x| Scalar::signum(x[0]), &[3.0]);
+        assert_eq!(vp, 1.0);
+        assert_eq!(gp[0], 0.0, "signum gradient must be 0");
+        let (vn, gn) = vjp(|x| Scalar::signum(x[0]), &[-3.0]);
+        assert_eq!(vn, -1.0);
+        assert_eq!(gn[0], 0.0, "signum gradient must be 0");
+    }
+
+    // -------------------------------------------------------------------------
+    // Tier 2 — singular-point guard tests (Task 2, Plan 02)
+    // -------------------------------------------------------------------------
+
+    /// sqrt(0): local partial 1/(2*sqrt(0)) = Inf. Adjoint must be non-finite, not a panic.
+    #[test]
+    fn var_sqrt_at_zero_adjoint_is_nonfinite() {
+        let (value, grad) = vjp(|x| Scalar::sqrt(x[0]), &[0.0]);
+        assert_eq!(value, 0.0);
+        assert!(
+            !grad[0].is_finite(),
+            "sqrt'(0) adjoint {} should be non-finite (Inf)",
+            grad[0]
+        );
+    }
+
+    /// ln(0): local partial 1/0 = Inf (or NaN). Adjoint must be non-finite, not a panic.
+    #[test]
+    fn var_ln_at_zero_adjoint_is_nonfinite() {
+        let (value, grad) = vjp(|x| Scalar::ln(x[0]), &[0.0]);
+        assert!(
+            value.is_infinite() && value < 0.0,
+            "ln(0) value should be -Inf"
+        );
+        assert!(
+            !grad[0].is_finite(),
+            "ln'(0) adjoint {} should be non-finite",
+            grad[0]
+        );
+    }
+
+    /// powf(0, 0.5): partial = 0.5 * 0^(-0.5) = Inf. Adjoint must be non-finite, not a panic.
+    #[test]
+    fn var_powf_at_zero_adjoint_is_nonfinite() {
+        let (value, grad) = vjp(|x| Scalar::powf(x[0], 0.5), &[0.0]);
+        assert_eq!(value, 0.0);
+        assert!(
+            !grad[0].is_finite(),
+            "powf'(0, 0.5) adjoint {} should be non-finite (Inf)",
+            grad[0]
+        );
+    }
 }
