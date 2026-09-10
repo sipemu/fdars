@@ -5,16 +5,16 @@ milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
 current_phase: 94
 current_phase_name: Reverse-Mode Autodiff Core (VJP Tape)
 status: executing
-stopped_at: Completed 94-01-tracer-tape-skeleton-PLAN.md
-last_updated: "2026-09-10T20:34:32.390Z"
+stopped_at: Completed 94-02-full-op-set-PLAN.md
+last_updated: "2026-09-10T20:41:56.927Z"
 last_activity: 2026-09-10
 last_activity_desc: Phase 94 execution started
-state_head: 892ae6cf880780bc56f7760af5b894b361ffa931
+state_head: dc087a6036d343234d790433659b6fdb1711a049
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-09)
 ## Current Position
 
 Phase: 94 (Reverse-Mode Autodiff Core (VJP Tape)) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-09-10 — Phase 94 execution started
 
@@ -84,6 +84,7 @@ Seven phases, 11 requirements — an implementation milestone completing the dif
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 94 P01 | 7min | 3 tasks | 4 files |
+| Phase 94 P02 | 4min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,8 @@ Decisions relevant to current work (v0.44.0):
 - **11 requirements → 7 phases:** 94 RAD-01/02/03; 95 GEN-01; 96 DOP-01; 97 DOP-02/03; 98 DOP-04; 99 GEN-02/API-01; 100 REL-01. All mapped, no orphans, no duplicates.
 - [Phase 94]: Scalar trait moved to mod.rs (shared between forward and reverse modes) — Enables both forward.rs and reverse.rs to share the same trait definition without duplication
 - [Phase 94]: Tape fully opaque (not exported from prelude); only vjp is the public entry point — Per CONTEXT.md discretion: Tape is fully hidden behind vjp; Phase 99 can add inspection if needed
+- [Phase 94]: Div three-case constant-folding for Var: both-const→SENTINEL, rhs-const→push_unary(1/v), general→push_binary quotient rule (common x/gamma path is the rhs-const fast path)
+- [Phase 94]: signum for Var returns SENTINEL constant (no tape node) — piecewise-constant function has zero gradient, matches Dual zero-tangent convention
 
 ### Pending Todos
 
@@ -128,8 +131,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-10T20:34:32.372Z
-Stopped at: Completed 94-01-tracer-tape-skeleton-PLAN.md
+Last session: 2026-09-10T20:41:56.910Z
+Stopped at: Completed 94-02-full-op-set-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
