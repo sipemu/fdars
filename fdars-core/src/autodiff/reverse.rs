@@ -1304,7 +1304,7 @@ mod tests {
                 let scores = project_scores_generic(vars, &mean, &rotation, &weights, ncomp);
                 let mut acc = Scalar::zero();
                 for s in &scores {
-                    acc = acc + *s * *s;
+                    acc += *s * *s;
                 }
                 acc
             },
@@ -1417,7 +1417,7 @@ mod tests {
             let scores = project_scores_generic(c, &mean, &rotation, &weights, ncomp);
             let mut acc = <Var as Scalar>::zero();
             for s in &scores {
-                acc = acc + *s * *s;
+                acc += *s * *s;
             }
             sdtw + <Var as Scalar>::from_f64(lambda) * acc
         };
