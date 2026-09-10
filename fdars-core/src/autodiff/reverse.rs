@@ -921,4 +921,266 @@ mod tests {
         assert!((grad[1] - 2.0).abs() < TOL, "grad[1] {} != 2.0", grad[1]);
         assert!((grad[2] - 1.0).abs() < TOL, "grad[2] {} != 1.0", grad[2]);
     }
+
+    // -------------------------------------------------------------------------
+    // Tier 3 — reverse-vs-Dual agreement tests (Task 2, Plan 03)
+    //
+    // Each test runs the SAME mathematical function as both:
+    //   grad(|d: &[Dual]| ..., x)   — forward-mode (m passes)
+    //   vjp( |v: &[Var]|  ..., x)   — reverse-mode (one sweep)
+    // and asserts value + each gradient component agree within TOL (1e-10).
+    // Points are chosen in the interior of each op's domain to avoid NaN/Inf.
+    // -------------------------------------------------------------------------
+
+    /// Agreement: add. f(x0, x1) = x0 + x1.
+    #[test]
+    fn agreement_add() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[3.0_f64, 7.0_f64];
+        let (fv, fg) = grad(|d: &[Dual]| d[0] + d[1], x);
+        let (rv, rg) = vjp(|v: &[Var]| v[0] + v[1], x);
+        assert!((fv - rv).abs() < TOL, "value mismatch: fwd={fv} rev={rv}");
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+        assert!(
+            (fg[1] - rg[1]).abs() < TOL,
+            "grad[1]: fwd={} rev={}",
+            fg[1],
+            rg[1]
+        );
+    }
+
+    /// Agreement: sub. f(x0, x1) = x0 - x1.
+    #[test]
+    fn agreement_sub() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[5.0_f64, 2.0_f64];
+        let (fv, fg) = grad(|d: &[Dual]| d[0] - d[1], x);
+        let (rv, rg) = vjp(|v: &[Var]| v[0] - v[1], x);
+        assert!((fv - rv).abs() < TOL);
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+        assert!(
+            (fg[1] - rg[1]).abs() < TOL,
+            "grad[1]: fwd={} rev={}",
+            fg[1],
+            rg[1]
+        );
+    }
+
+    /// Agreement: mul. f(x0, x1) = x0 * x1.
+    #[test]
+    fn agreement_mul() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[3.0_f64, 4.0_f64];
+        let (fv, fg) = grad(|d: &[Dual]| d[0] * d[1], x);
+        let (rv, rg) = vjp(|v: &[Var]| v[0] * v[1], x);
+        assert!((fv - rv).abs() < TOL);
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+        assert!(
+            (fg[1] - rg[1]).abs() < TOL,
+            "grad[1]: fwd={} rev={}",
+            fg[1],
+            rg[1]
+        );
+    }
+
+    /// Agreement: div. f(x0, x1) = x0 / x1.
+    #[test]
+    fn agreement_div() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[6.0_f64, 3.0_f64];
+        let (fv, fg) = grad(|d: &[Dual]| d[0] / d[1], x);
+        let (rv, rg) = vjp(|v: &[Var]| v[0] / v[1], x);
+        assert!((fv - rv).abs() < TOL);
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+        assert!(
+            (fg[1] - rg[1]).abs() < TOL,
+            "grad[1]: fwd={} rev={}",
+            fg[1],
+            rg[1]
+        );
+    }
+
+    /// Agreement: neg. f(x) = -x.
+    #[test]
+    fn agreement_neg() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[4.0_f64];
+        let (fv, fg) = grad(|d: &[Dual]| -d[0], x);
+        let (rv, rg) = vjp(|v: &[Var]| -v[0], x);
+        assert!((fv - rv).abs() < TOL);
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+    }
+
+    /// Agreement: sqrt. f(x) = sqrt(x). At x = 9.
+    #[test]
+    fn agreement_sqrt() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[9.0_f64];
+        let (fv, fg) = grad(|d: &[Dual]| Scalar::sqrt(d[0]), x);
+        let (rv, rg) = vjp(|v: &[Var]| Scalar::sqrt(v[0]), x);
+        assert!((fv - rv).abs() < TOL);
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+    }
+
+    /// Agreement: exp. f(x) = exp(x). At x = 1.
+    #[test]
+    fn agreement_exp() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[1.0_f64];
+        let (fv, fg) = grad(|d: &[Dual]| Scalar::exp(d[0]), x);
+        let (rv, rg) = vjp(|v: &[Var]| Scalar::exp(v[0]), x);
+        assert!((fv - rv).abs() < TOL);
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+    }
+
+    /// Agreement: ln. f(x) = ln(x). At x = 2.
+    #[test]
+    fn agreement_ln() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[2.0_f64];
+        let (fv, fg) = grad(|d: &[Dual]| Scalar::ln(d[0]), x);
+        let (rv, rg) = vjp(|v: &[Var]| Scalar::ln(v[0]), x);
+        assert!((fv - rv).abs() < TOL);
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+    }
+
+    /// Agreement: sin. f(x) = sin(x). At x = PI/3.
+    #[test]
+    fn agreement_sin() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[std::f64::consts::PI / 3.0];
+        let (fv, fg) = grad(|d: &[Dual]| Scalar::sin(d[0]), x);
+        let (rv, rg) = vjp(|v: &[Var]| Scalar::sin(v[0]), x);
+        assert!((fv - rv).abs() < TOL);
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+    }
+
+    /// Agreement: cos. f(x) = cos(x). At x = PI/6.
+    #[test]
+    fn agreement_cos() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[std::f64::consts::PI / 6.0];
+        let (fv, fg) = grad(|d: &[Dual]| Scalar::cos(d[0]), x);
+        let (rv, rg) = vjp(|v: &[Var]| Scalar::cos(v[0]), x);
+        assert!((fv - rv).abs() < TOL);
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+    }
+
+    /// Agreement: powf. f(x) = x^3. At x = 2.
+    #[test]
+    fn agreement_powf() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[2.0_f64];
+        let (fv, fg) = grad(|d: &[Dual]| Scalar::powf(d[0], 3.0), x);
+        let (rv, rg) = vjp(|v: &[Var]| Scalar::powf(v[0], 3.0), x);
+        assert!((fv - rv).abs() < TOL);
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+    }
+
+    /// Agreement: abs. f(x) = |x|. At x = -3 (negative branch; subdifferential = -1).
+    #[test]
+    fn agreement_abs() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[-3.0_f64];
+        let (fv, fg) = grad(|d: &[Dual]| Scalar::abs(d[0]), x);
+        let (rv, rg) = vjp(|v: &[Var]| Scalar::abs(v[0]), x);
+        assert!((fv - rv).abs() < TOL);
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+    }
+
+    /// Agreement: multi-input composed chain. f(x0, x1, x2) = sin(x0) * exp(x1) + sqrt(x2).
+    /// Exercises cross-op gradient accumulation through mul, add, and unary ops.
+    /// At (PI/4, 0.5, 4.0).
+    #[test]
+    fn agreement_composed_chain() {
+        use crate::autodiff::{grad, Dual};
+        let x = &[std::f64::consts::PI / 4.0, 0.5_f64, 4.0_f64];
+        let (fv, fg) = grad(
+            |d: &[Dual]| Scalar::sin(d[0]) * Scalar::exp(d[1]) + Scalar::sqrt(d[2]),
+            x,
+        );
+        let (rv, rg) = vjp(
+            |v: &[Var]| Scalar::sin(v[0]) * Scalar::exp(v[1]) + Scalar::sqrt(v[2]),
+            x,
+        );
+        assert!((fv - rv).abs() < TOL, "value: fwd={fv} rev={rv}");
+        assert!(
+            (fg[0] - rg[0]).abs() < TOL,
+            "grad[0]: fwd={} rev={}",
+            fg[0],
+            rg[0]
+        );
+        assert!(
+            (fg[1] - rg[1]).abs() < TOL,
+            "grad[1]: fwd={} rev={}",
+            fg[1],
+            rg[1]
+        );
+        assert!(
+            (fg[2] - rg[2]).abs() < TOL,
+            "grad[2]: fwd={} rev={}",
+            fg[2],
+            rg[2]
+        );
+    }
 }
