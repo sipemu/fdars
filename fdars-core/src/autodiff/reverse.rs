@@ -323,33 +323,140 @@ impl Scalar for Var {
         }
     }
 
-    // Transcendental stubs — filled in Plan 02 with real push_unary calls.
-    // These are the only allowed tracer stubs: the trait shape is proven here,
-    // the bodies come next.
-
+    /// Square root with reverse-mode partial `1 / (2 * sqrt(v))`.
+    ///
+    /// Singular point: `sqrt(0)` pushes partial `1/(2*0) = Inf` onto the tape,
+    /// propagating a non-finite adjoint without panicking — matching `Dual`.
+    #[inline]
     fn sqrt(self) -> Self {
-        unimplemented!("Scalar::sqrt for Var — implemented in Plan 02")
+        let s = self.value.sqrt();
+        if self.node == SENTINEL {
+            return Var {
+                value: s,
+                node: SENTINEL,
+            };
+        }
+        // d/dx sqrt(v) = 1 / (2 * sqrt(v))
+        let node = push_unary(self.node, 1.0 / (2.0 * s));
+        Var { value: s, node }
     }
+
+    /// Exponential with reverse-mode partial `exp(v)`.
+    #[inline]
     fn exp(self) -> Self {
-        unimplemented!("Scalar::exp for Var — implemented in Plan 02")
+        let e = self.value.exp();
+        if self.node == SENTINEL {
+            return Var {
+                value: e,
+                node: SENTINEL,
+            };
+        }
+        // d/dx exp(v) = exp(v)
+        let node = push_unary(self.node, e);
+        Var { value: e, node }
     }
+
+    /// Natural logarithm with reverse-mode partial `1 / v`.
+    ///
+    /// Singular point: `ln(0)` pushes partial `1/0 = Inf` — non-finite adjoint,
+    /// no panic.
+    #[inline]
     fn ln(self) -> Self {
-        unimplemented!("Scalar::ln for Var — implemented in Plan 02")
+        let l = self.value.ln();
+        if self.node == SENTINEL {
+            return Var {
+                value: l,
+                node: SENTINEL,
+            };
+        }
+        // d/dx ln(v) = 1 / v
+        let node = push_unary(self.node, 1.0 / self.value);
+        Var { value: l, node }
     }
+
+    /// Sine with reverse-mode partial `cos(v)`.
+    #[inline]
     fn sin(self) -> Self {
-        unimplemented!("Scalar::sin for Var — implemented in Plan 02")
+        let s = self.value.sin();
+        if self.node == SENTINEL {
+            return Var {
+                value: s,
+                node: SENTINEL,
+            };
+        }
+        // d/dx sin(v) = cos(v)
+        let node = push_unary(self.node, self.value.cos());
+        Var { value: s, node }
     }
+
+    /// Cosine with reverse-mode partial `-sin(v)`.
+    #[inline]
     fn cos(self) -> Self {
-        unimplemented!("Scalar::cos for Var — implemented in Plan 02")
+        let c = self.value.cos();
+        if self.node == SENTINEL {
+            return Var {
+                value: c,
+                node: SENTINEL,
+            };
+        }
+        // d/dx cos(v) = -sin(v)
+        let node = push_unary(self.node, -self.value.sin());
+        Var { value: c, node }
     }
-    fn powf(self, _p: f64) -> Self {
-        unimplemented!("Scalar::powf for Var — implemented in Plan 02")
+
+    /// Power function with reverse-mode partial `p * v^(p - 1)` w.r.t. the base.
+    ///
+    /// The exponent `p` is a constant `f64`; only the base contributes gradient.
+    ///
+    /// Singular point: `powf(0, 0.5)` pushes partial `0.5 * 0^(-0.5) = Inf` —
+    /// non-finite adjoint, no panic.
+    #[inline]
+    fn powf(self, p: f64) -> Self {
+        let v = self.value.powf(p);
+        if self.node == SENTINEL {
+            return Var {
+                value: v,
+                node: SENTINEL,
+            };
+        }
+        // d/dx v^p = p * v^(p - 1)
+        let node = push_unary(self.node, p * self.value.powf(p - 1.0));
+        Var { value: v, node }
     }
+
+    /// Absolute value with subdifferential partial: `signum(v)`, selecting `0`
+    /// at exactly `v == 0.0` (matching the `Dual` subdifferential convention).
+    #[inline]
     fn abs(self) -> Self {
-        unimplemented!("Scalar::abs for Var — implemented in Plan 02")
+        let a = self.value.abs();
+        if self.node == SENTINEL {
+            return Var {
+                value: a,
+                node: SENTINEL,
+            };
+        }
+        // Subdifferential: d|v|/dv = signum(v), honest-zero selection at v == 0.
+        let sub = if self.value == 0.0 {
+            0.0
+        } else {
+            self.value.signum()
+        };
+        let node = push_unary(self.node, sub);
+        Var { value: a, node }
     }
+
+    /// Signum: piecewise-constant → derivative is **0 everywhere**.
+    ///
+    /// Returns a `SENTINEL` constant (no tape node) regardless of whether the
+    /// input is on-tape. The primal value is `f64::signum(v)` for parity.
+    /// This matches the `Dual` convention (zero tangent, `Dual::signum@459`).
+    #[inline]
     fn signum(self) -> Self {
-        unimplemented!("Scalar::signum for Var — implemented in Plan 02")
+        // Piecewise-constant: gradient is zero everywhere — return a constant.
+        Var {
+            value: self.value.signum(),
+            node: SENTINEL,
+        }
     }
 }
 
