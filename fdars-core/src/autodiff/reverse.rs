@@ -1333,4 +1333,126 @@ mod tests {
             );
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Tier 4 — composed-objective vjp FD cross-check (Task 2, Plan 04 — RAD-03)
+    //
+    // Mirrors `grad_composed_objective_matches_finite_diff` from forward.rs
+    // (autodiff/forward.rs:966) verbatim in structure, swapping:
+    //   grad → vjp,  Dual → Var,  Dual::constant(r) → Scalar::from_f64(r)
+    // Same seed, dimensions, gamma, lambda.  h = 1e-6 for composed test.
+    // -------------------------------------------------------------------------
+
+    /// Tier-4: vjp through composed objective (soft_dtw + λ·Σscores²) matches FD.
+    ///
+    /// Constructs `objective(c) = soft_dtw_distance_generic(c, ref, gamma) + lambda * Σ scores²`,
+    /// runs a single `vjp` call, and central-FD-checks each gradient component with
+    /// h=1e-6 within 1e-6. Mirrors `forward.rs::grad_composed_objective_matches_finite_diff`
+    /// (m=24, n=40, ncomp=3, gamma=0.1, lambda=1.0, seed 20260906) — same setup
+    /// for direct forward-vs-reverse comparability.
+    ///
+    /// This is the capstone RAD-03 validation: a composed FDA objective differentiated
+    /// in one reverse sweep, FD-checked per component.
+    #[test]
+    fn vjp_composed_objective_matches_finite_diff() {
+        use crate::matrix::FdMatrix;
+        use crate::metric::soft_dtw_distance_generic;
+        use crate::regression::{fdata_to_pc, project_scores_generic};
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+        use std::f64::consts::PI;
+
+        let m = 24usize;
+        let n = 40usize;
+        let ncomp = 3usize;
+        let gamma = 0.1_f64;
+        let lambda = 1.0_f64;
+
+        // Grid on [0.1, 0.9] — avoids SRSF derivative zeros / degenerate points.
+        let argvals: Vec<f64> = (0..m)
+            .map(|j| 0.1 + 0.8 * j as f64 / (m - 1) as f64)
+            .collect();
+
+        // Spanning full-rank training set: seed 20260906 (mirrors forward.rs test).
+        let mut rng = StdRng::seed_from_u64(20260906);
+        let mut data = vec![0.0f64; n * m];
+        for i in 0..n {
+            let a: f64 = rng.gen_range(-1.0..1.0);
+            let b: f64 = rng.gen_range(-1.0..1.0);
+            let c: f64 = rng.gen_range(-1.0..1.0);
+            for (j, &t) in argvals.iter().enumerate() {
+                let v = a * (PI * t).sin() + b * (2.0 * PI * t).cos() + c * (3.0 * PI * t).sin();
+                data[i + j * n] = v; // column-major
+            }
+        }
+        let data = FdMatrix::from_column_major(data, n, m).unwrap();
+        let fpca = fdata_to_pc(&data, ncomp, &argvals).unwrap();
+        let mean = fpca.mean.clone();
+        let rotation = fpca.rotation.clone();
+        let weights = fpca.weights.clone();
+
+        // Input curve + reference: same spanning combinations as forward.rs test.
+        let curve: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                0.7 * (PI * t).sin() - 0.4 * (2.0 * PI * t).cos() + 0.3 * (3.0 * PI * t).sin()
+            })
+            .collect();
+        let reference: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                0.2 * (PI * t).sin() + 0.5 * (2.0 * PI * t).cos() - 0.6 * (3.0 * PI * t).sin()
+            })
+            .collect();
+        let reference_vars: Vec<Var> = reference
+            .iter()
+            .map(|&r| <Var as Scalar>::from_f64(r))
+            .collect();
+
+        // Composed scalar objective via vjp (one forward pass + one backward sweep).
+        let objective = |c: &[Var]| -> Var {
+            let sdtw = soft_dtw_distance_generic(c, &reference_vars, gamma);
+            let scores = project_scores_generic(c, &mean, &rotation, &weights, ncomp);
+            let mut acc = <Var as Scalar>::zero();
+            for s in &scores {
+                acc = acc + *s * *s;
+            }
+            sdtw + <Var as Scalar>::from_f64(lambda) * acc
+        };
+
+        let (value, gradient) = vjp(objective, &curve);
+        assert_eq!(gradient.len(), m);
+        assert!(value.is_finite(), "objective value not finite: {value}");
+        assert!(value > 0.0, "objective value not positive: {value}");
+
+        // f64 reference for FD oracle: identical math, no tape.
+        let f64_obj = |c: &[f64]| -> f64 {
+            let d = soft_dtw_distance_generic::<f64>(c, &reference, gamma);
+            let sc = project_scores_generic::<f64>(c, &mean, &rotation, &weights, ncomp);
+            d + lambda * sc.iter().map(|s| s * s).sum::<f64>()
+        };
+
+        // Composition parity at f64: primal must agree within float epsilon.
+        assert!(
+            (value - f64_obj(&curve)).abs() < 1e-12,
+            "composition parity broke: vjp primal={value} f64={}",
+            f64_obj(&curve)
+        );
+
+        // Central FD (h = 1e-6) cross-check on every gradient component.
+        let h = 1e-6_f64;
+        for j in 0..m {
+            let mut plus = curve.clone();
+            let mut minus = curve.clone();
+            plus[j] += h;
+            minus[j] -= h;
+            let fd = (f64_obj(&plus) - f64_obj(&minus)) / (2.0 * h);
+            assert!(
+                (gradient[j] - fd).abs() < 1e-6,
+                "component {j}: rev={} FD={fd}  diff={}",
+                gradient[j],
+                (gradient[j] - fd).abs()
+            );
+        }
+    }
 }
