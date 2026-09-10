@@ -1183,4 +1183,154 @@ mod tests {
             rg[2]
         );
     }
+
+    // -------------------------------------------------------------------------
+    // Tier 4 — reverse-mode vs central finite differences on real FDA functions
+    // (Task 1, Plan 04 — RAD-03 validation)
+    //
+    // These tests instantiate the existing generic functions at `Var` WITHOUT any
+    // call-site changes, proving `Var: Scalar` is a correct drop-in scalar.
+    // The f64 instantiations serve as the FD oracle.
+    //
+    // Tolerances (from 94-RESEARCH.md §Tolerances):
+    //   - Simple functions (soft_dtw, project_scores): h = 1e-8, tol = 1e-6
+    //   - Composed objective: h = 1e-6, tol = 1e-6
+    // -------------------------------------------------------------------------
+
+    /// Tier-4: vjp through `soft_dtw_distance_generic::<Var>` matches central FD.
+    ///
+    /// Calls `soft_dtw_distance_generic(vars, &ref_vars, gamma)` with `Var` inputs
+    /// and off-tape `Scalar::from_f64` reference constants — ZERO changes to the
+    /// generic function. Verifies each gradient component against h=1e-8 central FD
+    /// within 1e-6, proving RAD-03's FD cross-check on the soft-DTW path.
+    #[test]
+    fn vjp_soft_dtw_matches_finite_diff() {
+        use crate::metric::soft_dtw_distance_generic;
+
+        let m = 16usize;
+        let gamma = 0.1_f64;
+
+        // Simple sinusoidal curve and cosine reference — span [0, 1) to avoid
+        // degenerate alignment at endpoints.
+        let curve: Vec<f64> = (0..m).map(|j| (j as f64 / m as f64).sin()).collect();
+        let reference: Vec<f64> = (0..m).map(|j| (j as f64 / m as f64).cos()).collect();
+
+        // Run vjp: reference values are off-tape constants (Scalar::from_f64),
+        // inputs are on-tape Var leaves seeded by vjp.
+        let (_, gradient) = vjp(
+            |vars: &[Var]| {
+                let ref_vars: Vec<Var> = reference.iter().map(|&r| Scalar::from_f64(r)).collect();
+                soft_dtw_distance_generic(vars, &ref_vars, gamma)
+            },
+            &curve,
+        );
+
+        assert_eq!(gradient.len(), m, "gradient length must equal curve length");
+
+        // Central FD oracle — plain f64 path, no tape.
+        let h = 1e-8_f64;
+        for j in 0..m {
+            let mut plus = curve.clone();
+            let mut minus = curve.clone();
+            plus[j] += h;
+            minus[j] -= h;
+            let fd = (soft_dtw_distance_generic::<f64>(&plus, &reference, gamma)
+                - soft_dtw_distance_generic::<f64>(&minus, &reference, gamma))
+                / (2.0 * h);
+            assert!(
+                (gradient[j] - fd).abs() < 1e-6,
+                "component {j}: rev={} FD={fd}  diff={}",
+                gradient[j],
+                (gradient[j] - fd).abs()
+            );
+        }
+    }
+
+    /// Tier-4: vjp through `project_scores_generic::<Var>` matches central FD.
+    ///
+    /// Builds a small FPCA model via `fdata_to_pc` (full-rank spanning training
+    /// set seeded deterministically), defines the scalar objective as the sum of
+    /// squared FPC scores, and checks every gradient component against h=1e-8
+    /// central FD within 1e-6 — RAD-03's FD cross-check on the FPCA-scores path.
+    #[test]
+    fn vjp_project_scores_matches_finite_diff() {
+        use crate::matrix::FdMatrix;
+        use crate::regression::{fdata_to_pc, project_scores_generic};
+        use rand::rngs::StdRng;
+        use rand::{Rng, SeedableRng};
+        use std::f64::consts::PI;
+
+        let m = 24usize;
+        let n = 40usize;
+        let ncomp = 3usize;
+
+        // Grid on [0.1, 0.9] — same as the forward-mode composed test (Plan 01).
+        let argvals: Vec<f64> = (0..m)
+            .map(|j| 0.1 + 0.8 * j as f64 / (m - 1) as f64)
+            .collect();
+
+        // Spanning full-rank training set: seed 20260906 (matching forward.rs test).
+        let mut rng = StdRng::seed_from_u64(20260906);
+        let mut data = vec![0.0f64; n * m];
+        for i in 0..n {
+            let a: f64 = rng.gen_range(-1.0..1.0);
+            let b: f64 = rng.gen_range(-1.0..1.0);
+            let c: f64 = rng.gen_range(-1.0..1.0);
+            for (j, &t) in argvals.iter().enumerate() {
+                let v = a * (PI * t).sin() + b * (2.0 * PI * t).cos() + c * (3.0 * PI * t).sin();
+                data[i + j * n] = v; // column-major
+            }
+        }
+        let data = FdMatrix::from_column_major(data, n, m).unwrap();
+        let fpca = fdata_to_pc(&data, ncomp, &argvals).unwrap();
+        let mean = fpca.mean.clone();
+        let rotation = fpca.rotation.clone();
+        let weights = fpca.weights.clone();
+
+        // Test curve: a spanning combination.
+        let curve: Vec<f64> = argvals
+            .iter()
+            .map(|&t| {
+                0.7 * (PI * t).sin() - 0.4 * (2.0 * PI * t).cos() + 0.3 * (3.0 * PI * t).sin()
+            })
+            .collect();
+
+        // Scalar objective: sum of squared FPC scores.
+        // project_scores_generic is called with Var — ZERO changes to that function.
+        let (value, gradient) = vjp(
+            |vars: &[Var]| {
+                let scores = project_scores_generic(vars, &mean, &rotation, &weights, ncomp);
+                let mut acc = Scalar::zero();
+                for s in &scores {
+                    acc = acc + *s * *s;
+                }
+                acc
+            },
+            &curve,
+        );
+
+        assert_eq!(gradient.len(), m, "gradient length must equal curve length");
+        assert!(value.is_finite(), "objective value not finite: {value}");
+
+        // Central FD oracle with h = 1e-8.
+        let h = 1e-8_f64;
+        let f64_obj = |c: &[f64]| -> f64 {
+            let sc = project_scores_generic::<f64>(c, &mean, &rotation, &weights, ncomp);
+            sc.iter().map(|s| s * s).sum::<f64>()
+        };
+
+        for j in 0..m {
+            let mut plus = curve.clone();
+            let mut minus = curve.clone();
+            plus[j] += h;
+            minus[j] -= h;
+            let fd = (f64_obj(&plus) - f64_obj(&minus)) / (2.0 * h);
+            assert!(
+                (gradient[j] - fd).abs() < 1e-6,
+                "component {j}: rev={} FD={fd}  diff={}",
+                gradient[j],
+                (gradient[j] - fd).abs()
+            );
+        }
+    }
 }
