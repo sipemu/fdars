@@ -483,12 +483,14 @@ impl Scalar for Var {
 /// # Example
 ///
 /// ```
-/// use fdars_core::autodiff::vjp;
+/// use fdars_core::autodiff::{vjp, Var};
 ///
-/// // f(x) = x^2, f'(x) = 2x. At x = 3: f = 9, f' = 6.
-/// let (value, gradient) = vjp(|x| x[0] * x[0], &[3.0]);
-/// assert!((value - 9.0).abs() < 1e-10);
-/// assert!((gradient[0] - 6.0).abs() < 1e-10);
+/// // f(x0, x1) = x0^2 + x1, df/dx0 = 2*x0, df/dx1 = 1.
+/// // At (3.0, 5.0): f = 14.0, grad = [6.0, 1.0].
+/// let (value, grad) = vjp(|x: &[Var]| x[0] * x[0] + x[1], &[3.0, 5.0]);
+/// assert!((value - 14.0).abs() < 1e-10);
+/// assert!((grad[0] - 6.0).abs() < 1e-10);
+/// assert!((grad[1] - 1.0).abs() < 1e-10);
 /// ```
 #[must_use]
 pub fn vjp<F: Fn(&[Var]) -> Var>(f: F, x: &[f64]) -> (f64, Vec<f64>) {
