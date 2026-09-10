@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.43.0
-milestone_name: Test Determinism & Release Hardening
-status: Awaiting next milestone
-stopped_at: Phase 93 complete — all phases complete
-last_updated: "2026-09-09T13:12:14.680Z"
-last_activity: 2026-09-09
-last_activity_desc: Milestone v0.43.0 completed and archived
-state_head: aacc7574892f01bd6f659d7e27f27c8008635a74
+milestone: v0.44.0
+milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
+status: planning
+last_updated: "2026-09-10T18:26:02.168Z"
+last_activity: 2026-09-10
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
-current_phase: 93
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-09)
 
 ## Current Position
 
-Phase: Milestone v0.43.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-09 — Milestone v0.43.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-10 — Milestone v0.44.0 started
 
 ## Milestone Roadmap (v0.43.0)
 
