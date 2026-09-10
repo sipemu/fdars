@@ -4,17 +4,17 @@ milestone: v0.44.0
 milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
 current_phase: 94
 current_phase_name: Reverse-Mode Autodiff Core (VJP Tape)
-status: executing
-stopped_at: Completed 94-03-vjp-hardening-agreement-PLAN.md
-last_updated: "2026-09-10T20:49:33.370Z"
+status: verifying
+stopped_at: Completed 94-04-validation-prelude-PLAN.md
+last_updated: "2026-09-10T21:02:49.214Z"
 last_activity: 2026-09-10
 last_activity_desc: Phase 94 execution started
-state_head: f9b58e3ac4ec7aab1bc9056fafcb402c1a4cab41
+state_head: a8b8c897a21a56be4177b28f619d9957e7556217
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-09)
 
 Phase: 94 (Reverse-Mode Autodiff Core (VJP Tape)) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-10 — Phase 94 execution started
 
 ## Milestone Roadmap (v0.44.0)
@@ -86,6 +86,7 @@ Seven phases, 11 requirements — an implementation milestone completing the dif
 | Phase 94 P01 | 7min | 3 tasks | 4 files |
 | Phase 94 P02 | 4min | 2 tasks | 1 files |
 | Phase 94 P03 | 5min | 2 tasks | 1 files |
+| Phase 94 P04 | 10min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,8 @@ Decisions relevant to current work (v0.44.0):
 - [Phase 94]: signum for Var returns SENTINEL constant (no tape node) — piecewise-constant function has zero gradient, matches Dual zero-tangent convention
 - [Phase 94]: Double-clear tape lifecycle was already correct in Plan 02 — confirmed by repeated-call stability tests showing zero gradient drift across 3 successive vjp calls
 - [Phase 94]: Tier-3 agreement tests import crate::autodiff::{Dual, grad} from inside reverse.rs tests — valid because autodiff/mod.rs re-exports both at crate::autodiff path
+- [Phase 94]: Tier-4 FD cross-check uses <Var as Scalar>::zero() disambiguation in test closures — Rust cannot infer the Scalar impl from Fn(&[Var])->Var alone when calling free-standing trait methods
+- [Phase 94]: prelude.rs Var+vjp re-exports were already correct from Plan 01; Plan 04 only updated the vjp doctest to show 2-input Var-annotated example
 
 ### Pending Todos
 
@@ -134,8 +137,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-10T20:49:33.352Z
-Stopped at: Completed 94-03-vjp-hardening-agreement-PLAN.md
+Last session: 2026-09-10T21:02:49.196Z
+Stopped at: Completed 94-04-validation-prelude-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
