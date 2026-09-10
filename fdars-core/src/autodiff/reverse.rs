@@ -413,4 +413,111 @@ mod tests {
             grad[0]
         );
     }
+
+    // -------------------------------------------------------------------------
+    // Tier 1 — arithmetic ops known-answer tests (added in Task 1, Plan 02)
+    // -------------------------------------------------------------------------
+
+    /// Add: f(x) = x + x = 2x, df/dx = 2. At x = 5: f = 10, df/dx = 2.
+    #[test]
+    fn var_add_known_answer() {
+        let (value, grad) = vjp(|x| x[0] + x[0], &[5.0]);
+        assert!((value - 10.0).abs() < TOL, "primal {} != 10.0", value);
+        assert!(
+            (grad[0] - 2.0).abs() < TOL,
+            "gradient[0] {} != 2.0",
+            grad[0]
+        );
+    }
+
+    /// Sub: f(x, y) = x - y. At (4, 1): f = 3, df/dx = 1, df/dy = -1.
+    #[test]
+    fn var_sub_known_answer() {
+        let (value, grad) = vjp(|x| x[0] - x[1], &[4.0, 1.0]);
+        assert!((value - 3.0).abs() < TOL, "primal {} != 3.0", value);
+        assert!((grad[0] - 1.0).abs() < TOL, "grad[0] {} != 1.0", grad[0]);
+        assert!((grad[1] + 1.0).abs() < TOL, "grad[1] {} != -1.0", grad[1]);
+    }
+
+    /// Div: f(x, y) = x / y. Quotient rule: df/dx = 1/y, df/dy = -x/y^2.
+    /// At (6, 3): f = 2, df/dx = 1/3, df/dy = -6/9 = -2/3.
+    #[test]
+    fn var_div_known_answer() {
+        let (value, grad) = vjp(|x| x[0] / x[1], &[6.0, 3.0]);
+        assert!((value - 2.0).abs() < TOL, "primal {} != 2.0", value);
+        assert!(
+            (grad[0] - 1.0 / 3.0).abs() < TOL,
+            "grad[0] {} != 1/3",
+            grad[0]
+        );
+        assert!(
+            (grad[1] - (-2.0 / 3.0)).abs() < TOL,
+            "grad[1] {} != -2/3",
+            grad[1]
+        );
+    }
+
+    /// Div with RHS constant: f(x) = x / 4.0, df/dx = 0.25. At x = 8: f = 2, df/dx = 0.25.
+    #[test]
+    fn var_div_rhs_const_known_answer() {
+        let (value, grad) = vjp(|x| x[0] / Scalar::from_f64(4.0), &[8.0]);
+        assert!((value - 2.0).abs() < TOL, "primal {} != 2.0", value);
+        assert!((grad[0] - 0.25).abs() < TOL, "grad[0] {} != 0.25", grad[0]);
+    }
+
+    /// Neg: f(x) = -(x * x), df/dx = -2x. At x = 3: f = -9, df/dx = -6.
+    #[test]
+    fn var_neg_known_answer() {
+        let (value, grad) = vjp(|x| -(x[0] * x[0]), &[3.0]);
+        assert!((value + 9.0).abs() < TOL, "primal {} != -9.0", value);
+        assert!((grad[0] + 6.0).abs() < TOL, "grad[0] {} != -6.0", grad[0]);
+    }
+
+    /// AddAssign: acc += x*x propagates gradient.
+    /// f(x) = 0 + x^2 = x^2, df/dx = 2x. At x = 4: f = 16, df/dx = 8.
+    #[test]
+    fn var_add_assign_propagates_gradient() {
+        let (value, grad) = vjp(
+            |x| {
+                let mut acc = Scalar::zero();
+                acc += x[0] * x[0];
+                acc
+            },
+            &[4.0],
+        );
+        assert!((value - 16.0).abs() < TOL, "primal {} != 16.0", value);
+        assert!((grad[0] - 8.0).abs() < TOL, "grad[0] {} != 8.0", grad[0]);
+    }
+
+    /// SubAssign: acc -= x delegates to Sub, gradient flows.
+    /// f(x) = 1 - x, df/dx = -1. At x = 3: f = -2, df/dx = -1.
+    #[test]
+    fn var_sub_assign_propagates_gradient() {
+        let (value, grad) = vjp(
+            |x| {
+                let mut acc = Scalar::one();
+                acc -= x[0];
+                acc
+            },
+            &[3.0],
+        );
+        assert!((value + 2.0).abs() < TOL, "primal {} != -2.0", value);
+        assert!((grad[0] + 1.0).abs() < TOL, "grad[0] {} != -1.0", grad[0]);
+    }
+
+    /// MulAssign: acc *= x delegates to Mul, gradient flows.
+    /// f(x) = 2 * x, df/dx = 2. At x = 5: f = 10, df/dx = 2.
+    #[test]
+    fn var_mul_assign_propagates_gradient() {
+        let (value, grad) = vjp(
+            |x| {
+                let mut acc = Scalar::from_f64(2.0);
+                acc *= x[0];
+                acc
+            },
+            &[5.0],
+        );
+        assert!((value - 10.0).abs() < TOL, "primal {} != 10.0", value);
+        assert!((grad[0] - 2.0).abs() < TOL, "grad[0] {} != 2.0", grad[0]);
+    }
 }
