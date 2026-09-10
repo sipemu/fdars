@@ -853,4 +853,72 @@ mod tests {
             grad[0]
         );
     }
+
+    // -------------------------------------------------------------------------
+    // Tier 5 — lifecycle / edge-case tests (Task 1, Plan 03)
+    // -------------------------------------------------------------------------
+
+    /// Empty input: vjp(|_| constant, &[]) returns (constant_value, empty vec),
+    /// no panic and no tape residue.
+    #[test]
+    fn vjp_empty_input_no_panic() {
+        let (value, grad) = vjp(|_x| Scalar::from_f64(5.0), &[]);
+        assert!((value - 5.0).abs() < TOL, "primal {} != 5.0", value);
+        assert!(grad.is_empty(), "gradient must be empty for empty input");
+    }
+
+    /// Constant-only closure: f always returns 2.0 regardless of inputs.
+    /// The output node is SENTINEL, so every input's adjoint stays 0.0.
+    #[test]
+    fn vjp_constant_only_closure_gradient_is_zero() {
+        let (value, grad) = vjp(|_x| Scalar::from_f64(2.0), &[1.0, 2.0]);
+        assert!((value - 2.0).abs() < TOL, "primal {} != 2.0", value);
+        assert_eq!(grad.len(), 2, "gradient length must match input length");
+        assert_eq!(grad[0], 0.0, "grad[0] must be 0.0 for constant closure");
+        assert_eq!(grad[1], 0.0, "grad[1] must be 0.0 for constant closure");
+    }
+
+    /// Single input cube: f(x) = x^3, f'(x) = 3x^2.
+    /// At x = 2: f = 8, f' = 12.
+    #[test]
+    fn vjp_single_input_cube() {
+        let (value, grad) = vjp(|x| x[0] * x[0] * x[0], &[2.0]);
+        assert!((value - 8.0).abs() < TOL, "primal {} != 8.0", value);
+        assert!((grad[0] - 12.0).abs() < TOL, "grad[0] {} != 12.0", grad[0]);
+    }
+
+    /// Repeated-call stability: calling vjp 3 times in a row on the same closure
+    /// yields bit-identical gradients (proves no tape leakage between calls).
+    #[test]
+    fn vjp_repeated_calls_no_gradient_drift() {
+        let f = |x: &[Var]| x[0] * x[0] + x[1];
+        let x = &[3.0_f64, 1.0_f64];
+        let (v0, g0) = vjp(f, x);
+        let (v1, g1) = vjp(f, x);
+        let (v2, g2) = vjp(f, x);
+        // All three calls must agree exactly (no drift from tape residue).
+        assert_eq!(v0, v1, "primal drift on call 2");
+        assert_eq!(v0, v2, "primal drift on call 3");
+        assert_eq!(g0[0], g1[0], "grad[0] drift on call 2");
+        assert_eq!(g0[0], g2[0], "grad[0] drift on call 3");
+        assert_eq!(g0[1], g1[1], "grad[1] drift on call 2");
+        assert_eq!(g0[1], g2[1], "grad[1] drift on call 3");
+        // Also assert the values are correct: f = x0^2 + x1 = 10, df/dx0 = 2*3 = 6, df/dx1 = 1.
+        assert!((v0 - 10.0).abs() < TOL, "primal {} != 10.0", v0);
+        assert!((g0[0] - 6.0).abs() < TOL, "grad[0] {} != 6.0", g0[0]);
+        assert!((g0[1] - 1.0).abs() < TOL, "grad[1] {} != 1.0", g0[1]);
+    }
+
+    /// Many-input→scalar single backward sweep: f(x0, x1, x2) = x0*x1 + x2.
+    /// At (2, 3, 4): f = 10, df/dx0 = 3, df/dx1 = 2, df/dx2 = 1.
+    /// All three gradients are accumulated in one reverse sweep — the RAD-02
+    /// efficiency claim over grad's 3 forward passes.
+    #[test]
+    fn vjp_many_input_scalar_single_sweep() {
+        let (value, grad) = vjp(|x| x[0] * x[1] + x[2], &[2.0, 3.0, 4.0]);
+        assert!((value - 10.0).abs() < TOL, "primal {} != 10.0", value);
+        assert!((grad[0] - 3.0).abs() < TOL, "grad[0] {} != 3.0", grad[0]);
+        assert!((grad[1] - 2.0).abs() < TOL, "grad[1] {} != 2.0", grad[1]);
+        assert!((grad[2] - 1.0).abs() < TOL, "grad[2] {} != 1.0", grad[2]);
+    }
 }
