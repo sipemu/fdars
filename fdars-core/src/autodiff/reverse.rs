@@ -84,8 +84,6 @@ fn push_binary(dep0: usize, w0: f64, dep1: usize, w1: f64) -> usize {
 /// Record a unary operation on the tape and return its new node index.
 ///
 /// The second slot is set to `SENTINEL` / `0.0` (no second parent).
-// Used by transcendental op impls added in Plan 02.
-#[allow(dead_code)]
 fn push_unary(dep0: usize, w0: f64) -> usize {
     TAPE.with(|cell| {
         let mut tape = cell.borrow_mut();
@@ -141,17 +139,45 @@ impl PartialOrd for Var {
 // Arithmetic op impls
 // ---------------------------------------------------------------------------
 
+/// Add two `Var`s, recording unit partials on the tape.
+///
+/// `d(u+v)/du = 1`,  `d(u+v)/dv = 1`.
+///
+/// Short-circuits to a constant when both inputs are constants.
 impl Add for Var {
     type Output = Self;
-    fn add(self, _rhs: Self) -> Self {
-        unimplemented!("Add for Var — implemented in Plan 02")
+    fn add(self, rhs: Self) -> Self {
+        let value = self.value + rhs.value;
+        if self.node == SENTINEL && rhs.node == SENTINEL {
+            return Var {
+                value,
+                node: SENTINEL,
+            };
+        }
+        // ∂(u+v)/∂u = 1,  ∂(u+v)/∂v = 1
+        let node = push_binary(self.node, 1.0, rhs.node, 1.0);
+        Var { value, node }
     }
 }
 
+/// Subtract two `Var`s, recording +1 and -1 partials on the tape.
+///
+/// `d(u-v)/du = 1`,  `d(u-v)/dv = -1`.
+///
+/// Short-circuits to a constant when both inputs are constants.
 impl Sub for Var {
     type Output = Self;
-    fn sub(self, _rhs: Self) -> Self {
-        unimplemented!("Sub for Var — implemented in Plan 02")
+    fn sub(self, rhs: Self) -> Self {
+        let value = self.value - rhs.value;
+        if self.node == SENTINEL && rhs.node == SENTINEL {
+            return Var {
+                value,
+                node: SENTINEL,
+            };
+        }
+        // ∂(u-v)/∂u = 1,  ∂(u-v)/∂v = -1
+        let node = push_binary(self.node, 1.0, rhs.node, -1.0);
+        Var { value, node }
     }
 }
 
@@ -179,17 +205,59 @@ impl Mul for Var {
     }
 }
 
+/// Divide two `Var`s using the quotient rule.
+///
+/// `d(u/v)/du = 1/v`,  `d(u/v)/dv = -u/v²`.
+///
+/// Handles three constant-folding cases:
+/// - Both sentinel → constant result (no tape push).
+/// - RHS sentinel only → `push_unary(self.node, 1/v)` (common `x/gamma` case).
+/// - Otherwise → `push_binary` with full quotient-rule partials.
 impl Div for Var {
     type Output = Self;
-    fn div(self, _rhs: Self) -> Self {
-        unimplemented!("Div for Var — implemented in Plan 02")
+    fn div(self, rhs: Self) -> Self {
+        let value = self.value / rhs.value;
+        if self.node == SENTINEL && rhs.node == SENTINEL {
+            // const / const: constant result.
+            return Var {
+                value,
+                node: SENTINEL,
+            };
+        }
+        if rhs.node == SENTINEL {
+            // x / constant: only self contributes; partial = 1/v.
+            let node = push_unary(self.node, 1.0 / rhs.value);
+            return Var { value, node };
+        }
+        // General quotient rule: ∂(u/v)/∂u = 1/v,  ∂(u/v)/∂v = -u/v²
+        let node = push_binary(
+            self.node,
+            1.0 / rhs.value,
+            rhs.node,
+            -self.value / (rhs.value * rhs.value),
+        );
+        Var { value, node }
     }
 }
 
+/// Negate a `Var`, recording the `-1` partial on the tape.
+///
+/// `d(-u)/du = -1`.
+///
+/// Short-circuits to a constant when the input is a constant.
 impl Neg for Var {
     type Output = Self;
     fn neg(self) -> Self {
-        unimplemented!("Neg for Var — implemented in Plan 02")
+        let value = -self.value;
+        if self.node == SENTINEL {
+            return Var {
+                value,
+                node: SENTINEL,
+            };
+        }
+        // ∂(-u)/∂u = -1
+        let node = push_unary(self.node, -1.0);
+        Var { value, node }
     }
 }
 
