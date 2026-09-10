@@ -89,71 +89,9 @@
 //! assert!(value.is_finite());
 //! ```
 
-use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 
-/// Numeric substrate for forward-mode automatic differentiation.
-///
-/// A `Scalar` provides the arithmetic and transcendental operations a
-/// differentiable computation is written against. It is implemented for `f64`
-/// (a zero-cost passthrough) and for [`Dual`] (which propagates tangents via
-/// the chain rule).
-///
-/// # Domain restrictions
-///
-/// The transcendental methods inherit the domain restrictions of the
-/// underlying `f64` operations. In particular [`sqrt`](Scalar::sqrt) and
-/// [`ln`](Scalar::ln) require an in-domain (non-negative / positive) value, and
-/// [`powf`](Scalar::powf) can produce `NaN`/`Inf` tangents at `value == 0.0`
-/// with `p < 1.0`. Out-of-domain inputs propagate `NaN`/`Inf` exactly as they
-/// do for plain `f64`; callers own range checking.
-pub trait Scalar:
-    Copy
-    + Clone
-    + Debug
-    + PartialOrd
-    + Add<Output = Self>
-    + Sub<Output = Self>
-    + Mul<Output = Self>
-    + Div<Output = Self>
-    + Neg<Output = Self>
-    + AddAssign
-    + SubAssign
-    + MulAssign
-{
-    /// The additive identity (`0`).
-    fn zero() -> Self;
-    /// The multiplicative identity (`1`).
-    fn one() -> Self;
-    /// Construct a constant from an `f64` (tangent `0` for [`Dual`]).
-    fn from_f64(v: f64) -> Self;
-    /// Positive infinity sentinel (used e.g. for DP recurrence initialization).
-    fn infinity() -> Self;
-
-    /// Square root. Requires a non-negative value; the derivative diverges at 0.
-    fn sqrt(self) -> Self;
-    /// Natural exponential.
-    fn exp(self) -> Self;
-    /// Natural logarithm. Requires a strictly positive value.
-    fn ln(self) -> Self;
-    /// Sine.
-    fn sin(self) -> Self;
-    /// Cosine.
-    fn cos(self) -> Self;
-    /// Raise to a concrete `f64` power. The tangent uses `p * v^(p-1)`; at
-    /// `value == 0.0` with `p < 1.0` this may be `NaN`/`Inf`.
-    fn powf(self, p: f64) -> Self;
-    /// Absolute value. The tangent uses the subdifferential convention
-    /// `d/dx |v| = signum(v)`, with the honest at-zero selection
-    /// `signum(0) = 0`: at exactly `value == 0.0` the tangent is `0.0` (the
-    /// midpoint of the subdifferential `[-1, 1]`). The *value* is `v.abs()`
-    /// (bit-for-bit `f64` parity).
-    fn abs(self) -> Self;
-    /// Sign. Piecewise-constant, so the tangent is `0.0` everywhere. The
-    /// *value* is `f64::signum(v)` (`+1.0` at `+0.0`, `-1.0` at `-0.0`) to
-    /// preserve `f64` parity.
-    fn signum(self) -> Self;
-}
+use super::Scalar;
 
 impl Scalar for f64 {
     #[inline]
