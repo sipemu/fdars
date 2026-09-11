@@ -23,11 +23,11 @@ This is an **implementation milestone**: real `fdars-core/src/` changes, **stric
 ### Generic Scalar Hot-Paths (GEN) — DIF-F3
 
 - [x] **GEN-01**: Targeted hot-path signatures are generalized over the scalar type via defaulted type params (`T = f64`) so every existing f64 call site, R + WASM binding, and all 28 examples compile unchanged.
-- [ ] **GEN-02**: Autodiff types (`Dual` and the reverse-mode `Var`) flow through the generalized hot-paths end-to-end; a composed objective yields correct gradients validated by finite differences.
+- [x] **GEN-02**: Autodiff types (`Dual` and the reverse-mode `Var`) flow through the generalized hot-paths end-to-end; a composed objective yields correct gradients validated by finite differences.
 
 ### API & Release (REL)
 
-- [ ] **API-01**: Ergonomic gradient entry points (`grad` / `jacobian` / `vjp`) plus a worked end-to-end composition demo (finite-difference-checked), full crate-root + prelude re-exports for all new public surface, and a running module doctest.
+- [x] **API-01**: Ergonomic gradient entry points (`grad` / `jacobian` / `vjp`) plus a worked end-to-end composition demo (finite-difference-checked), full crate-root + prelude re-exports for all new public surface, and a running module doctest.
 - [ ] **REL-01**: Crate bumped 0.43.0 → 0.44.0 with CHANGELOG `[0.44.0]`; the differentiable-core items (DIF-F1/F2/F3) checked off on `documentation/ROADMAP-TO-1.0.md`; whole-crate gates green — `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, a `--features serde` build guard, all 28 examples + doctests, and `cargo package`. The `git tag v0.44.0` → crates.io publish is the deferred operator step.
 
 ## Future Requirements
@@ -73,8 +73,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DOP-03 | Phase 97 | Complete |
 | DOP-04 | Phase 98 | Complete |
 | GEN-01 | Phase 95 | Complete |
-| GEN-02 | Phase 99 | Pending |
-| API-01 | Phase 99 | Pending |
+| GEN-02 | Phase 99 | Complete |
+| API-01 | Phase 99 | Complete |
 | REL-01 | Phase 100 | Pending |
 
 **Coverage:**
