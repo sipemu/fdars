@@ -4,16 +4,16 @@ milestone: v0.44.0
 milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
 current_phase: 96
 current_phase_name: Differentiable Basis Evaluation & Inner Products
-status: planning
+status: executing
 stopped_at: Phase 95 complete, ready to plan Phase 96
-last_updated: "2026-09-11T07:02:08.513Z"
+last_updated: "2026-09-11T10:36:39.478Z"
 last_activity: 2026-09-11
-last_activity_desc: Phase 95 complete, transitioned to Phase 96
-state_head: 45987b8bba83a990ae755237638f8c9430e8c315
+last_activity_desc: Phase 96 execution started
+state_head: fccb4c8209b5cf7df950c23e8720e6c627fbcb09
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 7
+  total_plans: 10
   completed_plans: 7
   percent: 29
 ---
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-09)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library. This milestone completes the **differentiable-core** section of the 1.0 gap checklist (`documentation/ROADMAP-TO-1.0.md`, DIF-F1/F2/F3) — an in-crate reverse-mode (VJP) autodiff core alongside the v0.39.0 forward-mode `Dual`, a broadened differentiable operation set across four algorithm families, and generic-over-scalar hot-path signatures. Implementation milestone, **strictly additive/non-breaking** (defaulted type params `T = f64` — protects R + WASM bindings + 28 examples), **no new crate dependency** (in-crate hand-written tape).
-**Current focus:** Phase 95 — Generic Scalar Hot-Path Signatures
+**Current focus:** Phase 96 — Differentiable Basis Evaluation & Inner Products
 
 ## Current Position
 
-Phase: 96 — Differentiable Basis Evaluation & Inner Products
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-11 — Phase 95 complete, transitioned to Phase 96
+Phase: 96 (Differentiable Basis Evaluation & Inner Products) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 96
+Last activity: 2026-09-11 — Phase 96 execution started
 
 ## Milestone Roadmap (v0.44.0)
 
