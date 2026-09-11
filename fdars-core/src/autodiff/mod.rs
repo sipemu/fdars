@@ -15,6 +15,36 @@
 //! backward in one pass, collecting all input gradients simultaneously. This
 //! is `O(cost(f))` regardless of the number of inputs, versus `O(m · cost(f))`
 //! for forward-mode [`grad`].
+//!
+//! # Example — one objective, two modes
+//!
+//! A [`Scalar`]-generic objective can be differentiated by forward-mode [`grad`]
+//! (seed each input) or reverse-mode [`vjp`] (one backward sweep). Both agree:
+//!
+//! ```
+//! use fdars_core::autodiff::{grad, vjp, Dual, Scalar, Var};
+//!
+//! // f(x) = Σ_i sin(x_i) · exp(x_i) — written once, generic over the scalar type.
+//! fn objective<T: Scalar>(x: &[T]) -> T {
+//!     let mut acc = T::zero();
+//!     for &xi in x {
+//!         acc += xi.sin() * xi.exp();
+//!     }
+//!     acc
+//! }
+//!
+//! let x = [0.3_f64, -0.7, 1.1];
+//! let (fwd_val, fwd_grad) = grad(|d: &[Dual]| objective(d), &x);
+//! let (rev_val, rev_grad) = vjp(|v: &[Var]| objective(v), &x);
+//!
+//! assert!((fwd_val - rev_val).abs() < 1e-12);
+//! for i in 0..x.len() {
+//!     // analytic: d/dx [sin x · e^x] = e^x (sin x + cos x)
+//!     let analytic = x[i].exp() * (x[i].sin() + x[i].cos());
+//!     assert!((fwd_grad[i] - analytic).abs() < 1e-9);
+//!     assert!((rev_grad[i] - analytic).abs() < 1e-9);
+//! }
+//! ```
 
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
