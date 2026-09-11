@@ -645,10 +645,10 @@ pub use dim::Dim;
 pub use depth::{
     band, epigraph_index, extremal_depth, extreme_rank_length_depth, fraiman_muniz,
     functional_boxplot, functional_depth, functional_spatial, half_region_depth, hypograph_index,
-    kernel_functional_spatial, linfinity_depth, modal, modified_band, modified_epigraph_index,
-    modified_half_region_depth, modified_hypograph_index, random_projection,
-    random_projection_1d_seeded, random_tukey, random_tukey_1d_seeded, rpd_depth,
-    total_variation_depth, DepthMethod, FunctionalBoxplotResult, TvdMssResult,
+    kernel_functional_spatial, linfinity_depth, modal, modal_depth_generic, modified_band,
+    modified_epigraph_index, modified_half_region_depth, modified_hypograph_index,
+    random_projection, random_projection_1d_seeded, random_tukey, random_tukey_1d_seeded,
+    rpd_depth, total_variation_depth, DepthMethod, FunctionalBoxplotResult, TvdMssResult,
 };
 
 // Re-export outlier detection functions

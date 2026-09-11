@@ -589,3 +589,96 @@ fn test_rpd_m_leq_nderiv() {
         );
     }
 }
+
+// ----- modal_depth_generic tests (DOP-04: differentiable depth) -----
+
+/// f64 parity: modal_depth_generic::<f64> reproduces modal_1d per curve to ~1e-12
+/// (modal_1d uses f64::powi(2), not bit-guaranteed equal to u*u).
+#[test]
+fn test_modal_depth_generic_f64_parity() {
+    let data = generate_centered_data(6, 10);
+    let (n, m) = (data.nrows(), data.ncols());
+    let h = 0.5;
+    let batch = modal_1d(&data, &data, h);
+    for i in 0..n {
+        let curve: Vec<f64> = (0..m).map(|t| data[(i, t)]).collect();
+        let g = modal_depth_generic::<f64>(&curve, &data, h);
+        assert!(
+            (g - batch[i]).abs() < 1e-12,
+            "modal_depth_generic::<f64> vs modal_1d at {i}: {g} vs {}",
+            batch[i]
+        );
+    }
+}
+
+/// Forward-mode: tangent of modal_depth_generic::<Dual> w.r.t. each curve value
+/// matches central finite differences within 1e-6*(1+|fd|).
+#[test]
+fn test_modal_depth_generic_dual_fd_check() {
+    use crate::autodiff::Dual;
+    let data = generate_centered_data(6, 8);
+    let m = data.ncols();
+    let h = 0.7;
+    // Off-reference query (distinct from every reference row) so all dist_j > 0
+    // and the sqrt in the L2 distance is differentiable (no self-match kink).
+    let curve: Vec<f64> = (0..m)
+        .map(|t| data[(0, t)] + 0.05 + 0.01 * t as f64)
+        .collect();
+    let obj = |c: &[f64]| -> f64 { modal_depth_generic::<f64>(c, &data, h) };
+    let hfd = 1e-6_f64;
+    for idx in 0..m {
+        let cd: Vec<Dual> = curve
+            .iter()
+            .enumerate()
+            .map(|(t, &v)| {
+                if t == idx {
+                    Dual::seed(v)
+                } else {
+                    Dual::constant(v)
+                }
+            })
+            .collect();
+        let (_, tangent) = modal_depth_generic::<Dual>(&cd, &data, h).extract();
+        let mut cp = curve.clone();
+        let mut cm = curve.clone();
+        cp[idx] += hfd;
+        cm[idx] -= hfd;
+        let fd = (obj(&cp) - obj(&cm)) / (2.0 * hfd);
+        let tol = 1e-6 * (1.0 + fd.abs());
+        assert!(
+            (tangent - fd).abs() <= tol,
+            "Dual: curve[{idx}] tangent={tangent} vs FD={fd}"
+        );
+    }
+}
+
+/// Reverse-mode: vjp gradient of modal_depth_generic::<Var> w.r.t. all curve values
+/// matches central finite differences within 1e-6*(1+|fd|) in one backward sweep.
+#[test]
+fn test_modal_depth_generic_var_fd_check() {
+    use crate::autodiff::{vjp, Var};
+    let data = generate_centered_data(6, 8);
+    let m = data.ncols();
+    let h = 0.7;
+    // Off-reference query (distinct from every reference row) so all dist_j > 0
+    // and the sqrt in the L2 distance is differentiable (no self-match kink).
+    let curve: Vec<f64> = (0..m)
+        .map(|t| data[(0, t)] + 0.05 + 0.01 * t as f64)
+        .collect();
+    let obj = |c: &[f64]| -> f64 { modal_depth_generic::<f64>(c, &data, h) };
+    let (_, grad) = vjp(|c: &[Var]| modal_depth_generic::<Var>(c, &data, h), &curve);
+    let hfd = 1e-6_f64;
+    for idx in 0..m {
+        let mut cp = curve.clone();
+        let mut cm = curve.clone();
+        cp[idx] += hfd;
+        cm[idx] -= hfd;
+        let fd = (obj(&cp) - obj(&cm)) / (2.0 * hfd);
+        let tol = 1e-6 * (1.0 + fd.abs());
+        assert!(
+            (grad[idx] - fd).abs() <= tol,
+            "Var: grad[{idx}]={} vs FD={fd}",
+            grad[idx]
+        );
+    }
+}

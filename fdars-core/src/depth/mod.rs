@@ -35,7 +35,7 @@ pub use fraiman_muniz::fraiman_muniz;
 pub use half_region::{half_region_depth, modified_half_region_depth};
 pub use hypo_epi::{epigraph_index, hypograph_index, modified_hypograph_index};
 pub use linf::linfinity_depth;
-pub use modal::modal;
+pub use modal::{modal, modal_depth_generic};
 pub use random_projection::{random_projection, random_projection_1d_seeded};
 pub use random_tukey::{random_tukey, random_tukey_1d_seeded};
 pub use rpd::{rpd_depth, rpd_depth_1d_seeded};
