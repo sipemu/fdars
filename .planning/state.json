@@ -1,33 +1,48 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.43.0 — Test Determinism & Release Hardening",
+  "milestone": "v0.44.0 — Differentiable Core — Reverse-Mode & Broadened Subset",
   "phases": [
     {
-      "number": "90",
-      "name": "Golden-Flake Root-Cause & Deterministic Fix",
+      "number": "94",
+      "name": "Reverse-Mode Autodiff Core (VJP Tape)",
       "status": "complete"
     },
     {
-      "number": "91",
-      "name": "Suite-Wide Robustness Sweep",
-      "status": "complete"
+      "number": "95",
+      "name": "Generic Scalar Hot-Path Signatures",
+      "status": "in_progress"
     },
     {
-      "number": "92",
-      "name": "CI Determinism Guardrail",
-      "status": "complete"
+      "number": "96",
+      "name": "Differentiable Basis Evaluation & Inner Products",
+      "status": "pending"
     },
     {
-      "number": "93",
-      "name": "Release Preparation & Readiness Verification",
-      "status": "complete"
+      "number": "97",
+      "name": "Differentiable Regression Prediction & Smoothing Penalties",
+      "status": "pending"
+    },
+    {
+      "number": "98",
+      "name": "Differentiable Depth & Curve Distances",
+      "status": "pending"
+    },
+    {
+      "number": "99",
+      "name": "End-to-End Autodiff Flow & Gradient API",
+      "status": "pending"
+    },
+    {
+      "number": "100",
+      "name": "Release Preparation & Verification",
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 95 of 7 · 14% · executing"
   },
-  "updated_at": "2026-09-09T13:12:14.691Z"
+  "updated_at": "2026-09-11T06:36:27.221Z"
 }
