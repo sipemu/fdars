@@ -150,7 +150,11 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
   2. Smoothing / roughness-penalty evaluation is generic over `Scalar` and differentiable (penalty w.r.t. curve values / smoothing inputs); f64 penalty values are unchanged.
   3. Gradients of both the prediction and the penalty match central finite differences within tolerance.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+- [ ] 97-01-tracer-predict-curve-generic-PLAN.md — TRACER: add `predict_curve_generic<S: Scalar>` (compose `project_scores_generic` + coefficient fold) + f64 parity (1e-9) + Dual/Var FD w.r.t. curve; `predict_fregre_lm` + callers unchanged (DOP-02)
+- [ ] 97-02-penalty-value-generic-PLAN.md — add standalone `penalty_value_generic<S: Scalar>` (`λ·cᵀRc`, `&FdMatrix` carrier) + bit-identical f64 parity (1e-12) + Dual/Var FD w.r.t. coef; penalty-matrix constructors unchanged (DOP-03)
+- [ ] 97-03-non-breaking-gate-PLAN.md — non-breaking gate: clippy `--all-targets` + full test + doctests + 28 examples + serde + wasm + git-diff churn confined to the six touched files (DOP-02, DOP-03)
 
 ### Phase 98: Differentiable Depth & Curve Distances
 
@@ -207,7 +211,7 @@ Phases execute in numeric order: 94 → 95 → 96 → 97 → 98 → 99 → 100
 | 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 4/4 | Complete    | 2026-09-11 |
 | 95. Generic Scalar Hot-Path Signatures | v0.44.0 | 3/3 | Complete    | 2026-09-11 |
 | 96. Differentiable Basis Evaluation & Inner Products | v0.44.0 | 3/3 | Complete    | 2026-09-11 |
-| 97. Differentiable Regression Prediction & Smoothing Penalties | v0.44.0 | 0/? | Not started | - |
+| 97. Differentiable Regression Prediction & Smoothing Penalties | v0.44.0 | 0/3 | Not started | - |
 | 98. Differentiable Depth & Curve Distances | v0.44.0 | 0/? | Not started | - |
 | 99. End-to-End Autodiff Flow & Gradient API | v0.44.0 | 0/? | Not started | - |
 | 100. Release Preparation & Verification | v0.44.0 | 0/? | Not started | - |
