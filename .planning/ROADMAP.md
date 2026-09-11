@@ -133,7 +133,11 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
   2. Functional inner products are generic over `Scalar` and differentiable through their inputs.
   3. Gradients of a basis-eval / inner-product objective match finite differences within tolerance at both `Dual` and reverse-mode `Var`.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+- [ ] 96-01-tracer-bspline-generic-PLAN.md — TRACER: generalize B-spline eval (`bspline_basis_from_knots` + `evaluate_order_zero` + `bspline_recurrence_step`) over `<T: Scalar>` in place + f64-parity + combined inner-product objective FD-checked at Dual/Var (DOP-01)
+- [ ] 96-02-fourier-generic-core-PLAN.md — additive generic core `fourier_basis_eval<T>`; f64 wrappers `fourier_basis`/`fourier_basis_with_period` delegate with signatures unchanged + parity + Dual/Var FD (DOP-01)
+- [ ] 96-03-non-breaking-gate-PLAN.md — non-breaking gate: clippy --all-targets + full test + doctests + 28 examples + serde + wasm + git-diff churn confined to basis/ (DOP-01)
 
 ### Phase 97: Differentiable Regression Prediction & Smoothing Penalties
 
@@ -202,7 +206,7 @@ Phases execute in numeric order: 94 → 95 → 96 → 97 → 98 → 99 → 100
 |-------|-----------|----------------|--------|-----------|
 | 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 4/4 | Complete    | 2026-09-11 |
 | 95. Generic Scalar Hot-Path Signatures | v0.44.0 | 3/3 | Complete    | 2026-09-11 |
-| 96. Differentiable Basis Evaluation & Inner Products | v0.44.0 | 0/? | Not started | - |
+| 96. Differentiable Basis Evaluation & Inner Products | v0.44.0 | 0/3 | Not started | - |
 | 97. Differentiable Regression Prediction & Smoothing Penalties | v0.44.0 | 0/? | Not started | - |
 | 98. Differentiable Depth & Curve Distances | v0.44.0 | 0/? | Not started | - |
 | 99. End-to-End Autodiff Flow & Gradient API | v0.44.0 | 0/? | Not started | - |
