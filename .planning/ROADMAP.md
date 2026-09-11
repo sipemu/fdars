@@ -75,7 +75,7 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
 
 **Milestone Goal:** Complete the differentiable-core section of `documentation/ROADMAP-TO-1.0.md` (DIF-F1/F2/F3) — an in-crate reverse-mode (VJP) tape alongside forward-mode `Dual`, a broadened differentiable operation set across four families, and generic-over-scalar hot-path signatures — strictly additive so no existing call site, R/WASM binding, or example changes.
 
-- [ ] **Phase 94: Reverse-Mode Autodiff Core (VJP Tape)** - Hand-written in-crate reverse-mode tape + backward pass + VJP entry point, validated vs forward-mode and finite differences
+- [x] **Phase 94: Reverse-Mode Autodiff Core (VJP Tape)** - Hand-written in-crate reverse-mode tape + backward pass + VJP entry point, validated vs forward-mode and finite differences (completed 2026-09-11)
 - [ ] **Phase 95: Generic Scalar Hot-Path Signatures** - Generalize targeted hot-path signatures over the scalar type via defaulted type params (`T = f64`); non-breakingness proven at compile time
 - [ ] **Phase 96: Differentiable Basis Evaluation & Inner Products** - Basis eval (B-spline/Fourier) + functional inner products generic over `Scalar` and differentiable
 - [ ] **Phase 97: Differentiable Regression Prediction & Smoothing Penalties** - `fregre_lm`/FPCR prediction and roughness-penalty evaluation generic over `Scalar` and differentiable
@@ -196,7 +196,7 @@ Phases execute in numeric order: 94 → 95 → 96 → 97 → 98 → 99 → 100
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 4/4 | In Progress|  |
+| 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 4/4 | Complete    | 2026-09-11 |
 | 95. Generic Scalar Hot-Path Signatures | v0.44.0 | 0/? | Not started | - |
 | 96. Differentiable Basis Evaluation & Inner Products | v0.44.0 | 0/? | Not started | - |
 | 97. Differentiable Regression Prediction & Smoothing Penalties | v0.44.0 | 0/? | Not started | - |

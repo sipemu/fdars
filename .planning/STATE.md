@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v0.44.0
 milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
-current_phase: 94
-current_phase_name: Reverse-Mode Autodiff Core (VJP Tape)
-status: verifying
-stopped_at: Completed 94-04-validation-prelude-PLAN.md
-last_updated: "2026-09-10T21:02:49.214Z"
-last_activity: 2026-09-10
-last_activity_desc: Phase 94 execution started
-state_head: a8b8c897a21a56be4177b28f619d9957e7556217
+current_phase: 95
+current_phase_name: Generic Scalar Hot-Path Signatures
+status: planning
+stopped_at: Phase 94 complete, ready to plan Phase 95
+last_updated: "2026-09-11T05:37:03.360Z"
+last_activity: 2026-09-11
+last_activity_desc: Phase 94 complete, transitioned to Phase 95
+state_head: 6cdef6655f4b3111fb1dab7a0043c87fc8c3c435
 progress:
   total_phases: 7
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
   completed_plans: 4
-  percent: 0
+  percent: 14
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-09)
 
 ## Current Position
 
-Phase: 94 (Reverse-Mode Autodiff Core (VJP Tape)) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-09-10 — Phase 94 execution started
+Phase: 95 — Generic Scalar Hot-Path Signatures
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-11 — Phase 94 complete, transitioned to Phase 95
 
 ## Milestone Roadmap (v0.44.0)
 
@@ -138,7 +138,7 @@ Items acknowledged and deferred, most recent first:
 ## Session Continuity
 
 Last session: 2026-09-10T21:02:49.196Z
-Stopped at: Completed 94-04-validation-prelude-PLAN.md
+Stopped at: Phase 94 complete, ready to plan Phase 95
 Resume file: None
 
 ## Operator Next Steps
