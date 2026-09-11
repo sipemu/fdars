@@ -28,7 +28,7 @@ This is an **implementation milestone**: real `fdars-core/src/` changes, **stric
 ### API & Release (REL)
 
 - [x] **API-01**: Ergonomic gradient entry points (`grad` / `jacobian` / `vjp`) plus a worked end-to-end composition demo (finite-difference-checked), full crate-root + prelude re-exports for all new public surface, and a running module doctest.
-- [ ] **REL-01**: Crate bumped 0.43.0 → 0.44.0 with CHANGELOG `[0.44.0]`; the differentiable-core items (DIF-F1/F2/F3) checked off on `documentation/ROADMAP-TO-1.0.md`; whole-crate gates green — `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, a `--features serde` build guard, all 28 examples + doctests, and `cargo package`. The `git tag v0.44.0` → crates.io publish is the deferred operator step.
+- [x] **REL-01**: Crate bumped 0.43.0 → 0.44.0 with CHANGELOG `[0.44.0]`; the differentiable-core items (DIF-F1/F2/F3) checked off on `documentation/ROADMAP-TO-1.0.md`; whole-crate gates green — `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, a `--features serde` build guard, all 28 examples + doctests, and `cargo package`. The `git tag v0.44.0` → crates.io publish is the deferred operator step.
 
 ## Future Requirements
 
@@ -75,7 +75,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | GEN-01 | Phase 95 | Complete |
 | GEN-02 | Phase 99 | Complete |
 | API-01 | Phase 99 | Complete |
-| REL-01 | Phase 100 | Pending |
+| REL-01 | Phase 100 | Complete |
 
 **Coverage:**
 
