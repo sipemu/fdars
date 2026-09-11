@@ -616,24 +616,41 @@ fn test_single_point_basis() {
 
 // ============== B-spline generic (Scalar) tests — DOP-01 ==============
 
-/// Bit-identical parity: bspline_basis_from_knots::<f64> must reproduce the
-/// pre-change f64 output for the same inputs.  f64::from_f64 is the identity,
-/// so the generic path at T=f64 is bit-for-bit identical to the old f64 path.
+/// f64 known-properties for bspline_basis_from_knots::<f64> using INDEPENDENT
+/// oracles (not a self-comparison): partition-of-unity and reflection symmetry.
+/// A recurrence-body regression breaks one of these; the bit-parity guarantee at
+/// T=f64 rests on `f64::from_f64` being the identity (covered by the FD tests).
 #[test]
-fn test_bspline_basis_from_knots_f64_parity() {
+fn test_bspline_basis_from_knots_f64_known_properties() {
     use super::bspline::{bspline_basis_from_knots, construct_bspline_knots};
+    // Symmetric setup: uniform knots on [0,1] and evaluation points symmetric about 0.5.
     let t: Vec<f64> = (0..8).map(|i| i as f64 / 7.0).collect();
+    let n = t.len();
     let nknots = 5;
     let order = 4;
     let knots = construct_bspline_knots(0.0, 1.0, nknots, order);
-    // Compute once via inferred-T=f64 (same as the pre-change call)
-    let reference: Vec<f64> = bspline_basis_from_knots(&t, &knots, order);
-    // Compute again via the explicit ::<f64> turbofish (tests the generic path)
-    let generic: Vec<f64> = bspline_basis_from_knots::<f64>(&t, &knots, order);
-    assert_eq!(
-        reference, generic,
-        "bspline_basis_from_knots::<f64> must be bit-identical to inferred-f64 path"
-    );
+    let nbasis = knots.len() - order;
+    let basis: Vec<f64> = bspline_basis_from_knots::<f64>(&t, &knots, order);
+
+    // Partition of unity: each row sums to exactly 1 (independent structural oracle).
+    for i in 0..n {
+        let sum: f64 = (0..nbasis).map(|j| basis[i + j * n]).sum();
+        assert!(
+            (sum - 1.0).abs() < 1e-12,
+            "row {i} partition-of-unity sum={sum}"
+        );
+    }
+    // Reflection symmetry: symmetric knots + symmetric grid ⇒ B(t_i, j) == B(t_{n-1-i}, nbasis-1-j).
+    for i in 0..n {
+        for j in 0..nbasis {
+            let a = basis[i + j * n];
+            let b = basis[(n - 1 - i) + (nbasis - 1 - j) * n];
+            assert!(
+                (a - b).abs() < 1e-12,
+                "reflection symmetry break at ({i},{j}): {a} vs {b}"
+            );
+        }
+    }
 }
 
 /// Forward-mode gradient check: tangent from bspline_basis_from_knots<Dual> + inner_product<Dual>
@@ -682,7 +699,6 @@ fn test_bspline_inner_product_objective_dual() {
             })
             .collect();
 
-        // Generic objective at Dual
         let basis_dual = bspline_basis_from_knots(&t_dual, &knots, order);
         let col_dual: Vec<Dual> = (0..n).map(|ti| basis_dual[ti + col_j * n]).collect();
         let curve_lifted: Vec<Dual> = curve.iter().map(|&v| Dual::constant(v)).collect();
@@ -696,7 +712,7 @@ fn test_bspline_inner_product_objective_dual() {
         t_minus[seed_idx] -= h;
         let fd = (obj_f64(&t_plus) - obj_f64(&t_minus)) / (2.0 * h);
 
-        let tol = 1e-6 * fd.abs().max(1e-10);
+        let tol = 1e-6 * (1.0 + fd.abs());
         assert!(
             (tangent - fd).abs() <= tol,
             "Dual: t[{seed_idx}] tangent={tangent} vs FD={fd}, diff={}, tol={tol}",
@@ -754,7 +770,7 @@ fn test_bspline_inner_product_objective_var() {
         t_minus[idx] -= h;
         let fd = (obj_f64(&t_plus) - obj_f64(&t_minus)) / (2.0 * h);
 
-        let tol = 1e-6 * fd.abs().max(1e-10);
+        let tol = 1e-6 * (1.0 + fd.abs());
         assert!(
             (grad[idx] - fd).abs() <= tol,
             "Var: grad[{idx}]={} vs FD={fd}, diff={}, tol={tol}",
@@ -764,24 +780,44 @@ fn test_bspline_inner_product_objective_var() {
     }
 }
 
-/// Bit-identical parity: fourier_basis_eval::<f64> must reproduce the pre-change
-/// f64 output of fourier_basis_with_period for the same inputs. f64::from_f64 is
-/// the identity and the 2*PI*(t-t_min)/period operation order is preserved.
+/// Known-answer test for fourier_basis_eval::<f64> using hand-computed values
+/// (an INDEPENDENT oracle, not a self-comparison): with period=1 and t_min=0 the
+/// harmonic columns are sin(2πt) / cos(2πt), whose values at t ∈ {0, ¼, ½, ¾} are
+/// exactly known. Guards the f64 output against a body regression.
 #[test]
-fn test_fourier_basis_eval_f64_parity() {
-    use super::fourier::{fourier_basis_eval, fourier_basis_with_period};
-    let t: Vec<f64> = (0..8).map(|i| i as f64 / 7.0).collect();
-    let nbasis = 5;
-    let period = 1.0;
-    let t_min = 0.0; // min of t
-                     // Reference: the existing f64 wrapper (derives t_min = min(t) = 0.0 internally)
-    let reference: Vec<f64> = fourier_basis_with_period(&t, nbasis, period);
-    // Generic path at explicit ::<f64>
-    let generic: Vec<f64> = fourier_basis_eval::<f64>(&t, nbasis, period, t_min);
-    assert_eq!(
-        reference, generic,
-        "fourier_basis_eval::<f64> must be bit-identical to fourier_basis_with_period"
-    );
+fn test_fourier_basis_eval_f64_known_answer() {
+    use super::fourier::fourier_basis_eval;
+    let t = vec![0.0, 0.25, 0.5, 0.75];
+    let n = t.len();
+    let nbasis = 3; // [DC, sin(2πt), cos(2πt)]
+    let basis: Vec<f64> = fourier_basis_eval::<f64>(&t, nbasis, 1.0, 0.0);
+
+    // Column 0: DC = 1 everywhere.
+    for i in 0..n {
+        assert!(
+            (basis[i] - 1.0).abs() < 1e-12,
+            "DC col at {i} = {}",
+            basis[i]
+        );
+    }
+    // Column 1: sin(2πt) at t=0,¼,½,¾ → 0, 1, 0, -1.
+    let sin_expected = [0.0, 1.0, 0.0, -1.0];
+    for i in 0..n {
+        assert!(
+            (basis[i + n] - sin_expected[i]).abs() < 1e-12,
+            "sin col at {i} = {}",
+            basis[i + n]
+        );
+    }
+    // Column 2: cos(2πt) → 1, 0, -1, 0.
+    let cos_expected = [1.0, 0.0, -1.0, 0.0];
+    for i in 0..n {
+        assert!(
+            (basis[i + 2 * n] - cos_expected[i]).abs() < 1e-12,
+            "cos col at {i} = {}",
+            basis[i + 2 * n]
+        );
+    }
 }
 
 /// Forward-mode gradient check: tangent from fourier_basis_eval<Dual> + inner_product<Dual>

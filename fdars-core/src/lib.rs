@@ -677,8 +677,8 @@ pub use fdata::{
 pub use basis::{
     basis_to_fdata, basis_to_fdata_1d, bspline_basis, bspline_basis_from_knots, constant_basis,
     construct_bspline_knots, difference_matrix, exponential_basis, fdata_to_basis,
-    fdata_to_basis_1d, fourier_basis, fourier_basis_with_period, fourier_fit, monomial_basis,
-    polygonal_basis, power_basis, pspline_evaluate, pspline_fit, pspline_fit_gcv,
+    fdata_to_basis_1d, fourier_basis, fourier_basis_eval, fourier_basis_with_period, fourier_fit,
+    monomial_basis, polygonal_basis, power_basis, pspline_evaluate, pspline_fit, pspline_fit_gcv,
     select_basis_auto, select_fourier_nbasis_gcv, BasisAutoSelectionResult, BasisProjectionResult,
     BasisSystem, FourierFitResult, ProjectionBasisType, PsplineFitResult, SingleCurveSelection,
 };
