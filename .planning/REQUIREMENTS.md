@@ -15,7 +15,7 @@ This is an **implementation milestone**: real `fdars-core/src/` changes, **stric
 
 ### Differentiable Operations (DOP) — DIF-F2 (four families)
 
-- [ ] **DOP-01**: Basis evaluation (B-spline / Fourier) and functional inner products are generic over `Scalar` and differentiable; the f64 path reproduces current numerics.
+- [x] **DOP-01**: Basis evaluation (B-spline / Fourier) and functional inner products are generic over `Scalar` and differentiable; the f64 path reproduces current numerics.
 - [ ] **DOP-02**: Scalar-on-function regression prediction (`fregre_lm` / FPCR path) is generic over `Scalar` and differentiable w.r.t. inputs; validated vs finite differences with f64 parity preserved.
 - [ ] **DOP-03**: Smoothing / roughness-penalty evaluation is generic over `Scalar` and differentiable (penalty w.r.t. curve values / smoothing inputs); f64 parity preserved.
 - [ ] **DOP-04**: Functional depth and curve distances (beyond the existing soft-DTW) are generic over `Scalar` and differentiable; validated vs finite differences with f64 parity preserved.
@@ -68,7 +68,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | RAD-01 | Phase 94 | Complete |
 | RAD-02 | Phase 94 | Complete |
 | RAD-03 | Phase 94 | Complete |
-| DOP-01 | Phase 96 | Pending |
+| DOP-01 | Phase 96 | Complete |
 | DOP-02 | Phase 97 | Pending |
 | DOP-03 | Phase 97 | Pending |
 | DOP-04 | Phase 98 | Pending |
