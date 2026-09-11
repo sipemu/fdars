@@ -116,11 +116,11 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
   3. All 28 examples and the R + WASM binding surfaces compile unchanged against the generalized signatures.
   4. The `--features serde` build stays green (no regression from the generalization).
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 - [x] 95-01-tracer-l2-distance-PLAN.md — TRACER: generalize l2_distance to `<T: Scalar = f64>` + parity/Dual/Var tests + confirm l2_distance_matrix & crate compile
 - [x] 95-02-remaining-kernels-PLAN.md — generalize trapz, inner_product (`.sum()`→accumulator rewrite), inner_product_l2 in place + parity/Dual/Var tests
-- [ ] 95-03-non-breaking-compile-gate-PLAN.md — GEN-01 compile-gate: 28 examples + serde + wasm + clippy --all-targets + full test + doctests + churn diff + fdars-r grep
+- [x] 95-03-non-breaking-compile-gate-PLAN.md — GEN-01 compile-gate: 28 examples + serde + wasm + clippy --all-targets + full test + doctests + churn diff + fdars-r grep
 
 ### Phase 96: Differentiable Basis Evaluation & Inner Products
 
@@ -201,7 +201,7 @@ Phases execute in numeric order: 94 → 95 → 96 → 97 → 98 → 99 → 100
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 4/4 | Complete    | 2026-09-11 |
-| 95. Generic Scalar Hot-Path Signatures | v0.44.0 | 2/3 | In Progress|  |
+| 95. Generic Scalar Hot-Path Signatures | v0.44.0 | 3/3 | In Progress|  |
 | 96. Differentiable Basis Evaluation & Inner Products | v0.44.0 | 0/? | Not started | - |
 | 97. Differentiable Regression Prediction & Smoothing Penalties | v0.44.0 | 0/? | Not started | - |
 | 98. Differentiable Depth & Curve Distances | v0.44.0 | 0/? | Not started | - |

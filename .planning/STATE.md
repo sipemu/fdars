@@ -4,17 +4,17 @@ milestone: v0.44.0
 milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
 current_phase: 95
 current_phase_name: Generic Scalar Hot-Path Signatures
-status: executing
-stopped_at: Completed 95-02-remaining-kernels-PLAN.md
-last_updated: "2026-09-11T06:36:42.338Z"
+status: verifying
+stopped_at: Completed 95-03-non-breaking-compile-gate-PLAN.md
+last_updated: "2026-09-11T06:45:07.028Z"
 last_activity: 2026-09-11
 last_activity_desc: Phase 95 execution started
-state_head: 2a3993a70091008ad0897ad35e23efe33b78d398
+state_head: e8201904f96bf77623522c3b06f277a8ac75c553
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
   percent: 14
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-09)
 
 Phase: 95 (Generic Scalar Hot-Path Signatures) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-11 — Phase 95 execution started
 
 ## Milestone Roadmap (v0.44.0)
@@ -89,6 +89,7 @@ Seven phases, 11 requirements — an implementation milestone completing the dif
 | Phase 94 P04 | 10min | 3 tasks | 1 files |
 | Phase 95 P01 | 12min | 3 tasks | 1 files |
 | Phase 95 P02 | 18 | 3 tasks | 3 files |
+| Phase 95 P03 | 5min | 3 tasks | 0 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,8 @@ Decisions relevant to current work (v0.44.0):
 - [Phase 95]: Removed invalid = f64 default on free function (rustc 1.97 rejects invalid_type_param_default on fns); T=f64 inference at existing call sites is unaffected
 - [Phase 95]: [Phase 95 Plan 01]: use crate::autodiff::Scalar added at module top of helpers.rs (not cfg(test)) — required for public generic function bound
 - [Phase 95]: trapz/inner_product/inner_product_l2 generalized in-place to T: Scalar; .sum() rewritten to T::zero() accumulator; f64 call sites unchanged via T=f64 inference
+- [Phase 95]: serde build GREEN — the pre-existing ShapeletTransformClassifier/ClassifFit serde issue did not manifest; build clean at 18.42s
+- [Phase 95]: fdars-r not local — non-breaking proof via Gates 2+4; four kernels remain pub and more general
 
 ### Pending Todos
 
@@ -142,8 +145,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-11T06:36:42.295Z
-Stopped at: Completed 95-02-remaining-kernels-PLAN.md
+Last session: 2026-09-11T06:45:06.985Z
+Stopped at: Completed 95-03-non-breaking-compile-gate-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
