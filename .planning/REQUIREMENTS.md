@@ -22,7 +22,7 @@ This is an **implementation milestone**: real `fdars-core/src/` changes, **stric
 
 ### Generic Scalar Hot-Paths (GEN) — DIF-F3
 
-- [ ] **GEN-01**: Targeted hot-path signatures are generalized over the scalar type via defaulted type params (`T = f64`) so every existing f64 call site, R + WASM binding, and all 28 examples compile unchanged.
+- [x] **GEN-01**: Targeted hot-path signatures are generalized over the scalar type via defaulted type params (`T = f64`) so every existing f64 call site, R + WASM binding, and all 28 examples compile unchanged.
 - [ ] **GEN-02**: Autodiff types (`Dual` and the reverse-mode `Var`) flow through the generalized hot-paths end-to-end; a composed objective yields correct gradients validated by finite differences.
 
 ### API & Release (REL)
@@ -72,7 +72,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DOP-02 | Phase 97 | Pending |
 | DOP-03 | Phase 97 | Pending |
 | DOP-04 | Phase 98 | Pending |
-| GEN-01 | Phase 95 | Pending |
+| GEN-01 | Phase 95 | Complete |
 | GEN-02 | Phase 99 | Pending |
 | API-01 | Phase 99 | Pending |
 | REL-01 | Phase 100 | Pending |

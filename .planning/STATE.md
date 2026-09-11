@@ -4,17 +4,17 @@ milestone: v0.44.0
 milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
 current_phase: 95
 current_phase_name: Generic Scalar Hot-Path Signatures
-status: planning
-stopped_at: Phase 94 complete, ready to plan Phase 95
-last_updated: "2026-09-11T05:37:03.360Z"
+status: executing
+stopped_at: Phase 95 Plan 01 complete, ready for Plan 02 (trapz + inner_product + inner_product_l2)
+last_updated: "2026-09-11T06:27:35.405Z"
 last_activity: 2026-09-11
-last_activity_desc: Phase 94 complete, transitioned to Phase 95
-state_head: 6cdef6655f4b3111fb1dab7a0043c87fc8c3c435
+last_activity_desc: Phase 95 execution started
+state_head: 11eead60126e2535a56f8b91a67d36e10df12d4c
 progress:
   total_phases: 7
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 7
+  completed_plans: 5
   percent: 14
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-09)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library. This milestone completes the **differentiable-core** section of the 1.0 gap checklist (`documentation/ROADMAP-TO-1.0.md`, DIF-F1/F2/F3) — an in-crate reverse-mode (VJP) autodiff core alongside the v0.39.0 forward-mode `Dual`, a broadened differentiable operation set across four algorithm families, and generic-over-scalar hot-path signatures. Implementation milestone, **strictly additive/non-breaking** (defaulted type params `T = f64` — protects R + WASM bindings + 28 examples), **no new crate dependency** (in-crate hand-written tape).
-**Current focus:** Phase 94 — Reverse-Mode Autodiff Core (VJP Tape)
+**Current focus:** Phase 95 — Generic Scalar Hot-Path Signatures
 
 ## Current Position
 
-Phase: 95 — Generic Scalar Hot-Path Signatures
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-11 — Phase 94 complete, transitioned to Phase 95
+Phase: 95 (Generic Scalar Hot-Path Signatures) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-09-11 — Phase 95 execution started
 
 ## Milestone Roadmap (v0.44.0)
 
@@ -87,6 +87,7 @@ Seven phases, 11 requirements — an implementation milestone completing the dif
 | Phase 94 P02 | 4min | 2 tasks | 1 files |
 | Phase 94 P03 | 5min | 2 tasks | 1 files |
 | Phase 94 P04 | 10min | 3 tasks | 1 files |
+| Phase 95 P01 | 12min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,8 @@ Decisions relevant to current work (v0.44.0):
 - [Phase 94]: Tier-3 agreement tests import crate::autodiff::{Dual, grad} from inside reverse.rs tests — valid because autodiff/mod.rs re-exports both at crate::autodiff path
 - [Phase 94]: Tier-4 FD cross-check uses <Var as Scalar>::zero() disambiguation in test closures — Rust cannot infer the Scalar impl from Fn(&[Var])->Var alone when calling free-standing trait methods
 - [Phase 94]: prelude.rs Var+vjp re-exports were already correct from Plan 01; Plan 04 only updated the vjp doctest to show 2-input Var-annotated example
+- [Phase 95]: Removed invalid = f64 default on free function (rustc 1.97 rejects invalid_type_param_default on fns); T=f64 inference at existing call sites is unaffected
+- [Phase 95]: [Phase 95 Plan 01]: use crate::autodiff::Scalar added at module top of helpers.rs (not cfg(test)) — required for public generic function bound
 
 ### Pending Todos
 
@@ -137,8 +140,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-10T21:02:49.196Z
-Stopped at: Phase 94 complete, ready to plan Phase 95
+Last session: 2026-09-11T06:27:35.362Z
+Stopped at: Phase 95 Plan 01 complete, ready for Plan 02 (trapz + inner_product + inner_product_l2)
 Resume file: None
 
 ## Operator Next Steps
