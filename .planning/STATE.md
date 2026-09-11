@@ -4,16 +4,16 @@ milestone: v0.44.0
 milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
 current_phase: 97
 current_phase_name: Differentiable Regression Prediction & Smoothing Penalties
-status: planning
+status: executing
 stopped_at: Phase 96 complete, ready to plan Phase 97
-last_updated: "2026-09-11T13:27:30.463Z"
+last_updated: "2026-09-11T14:01:09.615Z"
 last_activity: 2026-09-11
-last_activity_desc: Phase 96 complete, transitioned to Phase 97
-state_head: 3ef58900879afaeb9fc9e10f72d17ac0d03d75b5
+last_activity_desc: Phase 97 execution started
+state_head: cd150e3f7fc977bdaf5c5d71e46cabb0a0f8de6a
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 10
+  total_plans: 13
   completed_plans: 10
   percent: 43
 ---
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-09)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library. This milestone completes the **differentiable-core** section of the 1.0 gap checklist (`documentation/ROADMAP-TO-1.0.md`, DIF-F1/F2/F3) — an in-crate reverse-mode (VJP) autodiff core alongside the v0.39.0 forward-mode `Dual`, a broadened differentiable operation set across four algorithm families, and generic-over-scalar hot-path signatures. Implementation milestone, **strictly additive/non-breaking** (defaulted type params `T = f64` — protects R + WASM bindings + 28 examples), **no new crate dependency** (in-crate hand-written tape).
-**Current focus:** Phase 96 — Differentiable Basis Evaluation & Inner Products
+**Current focus:** Phase 97 — Differentiable Regression Prediction & Smoothing Penalties
 
 ## Current Position
 
-Phase: 97 — Differentiable Regression Prediction & Smoothing Penalties
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-11 — Phase 96 complete, transitioned to Phase 97
+Phase: 97 (Differentiable Regression Prediction & Smoothing Penalties) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 97
+Last activity: 2026-09-11 — Phase 97 execution started
 
 ## Milestone Roadmap (v0.44.0)
 
