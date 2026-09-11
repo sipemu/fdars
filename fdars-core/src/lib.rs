@@ -576,8 +576,9 @@ pub use smoothing::{
 
 // Re-export regression types
 pub use regression::{fdata_to_pc, fdata_to_pls, project_scores_generic, FpcaResult, PlsResult};
-// Re-export the forward-mode automatic-differentiation core (v0.39.0 DIF-04).
-pub use autodiff::{diff, directional_derivative, grad, jacobian, Dual, Scalar};
+// Re-export automatic-differentiation core — forward-mode (v0.39.0 DIF-04) and
+// reverse-mode (v0.44.0 Phase 94).
+pub use autodiff::{diff, directional_derivative, grad, jacobian, vjp, Dual, Scalar, Var};
 // Re-export specialized FPCA variants (Phase 37)
 pub use fpca_variants::{
     cross_covariance, dynamical_correlation, fpca_der, fsvd, ssvd, FsvdResult,

@@ -84,8 +84,8 @@ pub trait Scalar:
     fn signum(self) -> Self;
 }
 
-pub mod forward;
-pub mod reverse;
+mod forward;
+mod reverse;
 
 // ---------------------------------------------------------------------------
 // Re-exports — preserve all existing public paths:
