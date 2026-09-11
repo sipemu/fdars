@@ -1,5 +1,7 @@
 //! Helper functions for numerical integration and common operations.
 
+use crate::autodiff::Scalar;
+
 /// Small epsilon for numerical comparisons (e.g., avoiding division by zero).
 pub const NUMERICAL_EPS: f64 = 1e-10;
 
@@ -46,18 +48,26 @@ pub fn extract_curves(data: &crate::matrix::FdMatrix) -> Vec<Vec<f64>> {
 
 /// Compute L2 distance between two curves using integration weights.
 ///
+/// Generic over the scalar type `T`. Existing call sites that pass `&[f64]`
+/// continue to compile unchanged — `T = f64` is inferred from the arguments.
+/// The generalization is in-place, not a `_generic` companion (GEN-01, D-01).
+///
+/// The f64/generic boundary invariant: curve values become `T`; integration
+/// weights stay `f64` and are lifted once via `T::from_f64` where they mix
+/// with a `T` value.
+///
 /// # Arguments
 /// * `curve1` - First curve values
 /// * `curve2` - Second curve values
-/// * `weights` - Integration weights
+/// * `weights` - Integration weights (f64 quadrature constants)
 ///
 /// # Returns
 /// L2 distance between the curves
-pub fn l2_distance(curve1: &[f64], curve2: &[f64], weights: &[f64]) -> f64 {
-    let mut dist_sq = 0.0;
+pub fn l2_distance<T: Scalar>(curve1: &[T], curve2: &[T], weights: &[f64]) -> T {
+    let mut dist_sq = T::zero();
     for i in 0..curve1.len() {
         let diff = curve1[i] - curve2[i];
-        dist_sq += diff * diff * weights[i];
+        dist_sq += diff * diff * T::from_f64(weights[i]);
     }
     dist_sq.sqrt()
 }
@@ -1174,6 +1184,110 @@ mod tests {
         let dist = l2_distance(&curve1, &curve2, &weights);
         // dist^2 = 0.25*1 + 0.5*1 + 0.25*1 = 1.0, so dist = 1.0
         assert!((dist - 1.0).abs() < NUMERICAL_EPS);
+    }
+
+    // ---------------------------------------------------------------------------
+    // GEN-01 tracer tests: parity, forward-mode Dual, reverse-mode Var
+    // ---------------------------------------------------------------------------
+
+    /// Bit-identical parity: l2_distance<f64> reproduces the inlined f64 loop.
+    #[test]
+    fn test_l2_distance_parity() {
+        let c1 = vec![1.0_f64, 2.0, 3.0];
+        let c2 = vec![0.5_f64, 1.5, 2.5];
+        let w = vec![0.25_f64, 0.5, 0.25];
+        // Inline reference loop (exact pre-change body)
+        let mut dist_sq_ref = 0.0_f64;
+        for i in 0..c1.len() {
+            let diff = c1[i] - c2[i];
+            dist_sq_ref += diff * diff * w[i];
+        }
+        let expected = dist_sq_ref.sqrt();
+        let got: f64 = l2_distance(&c1, &c2, &w);
+        assert_eq!(
+            got, expected,
+            "l2_distance<f64> must be bit-identical to reference loop"
+        );
+    }
+
+    /// Forward-mode gradient check: tangent extracted from l2_distance<Dual> matches
+    /// central finite difference within 1e-5 * max(|fd|, 1e-10).
+    #[test]
+    fn test_l2_distance_dual() {
+        use crate::autodiff::Dual;
+        let c1_f64 = vec![1.0_f64, 2.0, 3.0];
+        let c2_f64 = vec![0.5_f64, 1.5, 2.5];
+        let w = vec![0.25_f64, 0.5, 0.25];
+        let h = 1e-5_f64;
+        // Differentiate with respect to c1[1] (index 1)
+        let idx = 1;
+        let c1_dual: Vec<Dual> = c1_f64
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| {
+                if i == idx {
+                    Dual::seed(v)
+                } else {
+                    Dual::constant(v)
+                }
+            })
+            .collect();
+        let c2_dual: Vec<Dual> = c2_f64.iter().map(|&v| Dual::constant(v)).collect();
+        let (_, tangent) = l2_distance(&c1_dual, &c2_dual, &w).extract();
+        // Central finite difference
+        let mut c1_plus = c1_f64.clone();
+        let mut c1_minus = c1_f64.clone();
+        c1_plus[idx] += h;
+        c1_minus[idx] -= h;
+        let fd = (l2_distance::<f64>(&c1_plus, &c2_f64, &w)
+            - l2_distance::<f64>(&c1_minus, &c2_f64, &w))
+            / (2.0 * h);
+        let tol = 1e-5 * fd.abs().max(1e-10);
+        assert!(
+            (tangent - fd).abs() <= tol,
+            "Dual tangent {tangent} vs FD {fd}, diff={}, tol={tol}",
+            (tangent - fd).abs()
+        );
+    }
+
+    /// Reverse-mode gradient check: vjp gradient on all c1 coordinates matches
+    /// central finite difference within 1e-5 * max(|fd|, 1e-10).
+    #[test]
+    fn test_l2_distance_var() {
+        use crate::autodiff::{vjp, Var};
+        let c1_f64 = vec![1.0_f64, 2.0, 3.0];
+        let c2_f64 = vec![0.5_f64, 1.5, 2.5];
+        let w = vec![0.25_f64, 0.5, 0.25];
+        let h = 1e-5_f64;
+        // Lift c2 as Var constants (from_f64 gives sentinel/off-tape nodes)
+        let c2_var: Vec<f64> = c2_f64.clone();
+        let (_, grad) = vjp(
+            |x: &[Var]| {
+                let c2_lifted: Vec<Var> = c2_var
+                    .iter()
+                    .map(|&v| <Var as crate::autodiff::Scalar>::from_f64(v))
+                    .collect();
+                l2_distance(x, &c2_lifted, &w)
+            },
+            &c1_f64,
+        );
+        // Central FD for each coordinate
+        for idx in 0..c1_f64.len() {
+            let mut c1_plus = c1_f64.clone();
+            let mut c1_minus = c1_f64.clone();
+            c1_plus[idx] += h;
+            c1_minus[idx] -= h;
+            let fd = (l2_distance::<f64>(&c1_plus, &c2_f64, &w)
+                - l2_distance::<f64>(&c1_minus, &c2_f64, &w))
+                / (2.0 * h);
+            let tol = 1e-5 * fd.abs().max(1e-10);
+            assert!(
+                (grad[idx] - fd).abs() <= tol,
+                "Var grad[{idx}]={}, FD={fd}, diff={}, tol={tol}",
+                grad[idx],
+                (grad[idx] - fd).abs()
+            );
+        }
     }
 
     #[test]
