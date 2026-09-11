@@ -79,7 +79,7 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
 - [x] **Phase 95: Generic Scalar Hot-Path Signatures** - Generalize targeted hot-path signatures over the scalar type via defaulted type params (`T = f64`); non-breakingness proven at compile time (completed 2026-09-11)
 - [x] **Phase 96: Differentiable Basis Evaluation & Inner Products** - Basis eval (B-spline/Fourier) + functional inner products generic over `Scalar` and differentiable (completed 2026-09-11)
 - [x] **Phase 97: Differentiable Regression Prediction & Smoothing Penalties** - `fregre_lm`/FPCR prediction and roughness-penalty evaluation generic over `Scalar` and differentiable (completed 2026-09-11)
-- [ ] **Phase 98: Differentiable Depth & Curve Distances** - Functional depth + curve distances (beyond soft-DTW) generic over `Scalar` and differentiable
+- [x] **Phase 98: Differentiable Depth & Curve Distances** - Functional depth + curve distances (beyond soft-DTW) generic over `Scalar` and differentiable (completed 2026-09-11)
 - [ ] **Phase 99: End-to-End Autodiff Flow & Gradient API** - Autodiff types flow through the generalized hot-paths end-to-end; unified `grad`/`jacobian`/`vjp` API + composition demo + re-exports + doctest
 - [ ] **Phase 100: Release Preparation & Verification** - Bump 0.43.0 → 0.44.0, CHANGELOG, DIF-F1/F2/F3 checked off, all whole-crate gates green incl. `cargo package`
 
@@ -212,7 +212,7 @@ Phases execute in numeric order: 94 → 95 → 96 → 97 → 98 → 99 → 100
 | 95. Generic Scalar Hot-Path Signatures | v0.44.0 | 3/3 | Complete    | 2026-09-11 |
 | 96. Differentiable Basis Evaluation & Inner Products | v0.44.0 | 3/3 | Complete    | 2026-09-11 |
 | 97. Differentiable Regression Prediction & Smoothing Penalties | v0.44.0 | 3/3 | Complete    | 2026-09-11 |
-| 98. Differentiable Depth & Curve Distances | v0.44.0 | 0/? | Not started | - |
+| 98. Differentiable Depth & Curve Distances | v0.44.0 | 1/1 | Complete    | 2026-09-11 |
 | 99. End-to-End Autodiff Flow & Gradient API | v0.44.0 | 0/? | Not started | - |
 | 100. Release Preparation & Verification | v0.44.0 | 0/? | Not started | - |
 
