@@ -194,15 +194,18 @@ mod tests {
 
     // ── inner_product_l2 GEN-01 tests ──
 
-    /// Bit-identical parity: inner_product_l2<f64> reproduces the inlined f64 loop.
+    /// Bit-identical parity: inner_product_l2<f64> reproduces an independent inline trapezoid.
     #[test]
     fn test_inner_product_l2_parity() {
         let time = vec![0.0_f64, 0.5, 1.0];
         let psi1 = vec![1.0_f64, 2.0, 3.0];
         let psi2 = vec![4.0_f64, 5.0, 6.0];
-        // Inline reference (exact pre-change body)
+        // Reference: inline trapezoidal rule over the pointwise product — independent of trapz().
         let prod_ref: Vec<f64> = psi1.iter().zip(psi2.iter()).map(|(&a, &b)| a * b).collect();
-        let expected: f64 = trapz(&prod_ref, &time);
+        let mut expected = 0.0_f64;
+        for k in 1..prod_ref.len() {
+            expected += 0.5 * (prod_ref[k] + prod_ref[k - 1]) * (time[k] - time[k - 1]);
+        }
         let got: f64 = inner_product_l2(&psi1, &psi2, &time);
         assert_eq!(
             got, expected,

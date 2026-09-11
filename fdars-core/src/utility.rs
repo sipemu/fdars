@@ -337,22 +337,24 @@ mod tests {
 
     // ── inner_product GEN-01 tests ──
 
-    /// Bit-identical parity: inner_product<f64> reproduces the inlined f64 loop.
+    /// Bit-identical parity: inner_product<f64> reproduces the pre-change iterator chain.
     #[test]
     fn test_inner_product_parity() {
         let argvals = vec![0.0_f64, 0.5, 1.0];
         let c1 = vec![1.0_f64, 2.0, 3.0];
         let c2 = vec![4.0_f64, 5.0, 6.0];
-        // Inline reference (the pre-change iterator chain with simpsons_weights)
+        // Reference: the EXACT pre-change iterator chain (independent oracle).
         let weights = simpsons_weights(&argvals);
-        let mut acc_ref = 0.0_f64;
-        for i in 0..c1.len() {
-            acc_ref += c1[i] * c2[i] * weights[i];
-        }
+        let expected: f64 = c1
+            .iter()
+            .zip(c2.iter())
+            .zip(weights.iter())
+            .map(|((&a, &b), &w)| a * b * w)
+            .sum();
         let got: f64 = inner_product(&c1, &c2, &argvals);
-        assert!(
-            (got - acc_ref).abs() < 1e-12,
-            "inner_product<f64> parity: got {got}, expected {acc_ref}"
+        assert_eq!(
+            got, expected,
+            "inner_product<f64> must be bit-identical to pre-change iterator chain"
         );
     }
 
