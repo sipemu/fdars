@@ -1,5 +1,6 @@
 //! Utility functions for functional data analysis.
 
+use crate::autodiff::Scalar;
 use crate::helpers::simpsons_weights;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -27,22 +28,30 @@ pub fn integrate_simpson(values: &[f64], argvals: &[f64]) -> f64 {
 
 /// Compute inner product between two functional data curves.
 ///
+/// Generic over the scalar type `T`. Existing call sites that pass `&[f64]`
+/// continue to compile unchanged — `T = f64` is inferred from the `&[T]`
+/// arguments. The generalization is in-place (GEN-01).
+///
+/// The body uses an explicit `T::zero()` accumulator loop instead of iterator
+/// `.sum()` because `T: Scalar` does not include `std::iter::Sum`. Weights
+/// from `simpsons_weights` stay `Vec<f64>` and are lifted once per element via
+/// `T::from_f64`.
+///
 /// # Arguments
 /// * `curve1` - First curve values
 /// * `curve2` - Second curve values
-/// * `argvals` - Evaluation points
-pub fn inner_product(curve1: &[f64], curve2: &[f64], argvals: &[f64]) -> f64 {
+/// * `argvals` - Evaluation points (f64 grid — quadrature constants)
+pub fn inner_product<T: Scalar>(curve1: &[T], curve2: &[T], argvals: &[f64]) -> T {
     if curve1.len() != curve2.len() || curve1.len() != argvals.len() || curve1.is_empty() {
-        return 0.0;
+        return T::zero();
     }
 
-    let weights = simpsons_weights(argvals);
-    curve1
-        .iter()
-        .zip(curve2.iter())
-        .zip(weights.iter())
-        .map(|((&c1, &c2), &w)| c1 * c2 * w)
-        .sum()
+    let weights = simpsons_weights(argvals); // Vec<f64> — unchanged
+    let mut acc = T::zero();
+    for i in 0..curve1.len() {
+        acc += curve1[i] * curve2[i] * T::from_f64(weights[i]);
+    }
+    acc
 }
 
 /// Compute inner product matrix for functional data.
@@ -325,6 +334,66 @@ pub(crate) fn f64_to_usize_clamped(x: f64) -> usize {
 mod tests {
     use super::*;
     use crate::test_helpers::uniform_grid;
+
+    // ── inner_product GEN-01 tests ──
+
+    /// Bit-identical parity: inner_product<f64> reproduces the inlined f64 loop.
+    #[test]
+    fn test_inner_product_parity() {
+        let argvals = vec![0.0_f64, 0.5, 1.0];
+        let c1 = vec![1.0_f64, 2.0, 3.0];
+        let c2 = vec![4.0_f64, 5.0, 6.0];
+        // Inline reference (the pre-change iterator chain with simpsons_weights)
+        let weights = simpsons_weights(&argvals);
+        let mut acc_ref = 0.0_f64;
+        for i in 0..c1.len() {
+            acc_ref += c1[i] * c2[i] * weights[i];
+        }
+        let got: f64 = inner_product(&c1, &c2, &argvals);
+        assert!(
+            (got - acc_ref).abs() < 1e-12,
+            "inner_product<f64> parity: got {got}, expected {acc_ref}"
+        );
+    }
+
+    /// Forward-mode gradient check: tangent from inner_product<Dual> matches central FD.
+    #[test]
+    fn test_inner_product_dual() {
+        use crate::autodiff::Dual;
+        let argvals = vec![0.0_f64, 0.5, 1.0];
+        let c1_f64 = vec![1.0_f64, 2.0, 3.0];
+        let c2_f64 = vec![4.0_f64, 5.0, 6.0];
+        let h = 1e-5_f64;
+        // Differentiate w.r.t. c1[1]
+        let idx = 1;
+        let c1_dual: Vec<Dual> = c1_f64
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| {
+                if i == idx {
+                    Dual::seed(v)
+                } else {
+                    Dual::constant(v)
+                }
+            })
+            .collect();
+        let c2_dual: Vec<Dual> = c2_f64.iter().map(|&v| Dual::constant(v)).collect();
+        let (_, tangent) = inner_product(&c1_dual, &c2_dual, &argvals).extract();
+        // Central finite difference
+        let mut c1_plus = c1_f64.clone();
+        let mut c1_minus = c1_f64.clone();
+        c1_plus[idx] += h;
+        c1_minus[idx] -= h;
+        let fd = (inner_product::<f64>(&c1_plus, &c2_f64, &argvals)
+            - inner_product::<f64>(&c1_minus, &c2_f64, &argvals))
+            / (2.0 * h);
+        let tol = 1e-5 * fd.abs().max(1e-10);
+        assert!(
+            (tangent - fd).abs() <= tol,
+            "Dual tangent {tangent} vs FD {fd}, diff={}, tol={tol}",
+            (tangent - fd).abs()
+        );
+    }
 
     #[test]
     fn test_integrate_simpson_constant() {

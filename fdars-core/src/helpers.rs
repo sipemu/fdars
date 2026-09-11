@@ -260,10 +260,19 @@ pub fn cumulative_trapz(y: &[f64], x: &[f64]) -> Vec<f64> {
 }
 
 /// Trapezoidal integration of `y` over `x`.
-pub fn trapz(y: &[f64], x: &[f64]) -> f64 {
-    let mut sum = 0.0;
+///
+/// Generic over the scalar type `T`. Existing call sites that pass `&[f64]`
+/// continue to compile unchanged — `T = f64` is inferred from the `&[T]`
+/// argument. The generalization is in-place (GEN-01).
+///
+/// Ordering invariant: `0.5 * (x[k] - x[k-1])` is folded entirely in `f64`
+/// first, then lifted once via `T::from_f64`. This preserves bit-identical
+/// accumulation order at `T=f64`. `x` stays `&[f64]` (quadrature constants).
+pub fn trapz<T: Scalar>(y: &[T], x: &[f64]) -> T {
+    let mut sum = T::zero();
     for k in 1..y.len() {
-        sum += 0.5 * (y[k] + y[k - 1]) * (x[k] - x[k - 1]);
+        let half_dx = T::from_f64(0.5 * (x[k] - x[k - 1]));
+        sum += half_dx * (y[k] + y[k - 1]);
     }
     sum
 }
@@ -1318,6 +1327,58 @@ mod tests {
     }
 
     // ── trapz ──
+
+    /// Bit-identical parity: trapz<f64> reproduces the inlined f64 loop.
+    #[test]
+    fn test_trapz_parity() {
+        let y = vec![1.0_f64, 4.0, 9.0, 16.0];
+        let x = vec![0.0_f64, 1.0, 2.0, 3.0];
+        // Inline reference loop (exact pre-change body)
+        let mut sum_ref = 0.0_f64;
+        for k in 1..y.len() {
+            sum_ref += 0.5 * (y[k] + y[k - 1]) * (x[k] - x[k - 1]);
+        }
+        let got: f64 = trapz(&y, &x);
+        assert_eq!(
+            got, sum_ref,
+            "trapz<f64> must be bit-identical to reference loop"
+        );
+    }
+
+    /// Forward-mode gradient check: tangent from trapz<Dual> matches central FD.
+    #[test]
+    fn test_trapz_dual() {
+        use crate::autodiff::Dual;
+        let y_f64 = vec![1.0_f64, 4.0, 9.0, 16.0];
+        let x = vec![0.0_f64, 1.0, 2.0, 3.0];
+        let h = 1e-5_f64;
+        // Differentiate w.r.t. y[2] (index 2)
+        let idx = 2;
+        let y_dual: Vec<Dual> = y_f64
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| {
+                if i == idx {
+                    Dual::seed(v)
+                } else {
+                    Dual::constant(v)
+                }
+            })
+            .collect();
+        let (_, tangent) = trapz(&y_dual, &x).extract();
+        // Central finite difference
+        let mut y_plus = y_f64.clone();
+        let mut y_minus = y_f64.clone();
+        y_plus[idx] += h;
+        y_minus[idx] -= h;
+        let fd = (trapz::<f64>(&y_plus, &x) - trapz::<f64>(&y_minus, &x)) / (2.0 * h);
+        let tol = 1e-5 * fd.abs().max(1e-10);
+        assert!(
+            (tangent - fd).abs() <= tol,
+            "Dual tangent {tangent} vs FD {fd}, diff={}, tol={tol}",
+            (tangent - fd).abs()
+        );
+    }
 
     #[test]
     fn test_trapz_sine() {

@@ -9,6 +9,7 @@
 //! - [`normalize_warp`] / [`invert_gamma`] — Warp normalization and inversion
 //! - [`phase_distance`] — Geodesic distance from a warp to the identity
 
+use crate::autodiff::Scalar;
 use crate::helpers::{cumulative_trapz, gradient_uniform, linear_interp, trapz};
 use crate::smoothing::nadaraya_watson;
 
@@ -80,8 +81,16 @@ pub fn psi_to_gam(psi: &[f64], time: &[f64]) -> Vec<f64> {
 }
 
 /// L2 inner product: ∫ψ₁·ψ₂ dt via trapezoidal rule.
-pub fn inner_product_l2(psi1: &[f64], psi2: &[f64], time: &[f64]) -> f64 {
-    let prod: Vec<f64> = psi1.iter().zip(psi2.iter()).map(|(&a, &b)| a * b).collect();
+///
+/// Generic over the scalar type `T`. Existing call sites that pass `&[f64]`
+/// continue to compile unchanged — `T = f64` is inferred from the `&[T]`
+/// arguments. The generalization is in-place (GEN-01).
+///
+/// Delegates to the now-generic [`trapz`]: `T` infers from `&[T]`, so no
+/// turbofish is needed. Callers at `.max(0.0)` / `.clamp(-1.0, 1.0)` chains
+/// remain valid because `T = f64` there, returning `f64`.
+pub fn inner_product_l2<T: Scalar>(psi1: &[T], psi2: &[T], time: &[f64]) -> T {
+    let prod: Vec<T> = psi1.iter().zip(psi2.iter()).map(|(&a, &b)| a * b).collect();
     trapz(&prod, time)
 }
 
@@ -182,6 +191,99 @@ pub fn phase_distance(gamma: &[f64], argvals: &[f64]) -> f64 {
 mod tests {
     use super::*;
     use crate::test_helpers::uniform_grid;
+
+    // ── inner_product_l2 GEN-01 tests ──
+
+    /// Bit-identical parity: inner_product_l2<f64> reproduces the inlined f64 loop.
+    #[test]
+    fn test_inner_product_l2_parity() {
+        let time = vec![0.0_f64, 0.5, 1.0];
+        let psi1 = vec![1.0_f64, 2.0, 3.0];
+        let psi2 = vec![4.0_f64, 5.0, 6.0];
+        // Inline reference (exact pre-change body)
+        let prod_ref: Vec<f64> = psi1.iter().zip(psi2.iter()).map(|(&a, &b)| a * b).collect();
+        let expected: f64 = trapz(&prod_ref, &time);
+        let got: f64 = inner_product_l2(&psi1, &psi2, &time);
+        assert_eq!(
+            got, expected,
+            "inner_product_l2<f64> must be bit-identical to reference"
+        );
+    }
+
+    /// Forward-mode gradient check: tangent from inner_product_l2<Dual> matches central FD.
+    #[test]
+    fn test_inner_product_l2_dual() {
+        use crate::autodiff::Dual;
+        let time = vec![0.0_f64, 0.5, 1.0];
+        let psi1_f64 = vec![1.0_f64, 2.0, 3.0];
+        let psi2_f64 = vec![4.0_f64, 5.0, 6.0];
+        let h = 1e-5_f64;
+        // Differentiate w.r.t. psi1[1]
+        let idx = 1;
+        let psi1_dual: Vec<Dual> = psi1_f64
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| {
+                if i == idx {
+                    Dual::seed(v)
+                } else {
+                    Dual::constant(v)
+                }
+            })
+            .collect();
+        let psi2_dual: Vec<Dual> = psi2_f64.iter().map(|&v| Dual::constant(v)).collect();
+        let (_, tangent) = inner_product_l2(&psi1_dual, &psi2_dual, &time).extract();
+        // Central finite difference
+        let mut psi1_plus = psi1_f64.clone();
+        let mut psi1_minus = psi1_f64.clone();
+        psi1_plus[idx] += h;
+        psi1_minus[idx] -= h;
+        let fd = (inner_product_l2::<f64>(&psi1_plus, &psi2_f64, &time)
+            - inner_product_l2::<f64>(&psi1_minus, &psi2_f64, &time))
+            / (2.0 * h);
+        let tol = 1e-5 * fd.abs().max(1e-10);
+        assert!(
+            (tangent - fd).abs() <= tol,
+            "Dual tangent {tangent} vs FD {fd}, diff={}, tol={tol}",
+            (tangent - fd).abs()
+        );
+    }
+
+    /// Reverse-mode gradient check: vjp grad matches central FD per coordinate.
+    #[test]
+    fn test_inner_product_l2_var() {
+        use crate::autodiff::{vjp, Var};
+        let time = vec![0.0_f64, 0.5, 1.0];
+        let psi1_f64 = vec![1.0_f64, 2.0, 3.0];
+        let psi2_f64 = vec![4.0_f64, 5.0, 6.0];
+        let h = 1e-5_f64;
+        let (_, grad) = vjp(
+            |x: &[Var]| {
+                let psi2_var: Vec<Var> = psi2_f64
+                    .iter()
+                    .map(|&v| <Var as crate::autodiff::Scalar>::from_f64(v))
+                    .collect();
+                inner_product_l2(x, &psi2_var, &time)
+            },
+            &psi1_f64,
+        );
+        for idx in 0..psi1_f64.len() {
+            let mut psi1_plus = psi1_f64.clone();
+            let mut psi1_minus = psi1_f64.clone();
+            psi1_plus[idx] += h;
+            psi1_minus[idx] -= h;
+            let fd = (inner_product_l2::<f64>(&psi1_plus, &psi2_f64, &time)
+                - inner_product_l2::<f64>(&psi1_minus, &psi2_f64, &time))
+                / (2.0 * h);
+            let tol = 1e-5 * fd.abs().max(1e-10);
+            assert!(
+                (grad[idx] - fd).abs() <= tol,
+                "Var grad[{idx}]={}, FD={fd}, diff={}, tol={tol}",
+                grad[idx],
+                (grad[idx] - fd).abs()
+            );
+        }
+    }
 
     #[test]
     fn test_gam_psi_round_trip() {
