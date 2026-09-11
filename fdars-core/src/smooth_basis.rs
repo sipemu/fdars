@@ -9,6 +9,7 @@
 //! - [`smooth_basis_gcv`] — GCV-optimal smoothing parameter selection
 //! - [`bspline_penalty_matrix`] / [`fourier_penalty_matrix`] — Roughness penalty matrices
 
+use crate::autodiff::Scalar;
 use crate::basis::{bspline_basis, fourier_basis_with_period};
 use crate::helpers::simpsons_weights;
 use crate::matrix::FdMatrix;
@@ -185,6 +186,33 @@ pub fn fourier_penalty_matrix(nbasis: usize, period: f64, lfd_order: usize) -> V
     }
 
     penalty
+}
+
+/// Generic-over-`Scalar`, differentiable roughness-penalty value `λ · cᵀ R c` (DOP-03).
+///
+/// Evaluates the scalar smoothing penalty for a coefficient vector `coef` against a
+/// fixed penalty matrix `R` (e.g. from [`bspline_penalty_matrix`], [`fourier_penalty_matrix`],
+/// or a `DᵀD` P-spline penalty) and smoothing parameter `lambda`. The **coefficients**
+/// carry the scalar type `T`, so at `T = Dual` / `T = Var` the returned value propagates
+/// exact gradients w.r.t. the coefficients: `d(λ cᵀRc)/d(c_i) = λ·((R+Rᵀ)c)_i = 2λ(Rc)_i`
+/// for symmetric `R`. The penalty matrix and `lambda` stay `f64`.
+///
+/// This is an **additive** evaluation helper — it does not alter the smoothing fit /
+/// normal-equations solve. At `T = f64` it is bit-identical to a direct `λ·cᵀRc`
+/// computation with the same accumulation order (`f64::from_f64` is the identity).
+///
+/// `penalty` must be the `k × k` penalty matrix where `k == coef.len()`.
+#[must_use]
+pub fn penalty_value_generic<T: Scalar>(coef: &[T], penalty: &FdMatrix, lambda: f64) -> T {
+    let k = coef.len();
+    // λ · cᵀ R c = λ · Σ_i Σ_j c_i · R[i,j] · c_j
+    let mut sum = T::zero();
+    for i in 0..k {
+        for j in 0..k {
+            sum += coef[i] * T::from_f64(penalty[(i, j)]) * coef[j];
+        }
+    }
+    T::from_f64(lambda) * sum
 }
 
 // ─── Smoothing Functions ────────────────────────────────────────────────────
@@ -3804,6 +3832,103 @@ mod tests {
                 assert_eq!(parameter, "max_iter");
             }
             other => panic!("Expected InvalidParameter(max_iter), got {:?}", other),
+        }
+    }
+
+    // ----- penalty_value_generic tests (DOP-03: differentiable roughness penalty) -----
+
+    /// Build a k×k penalty FdMatrix from bspline_penalty_matrix (Vec<f64> column-major).
+    fn make_penalty(k_hint: usize) -> (FdMatrix, usize) {
+        let t = uniform_grid(41);
+        let flat = bspline_penalty_matrix(&t, k_hint, 4, 2);
+        let k = (flat.len() as f64).sqrt() as usize;
+        (FdMatrix::from_column_major(flat, k, k).unwrap(), k)
+    }
+
+    /// Bit-identical f64 parity: penalty_value_generic::<f64> == a direct λ·cᵀRc with
+    /// the same accumulation order (R symmetric by construction; f64::from_f64 identity).
+    #[test]
+    fn test_penalty_value_generic_f64_parity() {
+        let (r, k) = make_penalty(10);
+        let lambda = 0.7;
+        let coef: Vec<f64> = (0..k).map(|i| 0.2 + 0.1 * i as f64).collect();
+        // Direct reference with identical loop order.
+        let mut sum = 0.0;
+        for i in 0..k {
+            for j in 0..k {
+                sum += coef[i] * r[(i, j)] * coef[j];
+            }
+        }
+        let reference = lambda * sum;
+        let got = penalty_value_generic::<f64>(&coef, &r, lambda);
+        assert_eq!(
+            got, reference,
+            "penalty_value_generic::<f64> vs direct λ·cᵀRc"
+        );
+    }
+
+    /// Forward-mode: tangent of penalty_value_generic::<Dual> w.r.t. each coefficient
+    /// matches central finite differences within 1e-6*(1+|fd|).
+    #[test]
+    fn test_penalty_value_generic_dual_fd_check() {
+        use crate::autodiff::Dual;
+        let (r, k) = make_penalty(8);
+        let lambda = 0.5;
+        let coef: Vec<f64> = (0..k).map(|i| 0.3 + 0.05 * i as f64).collect();
+        let obj = |c: &[f64]| -> f64 { penalty_value_generic::<f64>(c, &r, lambda) };
+        let h = 1e-6_f64;
+        for idx in 0..k {
+            let cd: Vec<Dual> = coef
+                .iter()
+                .enumerate()
+                .map(|(j, &v)| {
+                    if j == idx {
+                        Dual::seed(v)
+                    } else {
+                        Dual::constant(v)
+                    }
+                })
+                .collect();
+            let (_, tangent) = penalty_value_generic::<Dual>(&cd, &r, lambda).extract();
+            let mut cp = coef.clone();
+            let mut cm = coef.clone();
+            cp[idx] += h;
+            cm[idx] -= h;
+            let fd = (obj(&cp) - obj(&cm)) / (2.0 * h);
+            let tol = 1e-6 * (1.0 + fd.abs());
+            assert!(
+                (tangent - fd).abs() <= tol,
+                "Dual: coef[{idx}] tangent={tangent} vs FD={fd}"
+            );
+        }
+    }
+
+    /// Reverse-mode: vjp gradient of penalty_value_generic::<Var> w.r.t. all coefficients
+    /// matches central finite differences within 1e-6*(1+|fd|) in one backward sweep.
+    #[test]
+    fn test_penalty_value_generic_var_fd_check() {
+        use crate::autodiff::{vjp, Var};
+        let (r, k) = make_penalty(8);
+        let lambda = 0.5;
+        let coef: Vec<f64> = (0..k).map(|i| 0.3 + 0.05 * i as f64).collect();
+        let obj = |c: &[f64]| -> f64 { penalty_value_generic::<f64>(c, &r, lambda) };
+        let (_, grad) = vjp(
+            |c: &[Var]| penalty_value_generic::<Var>(c, &r, lambda),
+            &coef,
+        );
+        let h = 1e-6_f64;
+        for idx in 0..k {
+            let mut cp = coef.clone();
+            let mut cm = coef.clone();
+            cp[idx] += h;
+            cm[idx] -= h;
+            let fd = (obj(&cp) - obj(&cm)) / (2.0 * h);
+            let tol = 1e-6 * (1.0 + fd.abs());
+            assert!(
+                (grad[idx] - fd).abs() <= tol,
+                "Var: grad[{idx}]={} vs FD={fd}",
+                grad[idx]
+            );
         }
     }
 }
