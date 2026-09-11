@@ -110,6 +110,15 @@ fn push_unary(dep0: usize, w0: f64) -> usize {
 /// Both `PartialEq` and `PartialOrd` compare the `value` field only — tape
 /// indices must not influence control-flow decisions in `Scalar`-generic code
 /// (e.g. `softmin3_generic` uses `<=` and `>=` for primal branching).
+///
+/// # No `extract()` method
+///
+/// Unlike [`super::Dual`], `Var` intentionally has no `extract()` method or
+/// public value accessor. The tape node index is an internal implementation
+/// detail that has no meaning outside a [`vjp`] call. The primal value and all
+/// input gradients are returned by [`vjp`] after the backward pass completes.
+/// Use `Var` values only inside a `vjp` closure; do not store or inspect them
+/// outside of one.
 #[derive(Debug, Clone, Copy)]
 pub struct Var {
     /// The primal (forward) value.
@@ -493,7 +502,7 @@ impl Scalar for Var {
 /// assert!((grad[1] - 1.0).abs() < 1e-10);
 /// ```
 #[must_use]
-pub fn vjp<F: Fn(&[Var]) -> Var>(f: F, x: &[f64]) -> (f64, Vec<f64>) {
+pub fn vjp<F: FnOnce(&[Var]) -> Var>(f: F, x: &[f64]) -> (f64, Vec<f64>) {
     // Step 1: Clear tape from any prior call (panic-safe double-clear pattern).
     TAPE.with(|cell| cell.borrow_mut().clear());
 
@@ -640,6 +649,16 @@ mod tests {
         let (value, grad) = vjp(|x| x[0] / Scalar::from_f64(4.0), &[8.0]);
         assert!((value - 2.0).abs() < TOL, "primal {} != 2.0", value);
         assert!((grad[0] - 0.25).abs() < TOL, "grad[0] {} != 0.25", grad[0]);
+    }
+
+    /// Div with LHS constant: f(x) = 12.0 / x.
+    /// d(c/v)/dv = -c/v^2.  At x = 4: f = 3, df/dx = -12/16 = -0.75.
+    /// Exercises the general quotient-rule branch with SENTINEL on the LHS slot.
+    #[test]
+    fn var_div_lhs_const_known_answer() {
+        let (value, grad) = vjp(|x| <Var as Scalar>::from_f64(12.0) / x[0], &[4.0]);
+        assert!((value - 3.0).abs() < TOL, "primal {} != 3.0", value);
+        assert!((grad[0] + 0.75).abs() < TOL, "grad[0] {} != -0.75", grad[0]);
     }
 
     /// Neg: f(x) = -(x * x), df/dx = -2x. At x = 3: f = -9, df/dx = -6.
