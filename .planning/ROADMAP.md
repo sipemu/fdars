@@ -78,7 +78,7 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
 - [x] **Phase 94: Reverse-Mode Autodiff Core (VJP Tape)** - Hand-written in-crate reverse-mode tape + backward pass + VJP entry point, validated vs forward-mode and finite differences (completed 2026-09-11)
 - [x] **Phase 95: Generic Scalar Hot-Path Signatures** - Generalize targeted hot-path signatures over the scalar type via defaulted type params (`T = f64`); non-breakingness proven at compile time (completed 2026-09-11)
 - [x] **Phase 96: Differentiable Basis Evaluation & Inner Products** - Basis eval (B-spline/Fourier) + functional inner products generic over `Scalar` and differentiable (completed 2026-09-11)
-- [ ] **Phase 97: Differentiable Regression Prediction & Smoothing Penalties** - `fregre_lm`/FPCR prediction and roughness-penalty evaluation generic over `Scalar` and differentiable
+- [x] **Phase 97: Differentiable Regression Prediction & Smoothing Penalties** - `fregre_lm`/FPCR prediction and roughness-penalty evaluation generic over `Scalar` and differentiable (completed 2026-09-11)
 - [ ] **Phase 98: Differentiable Depth & Curve Distances** - Functional depth + curve distances (beyond soft-DTW) generic over `Scalar` and differentiable
 - [ ] **Phase 99: End-to-End Autodiff Flow & Gradient API** - Autodiff types flow through the generalized hot-paths end-to-end; unified `grad`/`jacobian`/`vjp` API + composition demo + re-exports + doctest
 - [ ] **Phase 100: Release Preparation & Verification** - Bump 0.43.0 → 0.44.0, CHANGELOG, DIF-F1/F2/F3 checked off, all whole-crate gates green incl. `cargo package`
@@ -152,9 +152,9 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
 
 **Plans**: 3 plans
 
-- [ ] 97-01-tracer-predict-curve-generic-PLAN.md — TRACER: add `predict_curve_generic<S: Scalar>` (compose `project_scores_generic` + coefficient fold) + f64 parity (1e-9) + Dual/Var FD w.r.t. curve; `predict_fregre_lm` + callers unchanged (DOP-02)
-- [ ] 97-02-penalty-value-generic-PLAN.md — add standalone `penalty_value_generic<S: Scalar>` (`λ·cᵀRc`, `&FdMatrix` carrier) + bit-identical f64 parity (1e-12) + Dual/Var FD w.r.t. coef; penalty-matrix constructors unchanged (DOP-03)
-- [ ] 97-03-non-breaking-gate-PLAN.md — non-breaking gate: clippy `--all-targets` + full test + doctests + 28 examples + serde + wasm + git-diff churn confined to the six touched files (DOP-02, DOP-03)
+- [x] 97-01-tracer-predict-curve-generic-PLAN.md — TRACER: add `predict_curve_generic<S: Scalar>` (compose `project_scores_generic` + coefficient fold) + f64 parity (1e-9) + Dual/Var FD w.r.t. curve; `predict_fregre_lm` + callers unchanged (DOP-02)
+- [x] 97-02-penalty-value-generic-PLAN.md — add standalone `penalty_value_generic<S: Scalar>` (`λ·cᵀRc`, `&FdMatrix` carrier) + bit-identical f64 parity (1e-12) + Dual/Var FD w.r.t. coef; penalty-matrix constructors unchanged (DOP-03)
+- [x] 97-03-non-breaking-gate-PLAN.md — non-breaking gate: clippy `--all-targets` + full test + doctests + 28 examples + serde + wasm + git-diff churn confined to the six touched files (DOP-02, DOP-03)
 
 ### Phase 98: Differentiable Depth & Curve Distances
 
@@ -211,7 +211,7 @@ Phases execute in numeric order: 94 → 95 → 96 → 97 → 98 → 99 → 100
 | 94. Reverse-Mode Autodiff Core (VJP Tape) | v0.44.0 | 4/4 | Complete    | 2026-09-11 |
 | 95. Generic Scalar Hot-Path Signatures | v0.44.0 | 3/3 | Complete    | 2026-09-11 |
 | 96. Differentiable Basis Evaluation & Inner Products | v0.44.0 | 3/3 | Complete    | 2026-09-11 |
-| 97. Differentiable Regression Prediction & Smoothing Penalties | v0.44.0 | 0/3 | Not started | - |
+| 97. Differentiable Regression Prediction & Smoothing Penalties | v0.44.0 | 3/3 | Complete    | 2026-09-11 |
 | 98. Differentiable Depth & Curve Distances | v0.44.0 | 0/? | Not started | - |
 | 99. End-to-End Autodiff Flow & Gradient API | v0.44.0 | 0/? | Not started | - |
 | 100. Release Preparation & Verification | v0.44.0 | 0/? | Not started | - |
