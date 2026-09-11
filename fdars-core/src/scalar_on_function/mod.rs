@@ -10,6 +10,7 @@
 //! # Methods
 //!
 //! - [`fregre_lm`]: FPC-based functional linear model with optional scalar covariates
+//! - [`predict_curve_generic`]: Differentiable single-curve FPCR prediction (generic over `Scalar`)
 //! - [`fregre_l1`]: L1 (median) robust functional regression via IRLS
 //! - [`fregre_huber`]: Huber M-estimation robust functional regression via IRLS
 //! - [`fregre_np_mixed`]: Nonparametric kernel regression with product kernels

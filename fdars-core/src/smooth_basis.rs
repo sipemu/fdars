@@ -8,6 +8,7 @@
 //! - [`smooth_basis`] — Penalized least squares with continuous roughness penalty
 //! - [`smooth_basis_gcv`] — GCV-optimal smoothing parameter selection
 //! - [`bspline_penalty_matrix`] / [`fourier_penalty_matrix`] — Roughness penalty matrices
+//! - [`penalty_value_generic`] — Differentiable roughness-penalty value `λ·cᵀRc` (generic over `Scalar`)
 
 use crate::autodiff::Scalar;
 use crate::basis::{bspline_basis, fourier_basis_with_period};
@@ -202,9 +203,36 @@ pub fn fourier_penalty_matrix(nbasis: usize, period: f64, lfd_order: usize) -> V
 /// computation with the same accumulation order (`f64::from_f64` is the identity).
 ///
 /// `penalty` must be the `k × k` penalty matrix where `k == coef.len()`.
+///
+/// # Panics
+///
+/// Panics if `penalty` is not at least `k × k` for `k = coef.len()` (out-of-bounds
+/// `penalty[(i, j)]` access) — the penalty matrix must match the coefficient count.
+/// A `debug_assert` guards this in debug builds.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::smooth_basis::{bspline_penalty_matrix, penalty_value_generic};
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let t: Vec<f64> = (0..41).map(|i| i as f64 / 40.0).collect();
+/// let flat = bspline_penalty_matrix(&t, 8, 4, 2); // k×k column-major penalty
+/// let k = (flat.len() as f64).sqrt() as usize;
+/// let r = FdMatrix::from_column_major(flat, k, k).unwrap();
+/// let coef: Vec<f64> = (0..k).map(|i| 0.2 + 0.1 * i as f64).collect();
+///
+/// let p = penalty_value_generic::<f64>(&coef, &r, 0.5);
+/// assert!(p >= 0.0); // roughness penalty of a PSD matrix is non-negative
+/// ```
 #[must_use]
 pub fn penalty_value_generic<T: Scalar>(coef: &[T], penalty: &FdMatrix, lambda: f64) -> T {
     let k = coef.len();
+    let (pr, pc) = penalty.shape();
+    debug_assert!(
+        pr >= k && pc >= k,
+        "penalty_value_generic: penalty matrix ({pr}x{pc}) smaller than coef length {k}"
+    );
     // λ · cᵀ R c = λ · Σ_i Σ_j c_i · R[i,j] · c_j
     let mut sum = T::zero();
     for i in 0..k {

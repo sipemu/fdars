@@ -484,14 +484,47 @@ pub fn predict_fregre_lm(
 ///
 /// This is an **independent additive** autodiff entry point — it does NOT replace
 /// [`predict_fregre_lm`], whose batch f64 path is left byte-identical. At `T = f64`
-/// this matches `predict_fregre_lm` per curve within ~1e-9 (the two paths differ
-/// only in floating-point accumulation order: `project_scores_generic` pre-folds
+/// this matches `predict_fregre_lm` per curve to ~1e-14 (the two paths differ only
+/// in floating-point accumulation order: `project_scores_generic` pre-folds
 /// `rotation · weights` into one `f64`, while the batch kernel does three separate
-/// multiplies — a ~1e-14 divergence, far below any meaningful tolerance).
+/// multiplies — a rounding-level divergence, far below any meaningful tolerance).
 ///
 /// Scalar covariates are NOT included here; the differentiable predictor is the
 /// functional curve. For a prediction that also adds scalar-covariate terms, use
 /// the batch [`predict_fregre_lm`].
+///
+/// # Panics
+///
+/// Panics if `curve.len()` is shorter than the FPCA grid length
+/// (`fit.fpca.mean.len()`), via the inner [`project_scores_generic`] projection —
+/// the curve must be sampled on the same grid the model was fit on.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::scalar_on_function::{fregre_lm, predict_curve_generic, predict_fregre_lm};
+/// use fdars_core::matrix::FdMatrix;
+///
+/// // Tiny synthetic fit: amplitude-scaled sinusoids (well-conditioned at ncomp=1).
+/// let (n, m) = (12usize, 8usize);
+/// let mut flat = vec![0.0; n * m];
+/// for i in 0..n {
+///     let amp = 1.0 + i as f64 * 0.2;
+///     for j in 0..m {
+///         let t = j as f64 / (m - 1) as f64;
+///         flat[i + j * n] = amp * (std::f64::consts::PI * t).sin();
+///     }
+/// }
+/// let data = FdMatrix::from_column_major(flat, n, m).unwrap();
+/// let y: Vec<f64> = (0..n).map(|i| 1.0 + i as f64 * 0.2).collect();
+/// let fit = fregre_lm(&data, &y, None, 1).unwrap();
+///
+/// // The generic per-curve prediction matches the batch f64 path.
+/// let curve: Vec<f64> = (0..m).map(|j| data[(0, j)]).collect();
+/// let g = predict_curve_generic::<f64>(&curve, &fit);
+/// let batch = predict_fregre_lm(&fit, &data, None)[0];
+/// assert!((g - batch).abs() < 1e-6);
+/// ```
 #[must_use]
 pub fn predict_curve_generic<T: Scalar>(curve: &[T], fit: &FregreLmResult) -> T {
     let scores = project_scores_generic::<T>(
