@@ -614,6 +614,156 @@ fn test_single_point_basis() {
     );
 }
 
+// ============== B-spline generic (Scalar) tests — DOP-01 ==============
+
+/// Bit-identical parity: bspline_basis_from_knots::<f64> must reproduce the
+/// pre-change f64 output for the same inputs.  f64::from_f64 is the identity,
+/// so the generic path at T=f64 is bit-for-bit identical to the old f64 path.
+#[test]
+fn test_bspline_basis_from_knots_f64_parity() {
+    use super::bspline::{bspline_basis_from_knots, construct_bspline_knots};
+    let t: Vec<f64> = (0..8).map(|i| i as f64 / 7.0).collect();
+    let nknots = 5;
+    let order = 4;
+    let knots = construct_bspline_knots(0.0, 1.0, nknots, order);
+    // Compute once via inferred-T=f64 (same as the pre-change call)
+    let reference: Vec<f64> = bspline_basis_from_knots(&t, &knots, order);
+    // Compute again via the explicit ::<f64> turbofish (tests the generic path)
+    let generic: Vec<f64> = bspline_basis_from_knots::<f64>(&t, &knots, order);
+    assert_eq!(
+        reference, generic,
+        "bspline_basis_from_knots::<f64> must be bit-identical to inferred-f64 path"
+    );
+}
+
+/// Forward-mode gradient check: tangent from bspline_basis_from_knots<Dual> + inner_product<Dual>
+/// matches central finite difference within 1e-6 for each evaluation point t[i].
+///
+/// Combined objective: bspline_basis_from_knots(t, knots, order) → extract basis column j
+/// → inner_product(col, curve_lifted, argvals) → scalar.
+/// Differentiate w.r.t. each t[i] in turn via Dual::seed.
+#[test]
+fn test_bspline_inner_product_objective_dual() {
+    use super::bspline::{bspline_basis_from_knots, construct_bspline_knots};
+    use crate::autodiff::Dual;
+
+    let t_f64: Vec<f64> = (0..8).map(|i| i as f64 / 7.0).collect();
+    let n = t_f64.len();
+    let nknots = 5;
+    let order = 4;
+    let knots = construct_bspline_knots(0.0, 1.0, nknots, order);
+    let nbasis = knots.len() - order;
+    // Choose a middle basis column (non-zero for interior t points)
+    let col_j = nbasis / 2;
+    // Fixed curve and argvals for the inner product (length = n, uniform)
+    let argvals: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
+    let curve: Vec<f64> = (0..n).map(|i| 0.3 + 0.1 * i as f64).collect();
+
+    // Combined f64 objective for FD reference
+    let obj_f64 = |t: &[f64]| -> f64 {
+        let basis = bspline_basis_from_knots(t, &knots, order);
+        let col: Vec<f64> = (0..n).map(|ti| basis[ti + col_j * n]).collect();
+        crate::utility::inner_product(&col, &curve, &argvals)
+    };
+
+    let h = 1e-6_f64;
+
+    for seed_idx in 0..n {
+        // Build Dual input: seed t[seed_idx], rest are constants
+        let t_dual: Vec<Dual> = t_f64
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| {
+                if i == seed_idx {
+                    Dual::seed(v)
+                } else {
+                    Dual::constant(v)
+                }
+            })
+            .collect();
+
+        // Generic objective at Dual
+        let basis_dual = bspline_basis_from_knots(&t_dual, &knots, order);
+        let col_dual: Vec<Dual> = (0..n).map(|ti| basis_dual[ti + col_j * n]).collect();
+        let curve_lifted: Vec<Dual> = curve.iter().map(|&v| Dual::constant(v)).collect();
+        let result = crate::utility::inner_product(&col_dual, &curve_lifted, &argvals);
+        let (_, tangent) = result.extract();
+
+        // Central finite difference
+        let mut t_plus = t_f64.clone();
+        let mut t_minus = t_f64.clone();
+        t_plus[seed_idx] += h;
+        t_minus[seed_idx] -= h;
+        let fd = (obj_f64(&t_plus) - obj_f64(&t_minus)) / (2.0 * h);
+
+        let tol = 1e-6 * fd.abs().max(1e-10);
+        assert!(
+            (tangent - fd).abs() <= tol,
+            "Dual: t[{seed_idx}] tangent={tangent} vs FD={fd}, diff={}, tol={tol}",
+            (tangent - fd).abs()
+        );
+    }
+}
+
+/// Reverse-mode gradient check: vjp gradient on all t coordinates from the combined
+/// bspline + inner_product objective matches central FD within 1e-6 for each coordinate.
+#[test]
+fn test_bspline_inner_product_objective_var() {
+    use super::bspline::{bspline_basis_from_knots, construct_bspline_knots};
+    use crate::autodiff::{vjp, Scalar, Var};
+
+    let t_f64: Vec<f64> = (0..8).map(|i| i as f64 / 7.0).collect();
+    let n = t_f64.len();
+    let nknots = 5;
+    let order = 4;
+    let knots = construct_bspline_knots(0.0, 1.0, nknots, order);
+    let nbasis = knots.len() - order;
+    let col_j = nbasis / 2;
+    let argvals: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
+    let curve: Vec<f64> = (0..n).map(|i| 0.3 + 0.1 * i as f64).collect();
+
+    // Combined f64 objective for FD reference
+    let obj_f64 = |t: &[f64]| -> f64 {
+        let basis = bspline_basis_from_knots(t, &knots, order);
+        let col: Vec<f64> = (0..n).map(|ti| basis[ti + col_j * n]).collect();
+        crate::utility::inner_product(&col, &curve, &argvals)
+    };
+
+    // Lift curve and argvals as f64 captures; knots borrow f64 slices directly
+    let knots_clone = knots.clone();
+    let argvals_clone = argvals.clone();
+    let curve_clone = curve.clone();
+    let (_, grad) = vjp(
+        |t: &[Var]| {
+            let basis = bspline_basis_from_knots(t, &knots_clone, order);
+            let col: Vec<Var> = (0..n).map(|ti| basis[ti + col_j * n]).collect();
+            let curve_lifted: Vec<Var> = curve_clone
+                .iter()
+                .map(|&v| <Var as Scalar>::from_f64(v))
+                .collect();
+            crate::utility::inner_product(&col, &curve_lifted, &argvals_clone)
+        },
+        &t_f64,
+    );
+
+    let h = 1e-6_f64;
+    for idx in 0..n {
+        let mut t_plus = t_f64.clone();
+        let mut t_minus = t_f64.clone();
+        t_plus[idx] += h;
+        t_minus[idx] -= h;
+        let fd = (obj_f64(&t_plus) - obj_f64(&t_minus)) / (2.0 * h);
+
+        let tol = 1e-6 * fd.abs().max(1e-10);
+        assert!(
+            (grad[idx] - fd).abs() <= tol,
+            "Var: grad[{idx}]={} vs FD={fd}, diff={}, tol={tol}",
+            grad[idx],
+            (grad[idx] - fd).abs()
+        );
+    }
+}
+
 // ============== P-spline GCV selection tests ==============
 
 /// Create sine data matrix (n=3 curves) for GCV tests.
