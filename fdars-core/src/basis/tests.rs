@@ -764,6 +764,139 @@ fn test_bspline_inner_product_objective_var() {
     }
 }
 
+/// Bit-identical parity: fourier_basis_eval::<f64> must reproduce the pre-change
+/// f64 output of fourier_basis_with_period for the same inputs. f64::from_f64 is
+/// the identity and the 2*PI*(t-t_min)/period operation order is preserved.
+#[test]
+fn test_fourier_basis_eval_f64_parity() {
+    use super::fourier::{fourier_basis_eval, fourier_basis_with_period};
+    let t: Vec<f64> = (0..8).map(|i| i as f64 / 7.0).collect();
+    let nbasis = 5;
+    let period = 1.0;
+    let t_min = 0.0; // min of t
+                     // Reference: the existing f64 wrapper (derives t_min = min(t) = 0.0 internally)
+    let reference: Vec<f64> = fourier_basis_with_period(&t, nbasis, period);
+    // Generic path at explicit ::<f64>
+    let generic: Vec<f64> = fourier_basis_eval::<f64>(&t, nbasis, period, t_min);
+    assert_eq!(
+        reference, generic,
+        "fourier_basis_eval::<f64> must be bit-identical to fourier_basis_with_period"
+    );
+}
+
+/// Forward-mode gradient check: tangent from fourier_basis_eval<Dual> + inner_product<Dual>
+/// matches central finite difference within 1e-6 for each evaluation point t[i].
+#[test]
+fn test_fourier_inner_product_objective_dual() {
+    use super::fourier::fourier_basis_eval;
+    use crate::autodiff::Dual;
+
+    let t_f64: Vec<f64> = (0..8).map(|i| i as f64 / 7.0).collect();
+    let n = t_f64.len();
+    let nbasis = 5;
+    let period = 1.0;
+    let t_min = 0.0;
+    // A middle harmonic column (a sin/cos, not the DC column 0)
+    let col_j = 2;
+    let argvals: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
+    let curve: Vec<f64> = (0..n).map(|i| 0.3 + 0.1 * i as f64).collect();
+
+    let obj_f64 = |t: &[f64]| -> f64 {
+        let basis = fourier_basis_eval(t, nbasis, period, t_min);
+        let col: Vec<f64> = (0..n).map(|ti| basis[ti + col_j * n]).collect();
+        crate::utility::inner_product(&col, &curve, &argvals)
+    };
+
+    let h = 1e-6_f64;
+    for seed_idx in 0..n {
+        let t_dual: Vec<Dual> = t_f64
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| {
+                if i == seed_idx {
+                    Dual::seed(v)
+                } else {
+                    Dual::constant(v)
+                }
+            })
+            .collect();
+
+        let basis_dual = fourier_basis_eval(&t_dual, nbasis, period, t_min);
+        let col_dual: Vec<Dual> = (0..n).map(|ti| basis_dual[ti + col_j * n]).collect();
+        let curve_lifted: Vec<Dual> = curve.iter().map(|&v| Dual::constant(v)).collect();
+        let (_, tangent) =
+            crate::utility::inner_product(&col_dual, &curve_lifted, &argvals).extract();
+
+        let mut t_plus = t_f64.clone();
+        let mut t_minus = t_f64.clone();
+        t_plus[seed_idx] += h;
+        t_minus[seed_idx] -= h;
+        let fd = (obj_f64(&t_plus) - obj_f64(&t_minus)) / (2.0 * h);
+
+        let tol = 1e-6 * (1.0 + fd.abs());
+        assert!(
+            (tangent - fd).abs() <= tol,
+            "Dual: t[{seed_idx}] tangent={tangent} vs FD={fd}, diff={}, tol={tol}",
+            (tangent - fd).abs()
+        );
+    }
+}
+
+/// Reverse-mode gradient check: vjp gradient on all t coordinates from the combined
+/// fourier + inner_product objective matches central FD within 1e-6 for each coordinate.
+#[test]
+fn test_fourier_inner_product_objective_var() {
+    use super::fourier::fourier_basis_eval;
+    use crate::autodiff::{vjp, Scalar, Var};
+
+    let t_f64: Vec<f64> = (0..8).map(|i| i as f64 / 7.0).collect();
+    let n = t_f64.len();
+    let nbasis = 5;
+    let period = 1.0;
+    let t_min = 0.0;
+    let col_j = 2;
+    let argvals: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
+    let curve: Vec<f64> = (0..n).map(|i| 0.3 + 0.1 * i as f64).collect();
+
+    let obj_f64 = |t: &[f64]| -> f64 {
+        let basis = fourier_basis_eval(t, nbasis, period, t_min);
+        let col: Vec<f64> = (0..n).map(|ti| basis[ti + col_j * n]).collect();
+        crate::utility::inner_product(&col, &curve, &argvals)
+    };
+
+    let argvals_clone = argvals.clone();
+    let curve_clone = curve.clone();
+    let (_, grad) = vjp(
+        |t: &[Var]| {
+            let basis = fourier_basis_eval(t, nbasis, period, t_min);
+            let col: Vec<Var> = (0..n).map(|ti| basis[ti + col_j * n]).collect();
+            let curve_lifted: Vec<Var> = curve_clone
+                .iter()
+                .map(|&v| <Var as Scalar>::from_f64(v))
+                .collect();
+            crate::utility::inner_product(&col, &curve_lifted, &argvals_clone)
+        },
+        &t_f64,
+    );
+
+    let h = 1e-6_f64;
+    for idx in 0..n {
+        let mut t_plus = t_f64.clone();
+        let mut t_minus = t_f64.clone();
+        t_plus[idx] += h;
+        t_minus[idx] -= h;
+        let fd = (obj_f64(&t_plus) - obj_f64(&t_minus)) / (2.0 * h);
+
+        let tol = 1e-6 * (1.0 + fd.abs());
+        assert!(
+            (grad[idx] - fd).abs() <= tol,
+            "Var: grad[{idx}]={} vs FD={fd}, diff={}, tol={tol}",
+            grad[idx],
+            (grad[idx] - fd).abs()
+        );
+    }
+}
+
 // ============== P-spline GCV selection tests ==============
 
 /// Create sine data matrix (n=3 curves) for GCV tests.
