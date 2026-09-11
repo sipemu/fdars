@@ -5,6 +5,27 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.0] - 2026-09-11
+
+**Differentiable Core — Reverse-Mode & Broadened Subset.** Strictly additive, non-breaking;
+no new crate dependency. Completes the differentiable-core section of the 1.0 roadmap
+(DIF-F1/F2/F3).
+
+### Added
+
+- Reverse-mode (VJP) autodiff: in-crate Wengert-list tape, `Var` scalar (implements
+  `Scalar`), and a single-sweep `vjp` entry point; validated vs forward-mode `Dual` and
+  finite differences (`DIF-F1`).
+- Generic-over-`Scalar` hot-path signatures for `l2_distance` / `trapz` / `inner_product` /
+  `inner_product_l2`; existing f64 call sites, all 28 examples, and R/WASM surfaces compile
+  unchanged (`DIF-F3`).
+- Broadened differentiable subset, all f64-parity + FD-checked at `Dual`/`Var`:
+  `bspline_basis_from_knots<T>` + `fourier_basis_eval<T>` (basis eval), `predict_curve_generic<T>`
+  (FPCR prediction), `penalty_value_generic<T>` (roughness penalty `λ·cᵀRc`),
+  `modal_depth_generic<T>` (functional depth) (`DIF-F2`).
+- Unified `grad`/`jacobian`/`vjp` gradient API with an end-to-end composition demo and a
+  running module doctest (`API-01`).
+
 ## [0.43.0] - 2026-09-09
 
 **Test Determinism & Release Hardening.** Docs/tests/CI only — no numeric or behavioral

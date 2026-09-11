@@ -70,12 +70,12 @@ forced into Phases 82/83) to the 1.0 gap.
   zero-gradient bug itself was **already FIXED in v0.40.0 (CORR-01)** — this remaining item is
   the optimizer-quality improvement, not the gradient correctness fix. *Scope: 1.0 milestone
   (algorithm quality) or a dedicated backlog milestone.*
-- [ ] **`DIF-F1` — reverse-mode / VJP.** Add reverse-mode (vector-Jacobian-product)
-  differentiation to the differentiable core. *Scope: differentiable-core expansion.*
-- [ ] **`DIF-F2` — broaden the differentiable subset.** Extend the set of algorithms that are
-  differentiable. *Scope: differentiable-core expansion.*
-- [ ] **`DIF-F3` — generic `f64` hot-path signatures.** Generalize hot-path signatures over a
-  scalar type so autodiff types flow through. *Scope: differentiable-core expansion.*
+- [x] **`DIF-F1` — reverse-mode / VJP.** Add reverse-mode (vector-Jacobian-product)
+  differentiation to the differentiable core. *Scope: differentiable-core expansion.* — **Done v0.44.0** (in-crate Wengert-list tape + `Var`/`vjp`).
+- [x] **`DIF-F2` — broaden the differentiable subset.** Extend the set of algorithms that are
+  differentiable. *Scope: differentiable-core expansion.* — **Done v0.44.0** (basis eval, FPCR prediction, roughness penalty, functional depth — all generic over `Scalar`, FD-checked).
+- [x] **`DIF-F3` — generic `f64` hot-path signatures.** Generalize hot-path signatures over a
+  scalar type so autodiff types flow through. *Scope: differentiable-core expansion.* — **Done v0.44.0** (`l2_distance`/`trapz`/`inner_product`/`inner_product_l2` generic over `T: Scalar`, non-breaking).
 
 ---
 

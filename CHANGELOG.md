@@ -11,6 +11,36 @@ signatures and dependencies, with one intentional exception: the v0.40.0 soft-DT
 barycenter correction changes convergence behavior intentionally (see [0.40.0]
 Changed below).
 
+## [0.44.0] - 2026-09-11
+
+**Differentiable Core — Reverse-Mode & Broadened Subset.** Strictly additive,
+non-breaking. Adds an in-crate reverse-mode (vector-Jacobian-product) automatic
+differentiation core alongside the v0.39.0 forward-mode `Dual`, and broadens the
+differentiable operation set across four algorithm families — all generic over the
+existing `Scalar` trait, with f64 numerics preserved and no new crate dependency.
+
+### Added
+
+- **Reverse-mode autodiff (`DIF-F1`).** A hand-written Wengert-list tape with a `Var`
+  scalar type (implements `Scalar`) and a `vjp` entry point that seeds the output
+  adjoint and accumulates all input gradients in a single backward sweep — efficient
+  for many-input→scalar objectives. Validated against forward-mode `Dual` and central
+  finite differences. `Var`, `vjp` re-exported at the crate root and in `prelude`.
+- **Generic scalar hot-path signatures (`DIF-F3`).** `l2_distance`, `trapz`,
+  `inner_product`, and `inner_product_l2` are now generic over `T: Scalar` (resolving
+  to `f64` at existing call sites), so every f64 call site, all 28 examples, and the
+  R/WASM binding surfaces compile unchanged.
+- **Broadened differentiable subset (`DIF-F2`).** New generic-over-`Scalar`,
+  differentiable functions with f64 parity: `bspline_basis_from_knots<T>` and a new
+  `fourier_basis_eval<T>` core (basis evaluation); `predict_curve_generic<T>`
+  (scalar-on-function / FPCR prediction) and `penalty_value_generic<T>` (roughness
+  penalty `λ·cᵀRc`); `modal_depth_generic<T>` (differentiable functional depth). All
+  finite-difference-checked at both `Dual` and `Var`.
+- **End-to-end gradient API (`API-01`).** Unified `grad` / `jacobian` / `vjp` entry
+  points, a worked composition demo (`tests/differentiable_composition.rs`) chaining
+  the broadened subset into one FD-checked scalar objective, and a running module
+  doctest demonstrating forward/reverse-mode agreement.
+
 ## [0.43.0] - 2026-09-09
 
 **Test Determinism & Release Hardening.** A quality + release-hardening release —
