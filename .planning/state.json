@@ -11,7 +11,7 @@
     {
       "number": "95",
       "name": "Generic Scalar Hot-Path Signatures",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "96",
@@ -41,8 +41,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (verify)",
-    "reason": "Phase 95 of 7 · 14% · ready to verify"
+    "label": "Advance to the next step (plan phase 96)",
+    "reason": "Phase 96 of 7 — needs a plan"
   },
-  "updated_at": "2026-09-11T06:44:59.694Z"
+  "updated_at": "2026-09-11T07:02:08.526Z"
 }
