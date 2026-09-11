@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v0.44.0
 milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
-current_phase: 95
-current_phase_name: Generic Scalar Hot-Path Signatures
-status: verifying
-stopped_at: Completed 95-03-non-breaking-compile-gate-PLAN.md
-last_updated: "2026-09-11T06:45:07.028Z"
+current_phase: 96
+current_phase_name: Differentiable Basis Evaluation & Inner Products
+status: planning
+stopped_at: Phase 95 complete, ready to plan Phase 96
+last_updated: "2026-09-11T07:02:08.513Z"
 last_activity: 2026-09-11
-last_activity_desc: Phase 95 execution started
-state_head: e8201904f96bf77623522c3b06f277a8ac75c553
+last_activity_desc: Phase 95 complete, transitioned to Phase 96
+state_head: 45987b8bba83a990ae755237638f8c9430e8c315
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 7
   completed_plans: 7
-  percent: 14
+  percent: 29
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-09)
 
 ## Current Position
 
-Phase: 95 (Generic Scalar Hot-Path Signatures) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
-Last activity: 2026-09-11 — Phase 95 execution started
+Phase: 96 — Differentiable Basis Evaluation & Inner Products
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-11 — Phase 95 complete, transitioned to Phase 96
 
 ## Milestone Roadmap (v0.44.0)
 
@@ -146,7 +146,7 @@ Items acknowledged and deferred, most recent first:
 ## Session Continuity
 
 Last session: 2026-09-11T06:45:06.985Z
-Stopped at: Completed 95-03-non-breaking-compile-gate-PLAN.md
+Stopped at: Phase 95 complete, ready to plan Phase 96
 Resume file: None
 
 ## Operator Next Steps
