@@ -116,7 +116,10 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
   3. All 28 examples and the R + WASM binding surfaces compile unchanged against the generalized signatures.
   4. The `--features serde` build stays green (no regression from the generalization).
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 95-01-tracer-l2-distance-PLAN.md — TRACER: generalize l2_distance to `<T: Scalar = f64>` + parity/Dual/Var tests + confirm l2_distance_matrix & crate compile
+- [ ] 95-02-remaining-kernels-PLAN.md — generalize trapz, inner_product (`.sum()`→accumulator rewrite), inner_product_l2 in place + parity/Dual/Var tests
+- [ ] 95-03-non-breaking-compile-gate-PLAN.md — GEN-01 compile-gate: 28 examples + serde + wasm + clippy --all-targets + full test + doctests + churn diff + fdars-r grep
 
 ### Phase 96: Differentiable Basis Evaluation & Inner Products
 
