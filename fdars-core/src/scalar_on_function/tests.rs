@@ -1007,3 +1007,89 @@ fn test_fregre_pls_dimension_errors() {
     // ncomp = 0
     assert!(fregre_pls(&data, &y, &t, 0, None).is_err());
 }
+
+// ----- predict_curve_generic tests (DOP-02: differentiable FPCR prediction) -----
+
+/// f64 parity: predict_curve_generic::<f64> matches predict_fregre_lm per curve
+/// within 1e-6 (the two paths differ only in f64 accumulation order by ~1e-14 —
+/// project_scores_generic pre-folds rotation*weights; the batch kernel does not).
+#[test]
+fn test_predict_curve_generic_f64_parity() {
+    let (data, y, _t) = generate_test_data(30, 50, 42);
+    let (n, m) = data.shape();
+    let fit = fregre_lm(&data, &y, None, 3).unwrap();
+    let batch = predict_fregre_lm(&fit, &data, None);
+    for i in 0..n {
+        let curve: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
+        let g = predict_curve_generic::<f64>(&curve, &fit);
+        assert!(
+            (g - batch[i]).abs() < 1e-6,
+            "predict_curve_generic::<f64> vs predict_fregre_lm at {i}: {g} vs {}",
+            batch[i]
+        );
+    }
+}
+
+/// Forward-mode: tangent of predict_curve_generic::<Dual> w.r.t. each curve value
+/// matches central finite differences within 1e-6*(1+|fd|).
+#[test]
+fn test_predict_curve_generic_dual_fd_check() {
+    use crate::autodiff::Dual;
+    let (data, y, _t) = generate_test_data(20, 30, 7);
+    let (_n, m) = data.shape();
+    let fit = fregre_lm(&data, &y, None, 2).unwrap();
+    let curve: Vec<f64> = (0..m).map(|j| data[(0, j)]).collect();
+    let obj = |c: &[f64]| -> f64 { predict_curve_generic::<f64>(c, &fit) };
+    let h = 1e-6_f64;
+    for idx in 0..m {
+        let cd: Vec<Dual> = curve
+            .iter()
+            .enumerate()
+            .map(|(j, &v)| {
+                if j == idx {
+                    Dual::seed(v)
+                } else {
+                    Dual::constant(v)
+                }
+            })
+            .collect();
+        let (_, tangent) = predict_curve_generic::<Dual>(&cd, &fit).extract();
+        let mut cp = curve.clone();
+        let mut cm = curve.clone();
+        cp[idx] += h;
+        cm[idx] -= h;
+        let fd = (obj(&cp) - obj(&cm)) / (2.0 * h);
+        let tol = 1e-6 * (1.0 + fd.abs());
+        assert!(
+            (tangent - fd).abs() <= tol,
+            "Dual: curve[{idx}] tangent={tangent} vs FD={fd}"
+        );
+    }
+}
+
+/// Reverse-mode: vjp gradient of predict_curve_generic::<Var> w.r.t. all curve
+/// values matches central finite differences within 1e-6*(1+|fd|), one sweep.
+#[test]
+fn test_predict_curve_generic_var_fd_check() {
+    use crate::autodiff::{vjp, Var};
+    let (data, y, _t) = generate_test_data(20, 30, 7);
+    let (_n, m) = data.shape();
+    let fit = fregre_lm(&data, &y, None, 2).unwrap();
+    let curve: Vec<f64> = (0..m).map(|j| data[(0, j)]).collect();
+    let obj = |c: &[f64]| -> f64 { predict_curve_generic::<f64>(c, &fit) };
+    let (_, grad) = vjp(|c: &[Var]| predict_curve_generic::<Var>(c, &fit), &curve);
+    let h = 1e-6_f64;
+    for idx in 0..m {
+        let mut cp = curve.clone();
+        let mut cm = curve.clone();
+        cp[idx] += h;
+        cm[idx] -= h;
+        let fd = (obj(&cp) - obj(&cm)) / (2.0 * h);
+        let tol = 1e-6 * (1.0 + fd.abs());
+        assert!(
+            (grad[idx] - fd).abs() <= tol,
+            "Var: grad[{idx}]={} vs FD={fd}",
+            grad[idx]
+        );
+    }
+}

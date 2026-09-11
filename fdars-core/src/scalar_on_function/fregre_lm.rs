@@ -4,10 +4,11 @@ use super::{
     validate_fregre_inputs, FregreCvResult, FregreLmResult, ModelSelectionResult,
     SelectionCriterion,
 };
+use crate::autodiff::Scalar;
 use crate::cv::create_folds;
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc;
+use crate::regression::{fdata_to_pc, project_scores_generic};
 
 // ---------------------------------------------------------------------------
 // fregre_lm: FPC-based functional linear model
@@ -470,4 +471,40 @@ pub fn predict_fregre_lm(
         predictions[i] = yhat;
     }
     predictions
+}
+
+/// Generic-over-`Scalar`, differentiable single-curve FPCR prediction (DOP-02).
+///
+/// Composes the Phase 94 [`project_scores_generic`] score projection with the
+/// fitted linear combination `intercept + Σ_k coefficients[1 + k] · score_k`.
+/// The **input curve** carries the scalar type `T`, so at `T = Dual` / `T = Var`
+/// the returned prediction propagates exact gradients w.r.t. the curve values;
+/// all model parameters (`intercept`, `coefficients`, and the FPCA `mean` /
+/// `rotation` / `weights`) stay `f64`.
+///
+/// This is an **independent additive** autodiff entry point — it does NOT replace
+/// [`predict_fregre_lm`], whose batch f64 path is left byte-identical. At `T = f64`
+/// this matches `predict_fregre_lm` per curve within ~1e-9 (the two paths differ
+/// only in floating-point accumulation order: `project_scores_generic` pre-folds
+/// `rotation · weights` into one `f64`, while the batch kernel does three separate
+/// multiplies — a ~1e-14 divergence, far below any meaningful tolerance).
+///
+/// Scalar covariates are NOT included here; the differentiable predictor is the
+/// functional curve. For a prediction that also adds scalar-covariate terms, use
+/// the batch [`predict_fregre_lm`].
+#[must_use]
+pub fn predict_curve_generic<T: Scalar>(curve: &[T], fit: &FregreLmResult) -> T {
+    let scores = project_scores_generic::<T>(
+        curve,
+        &fit.fpca.mean,
+        &fit.fpca.rotation,
+        &fit.fpca.weights,
+        fit.ncomp,
+    );
+    let mut yhat = T::from_f64(fit.intercept);
+    for k in 0..fit.ncomp {
+        // coefficients[0] is the intercept slot; FPC coefficients start at 1 + k.
+        yhat += T::from_f64(fit.coefficients[1 + k]) * scores[k];
+    }
+    yhat
 }
