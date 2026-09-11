@@ -1,37 +1,37 @@
 ---
-gsd_state_version: 1.0
+gsd_state_version: "1.0"
 milestone: v0.44.0
 milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
-current_phase: 100
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 100 complete — all phases complete
-last_updated: "2026-09-11T19:13:53.270Z"
-last_activity: 2026-09-11
-last_activity_desc: Phase 100 complete
-state_head: ab7777737a03ab48c2fddff18151fd7c3c0556fa
+last_updated: "2026-09-11T22:37:14.786Z"
+last_activity: 2026-09-12
+last_activity_desc: Milestone v0.44.0 completed and archived
+state_head: d655f05f55371156b9432d1ed680a5969b8b243f
 progress:
   total_phases: 7
   completed_phases: 7
   total_plans: 16
   completed_plans: 16
   percent: 100
+current_phase: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-09)
+See: .planning/PROJECT.md (updated 2026-09-12)
 
-**Core value:** A comprehensive, fast Rust functional-data-analysis library. This milestone completes the **differentiable-core** section of the 1.0 gap checklist (`documentation/ROADMAP-TO-1.0.md`, DIF-F1/F2/F3) — an in-crate reverse-mode (VJP) autodiff core alongside the v0.39.0 forward-mode `Dual`, a broadened differentiable operation set across four algorithm families, and generic-over-scalar hot-path signatures. Implementation milestone, **strictly additive/non-breaking** (defaulted type params `T = f64` — protects R + WASM bindings + 28 examples), **no new crate dependency** (in-crate hand-written tape).
-**Current focus:** Phase 100 — Release Preparation & Verification
+**Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps on the road to a deliberate 1.0 cut.
+**Current focus:** No active milestone — v0.44.0 shipped + archived (2026-09-12). Start the next with `/gsd-new-milestone`. With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.44.0, DIF-F1/F2/F3) cleared on `documentation/ROADMAP-TO-1.0.md`, the remaining 1.0 blockers are **SDTW-O1** (algorithm) and **fdars-j75** (R ecosystem), before the terminal **1.0-CUT**.
 
 ## Current Position
 
-Phase: 100
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-09-11 — Phase 100 complete
+Phase: Milestone v0.44.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-09-12 — Milestone v0.44.0 completed and archived
 
 ## Milestone Roadmap (v0.44.0)
 
@@ -150,4 +150,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Review the v0.44.0 roadmap (`.planning/ROADMAP.md`), then plan the first phase with `/gsd-plan-phase 94`.
+- Start the next milestone with /gsd-new-milestone

@@ -1,5 +1,21 @@
 # Milestones
 
+## v0.44.0 Differentiable Core — Reverse-Mode & Broadened Subset (Shipped: 2026-09-12)
+
+**Phases completed:** 7 phases, 16 plans, 19 tasks
+
+**Key accomplishments:**
+
+- Wengert-list reverse-mode tape proven end-to-end on Mul: autodiff/ directory refactor (Scalar in mod.rs, Dual in forward.rs, Var/Node/TAPE/vjp in reverse.rs) with var_mul_known_answer passing (9.0, [6.0]) within 1e-10
+- Complete `Scalar for Var` with VJP partials for all 12 ops (Add/Sub/Div/Neg/sqrt/exp/ln/sin/cos/powf/abs/signum), 21 Tier-1+Tier-2 tests green, zero `unimplemented!()` remaining
+- Hardened vjp with 18 new tests — Tier-5 lifecycle/edge-cases (tape-leakage, empty input, constant-only, cube, repeated-call stability) and Tier-3 reverse-vs-Dual agreement (every op + composed chain at 1e-10) — closing RAD-02
+- Reverse-mode gradients (vjp) validated against central finite differences within 1e-6 on soft_dtw_distance_generic, project_scores_generic, and a composed objective — RAD-03 closed; 72 autodiff tests, all 3 Tier-4 FD cross-checks pass
+- l2_distance generalized to `<T: Scalar>` in helpers.rs in-place with bit-identical f64 parity, forward-mode Dual tangent, and reverse-mode Var vjp — zero call-site churn across the crate
+- trapz, inner_product, and inner_product_l2 generalized to `<T: Scalar>` in-place in dependency order — all four Phase-95 kernels now complete; zero f64 call-site churn across the crate
+- GEN-01 compile-gate evidence: all 8 gates green — the generalization of four hot-path kernels to `<T: Scalar>` is proven non-breaking across the full crate, 28 examples, serde feature, WASM target, clippy --all-targets, full test suite, doctests, and churn verification
+
+---
+
 ## v0.43.0 Test Determinism & Release Hardening (Shipped: 2026-09-09)
 
 **Phases completed:** 4 phases, 4 plans, 10 tasks

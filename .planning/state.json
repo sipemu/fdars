@@ -21,28 +21,28 @@
     {
       "number": "97",
       "name": "Differentiable Regression Prediction & Smoothing Penalties",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "98",
       "name": "Differentiable Depth & Curve Distances",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "99",
       "name": "End-to-End Autodiff Flow & Gradient API",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "100",
       "name": "Release Preparation & Verification",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 97)",
-    "reason": "Phase 97 of 7 — needs a plan"
+    "command": "/gsd:progress",
+    "label": "Show progress",
+    "reason": "Unsure of state — showing progress"
   },
-  "updated_at": "2026-09-11T13:27:30.504Z"
+  "updated_at": "2026-09-11T22:37:14.800Z"
 }
