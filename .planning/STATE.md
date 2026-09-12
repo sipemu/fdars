@@ -1,20 +1,16 @@
 ---
 gsd_state_version: "1.0"
-milestone: v0.44.0
-milestone_name: Differentiable Core — Reverse-Mode & Broadened Subset
-status: Awaiting next milestone
-stopped_at: Phase 100 complete — all phases complete
-last_updated: "2026-09-11T22:37:14.786Z"
+milestone: v0.45.0
+milestone_name: Soft-DTW Barycenter — Global Optimizer (SDTW-O1)
+status: planning
+last_updated: "2026-09-12T21:52:44.155Z"
 last_activity: 2026-09-12
-last_activity_desc: Milestone v0.44.0 completed and archived
-state_head: d655f05f55371156b9432d1ed680a5969b8b243f
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 16
-  completed_plans: 16
-  percent: 100
-current_phase: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-12)
 
 ## Current Position
 
-Phase: Milestone v0.44.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-12 — Milestone v0.44.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-12 — Milestone v0.45.0 started
 
 ## Milestone Roadmap (v0.44.0)
 
