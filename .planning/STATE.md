@@ -1,16 +1,20 @@
 ---
 gsd_state_version: "1.0"
 milestone: v0.45.0
-milestone_name: Soft-DTW Barycenter — Global Optimizer (SDTW-O1)
-status: active
-last_updated: "2026-09-13T00:00:00.000Z"
+current_phase: 101
+current_phase_name: In-Crate L-BFGS Barycenter Optimizer
+status: verifying
+stopped_at: Completed Phase 101 Plan 01 — in-crate L-BFGS barycenter optimizer
+last_updated: "2026-09-12T23:20:08.834Z"
 last_activity: 2026-09-13
+last_activity_desc: Phase 101 execution started
+state_head: 2e437741359489df8a61f10ed2f0d21fe006a06d
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 1
+  completed_plans: 1
+milestone_name: Soft-DTW Barycenter — Global Optimizer (SDTW-O1)
 ---
 
 # Project State
@@ -20,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-13)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps on the road to a deliberate 1.0 cut.
-**Current focus:** v0.45.0 Soft-DTW Barycenter — Global Optimizer (SDTW-O1). Replace the single-init MM-descent `soft_dtw_barycenter` with an in-crate L-BFGS local optimizer wrapped in a deterministically-seeded multi-restart loop — closing the last in-core algorithm-quality item (`SDTW-O1`) on `documentation/ROADMAP-TO-1.0.md`. Strictly additive/non-breaking; no new crate dependency; ships as 0.45.0. After this, only **fdars-j75** (R ecosystem) and the terminal **1.0-CUT** remain on the 1.0 checklist.
+**Current focus:** Phase 101 — In-Crate L-BFGS Barycenter Optimizer
 
 ## Current Position
 
-Phase: 101 (In-Crate L-BFGS Barycenter Optimizer) — not started
-Plan: —
-Status: Roadmap complete — ready to plan Phase 101
-Last activity: 2026-09-13 — Milestone v0.45.0 roadmap created (5 phases, 101–105)
+Phase: 101 (In-Crate L-BFGS Barycenter Optimizer) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-09-13 — Phase 101 execution started
 
 ## Milestone Roadmap (v0.45.0)
 
@@ -79,6 +83,7 @@ Five phases, 5 requirements — an implementation milestone replacing the MM-ste
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | (none yet — v0.45.0) | — | — | — |
+| Phase 101 P01 | 10 | 4 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -95,6 +100,8 @@ Decisions relevant to current work (v0.45.0):
 - **Phase numbering continues** — v0.44.0 ended at Phase 100 → v0.45.0 starts at Phase 101. No reset.
 - **5 requirements → 5 phases:** 101 SDTW-01; 102 SDTW-02; 103 SDTW-03; 104 SDTW-04; 105 REL-01. One requirement per phase (fine granularity, tight dependency chain). All mapped, no orphans, no duplicates.
 - **REL-01 lands last (Phase 105)** — bump/CHANGELOG/checklist/gates are the final proof; the full-suite `cargo test` gate is the end-to-end milestone proof. The `git tag v0.45.0` → crates.io publish is the DEFERRED operator step (GSD `git.create_tag` is off because `release.yml` couples tag-push to publish) — never tagged/published inside a phase.
+- [Phase 101]: L-BFGS replaces MM descent in soft_dtw_barycenter: two-loop recursion (m=10 VecDeque history), Armijo backtracking (c1=1e-4, beta=0.5, max_bt=20), pure std Rust — no new crate dependency, wasm32-safe, public 4-arg signature preserved
+- [Phase 101]: Symmetric-init degenerate case (4 quarter-period shifts) produces zero gradient at L-BFGS initialization — correct optimizer behavior; test updated to use asymmetric 3-shift dataset preserving CORR-01 spirit
 
 ### Pending Todos
 
@@ -120,11 +127,12 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-13
-Stopped at: v0.45.0 roadmap created (5 phases, 101–105) — ready to plan Phase 101
+Last session: 2026-09-12T23:20:08.817Z
+Stopped at: Completed Phase 101 Plan 01 — in-crate L-BFGS barycenter optimizer
 Resume file: None
 
 ## Operator Next Steps
 
 - Plan the first phase with `/gsd-plan-phase 101`
+
 </content>

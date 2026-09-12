@@ -15,7 +15,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Optimizer
 
-- [ ] **SDTW-01**: `soft_dtw_barycenter` minimizes the soft-DTW barycenter objective with an
+- [x] **SDTW-01**: `soft_dtw_barycenter` minimizes the soft-DTW barycenter objective with an
   in-crate L-BFGS optimizer (limited-memory two-loop recursion + backtracking/Armijo line
   search) driven by the exact soft-DTW gradient the crate already computes, replacing the
   fixed-step MM descent. No new crate dependency; compiles and runs in the default feature set
@@ -80,13 +80,14 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SDTW-01 | Phase 101 | Pending |
+| SDTW-01 | Phase 101 | Complete |
 | SDTW-02 | Phase 102 | Pending |
 | SDTW-03 | Phase 103 | Pending |
 | SDTW-04 | Phase 104 | Pending |
 | REL-01  | Phase 105 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 5 total
 - Mapped to phases: 5 ✓
 - Unmapped: 0 ✓
