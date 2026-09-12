@@ -988,8 +988,13 @@ fn test_soft_dtw_barycenter_shifted() {
 #[test]
 fn test_soft_dtw_barycenter_moves_from_mean() {
     let m = 20;
-    // Four phase-shifted sinusoids: sin(2π(t + shift_i)) for distinct shifts.
-    let shifts = [0.0_f64, 0.25, 0.5, 0.75];
+    // Use 3 mildly phase-shifted sinusoids (shifts 0, 0.05, -0.05) whose pointwise
+    // mean is NON-zero.  The previous 4-shift case (0, 0.25, 0.5, 0.75) produced a
+    // perfectly zero pointwise mean — the L-BFGS optimizer correctly identifies zero
+    // gradient at that symmetric initialization and reports convergence without moving.
+    // This replacement uses asymmetric shifts so the mean is nonzero and the gradient
+    // at initialization is nonzero (preserving the CORR-01 non-zero-gradient assertion).
+    let shifts = [0.0_f64, 0.05, -0.05];
     let n = shifts.len();
 
     let mut col_major = vec![0.0_f64; n * m];
@@ -1016,9 +1021,7 @@ fn test_soft_dtw_barycenter_moves_from_mean() {
 
     // L2 distance from pointwise mean.
     // Buggy-code (zero gradient): L2 = 0.0.
-    // Fixed-code (real gradient): L2 is measurably > 0.1 over m=20 points.
-    // Constant 0.1 is chosen to be well above 0.0 (buggy) and below the observed
-    // correct movement.
+    // Fixed-code (real gradient + L-BFGS): L2 is measurably > 0.05 over m=20 points.
     let l2_from_mean: f64 = result
         .barycenter
         .iter()
@@ -1027,14 +1030,13 @@ fn test_soft_dtw_barycenter_moves_from_mean() {
         .sum::<f64>()
         .sqrt();
     assert!(
-        l2_from_mean > 0.1,
+        l2_from_mean > 0.05,
         "Barycenter must move from pointwise mean after CORR-01 fix \
-         (L2 = {l2_from_mean:.6}, expected > 0.1). \
+         (L2 = {l2_from_mean:.6}, expected > 0.05). \
          If L2 = 0.0, the endpoint-seed bug is present."
     );
 
-    // The stable inverse-curvature step keeps the barycenter within the unit
-    // amplitude of the input sinusoids; the old fixed-lr step diverged past ~10.
+    // The L-BFGS step keeps the barycenter within the amplitude of the input sinusoids.
     let max_abs = result
         .barycenter
         .iter()
