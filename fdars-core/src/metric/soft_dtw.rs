@@ -9,6 +9,7 @@ use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
+use std::collections::VecDeque;
 
 use super::{cross_distance_matrix, self_distance_matrix};
 
@@ -367,15 +368,13 @@ fn softmin3_val(r: &[Vec<f64>], i: usize, j: usize, gamma: f64) -> f64 {
 /// Accumulate the Soft-DTW gradient for one series into `grad`.
 ///
 /// Performs forward pass, backward pass, and double-loop gradient accumulation.
-/// Accumulate both the soft-DTW gradient and the per-point soft-alignment weight
+/// Accumulates both the soft-DTW gradient and the per-point soft-alignment weight
 /// `W[k] = sum_j E[k][j]` (total alignment mass landing on barycenter point `k`).
 ///
 /// The weight is the diagonal curvature of the (quadratic-cost) soft-DTW objective:
-/// `d grad[k] / d bary[k] = 2 * W[k]`. `update_barycenter` uses it to take an
-/// inverse-curvature (per-coordinate Newton) step instead of a fixed global
-/// learning rate, which is what keeps the barycenter iteration stable — a fixed
-/// `lr` only appeared stable while the pre-CORR-01 backward pass returned an
-/// all-zero gradient (so the barycenter never moved). See CORR-01 / Phase 78.
+/// `d grad[k] / d bary[k] = 2 * W[k]`. It is preserved in the signature for
+/// forward compatibility; the current L-BFGS optimizer passes a scratch buffer
+/// and does not use the weight output. See CORR-01 / Phase 78 for gradient history.
 fn soft_dtw_accumulate_gradient_and_weight(
     bary: &[f64],
     xi: &[f64],
@@ -398,30 +397,147 @@ fn soft_dtw_accumulate_gradient_and_weight(
     }
 }
 
-/// Apply one barycenter update step and check convergence.
-///
-/// Uses a per-coordinate inverse-curvature step `bary[k] -= grad[k] / (2 * W[k])`
-/// rather than a fixed global learning rate. Because `grad[k] = 2 * W[k] *
-/// (bary[k] - weighted_mean_k)`, this step sets `bary[k]` to the alignment-weighted
-/// mean of the target samples — the soft-DBA majorization-minimization update — so
-/// every coordinate stays within the convex hull of the data and the iteration
-/// cannot diverge. (The prior fixed `lr = 1/n` overshot the curvature and blew the
-/// barycenter up once CORR-01 made the gradient non-zero.) A proper global
-/// optimizer (L-BFGS / multi-restart for the non-convex objective) is future work.
-///
-/// Returns `true` if the relative change is below `tol`.
-fn update_barycenter(bary: &mut [f64], grad: &[f64], weight: &[f64], tol: f64) -> bool {
-    let mut max_change = 0.0_f64;
-    let mut max_val = 0.0_f64;
-    for ((b, &g), &w) in bary.iter_mut().zip(grad.iter()).zip(weight.iter()) {
-        // Inverse-curvature (diagonal-Newton) step. Guard against a zero-weight
-        // point (no alignment mass) by leaving it unchanged.
-        let update = if w > 1e-12 { g / (2.0 * w) } else { 0.0 };
-        *b -= update;
-        max_change = max_change.max(update.abs());
-        max_val = max_val.max(b.abs());
+// ---- L-BFGS internals --------------------------------------------------------
+
+/// Dot product of two equal-length slices.
+#[inline]
+fn lbfgs_dot(a: &[f64], b: &[f64]) -> f64 {
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+}
+
+/// In-place axpy: `y[i] += alpha * x[i]` for all i.
+#[inline]
+fn lbfgs_axpy(alpha: f64, x: &[f64], y: &mut [f64]) {
+    for (yi, xi) in y.iter_mut().zip(x.iter()) {
+        *yi += alpha * xi;
     }
-    max_val > 0.0 && max_change / max_val < tol
+}
+
+/// Compute total soft-DTW objective and gradient at `bary`.
+///
+/// Zeros `g` and `w_scratch` first (the accumulate fn does `+=`).
+/// `w_scratch` is the diagonal-curvature weight buffer required by the
+/// accumulate fn signature; it is not used by the L-BFGS optimizer.
+fn eval_obj_and_grad(
+    bary: &[f64],
+    rows: &[Vec<f64>],
+    gamma: f64,
+    g: &mut [f64],
+    w_scratch: &mut [f64],
+) -> f64 {
+    for v in g.iter_mut() {
+        *v = 0.0;
+    }
+    for v in w_scratch.iter_mut() {
+        *v = 0.0;
+    }
+    let mut f = 0.0_f64;
+    for row in rows {
+        f += soft_dtw_distance(bary, row, gamma);
+        soft_dtw_accumulate_gradient_and_weight(bary, row, gamma, g, w_scratch);
+    }
+    f
+}
+
+/// Two-loop L-BFGS recursion (Nocedal & Wright, Algorithm 7.4).
+///
+/// Produces the descent direction `d = -H_k * g` in `d`.
+/// `q_buf` is a reusable work buffer (will be resized to `g.len()`).
+/// History is stored oldest-first in `s_hist`/`y_hist`.
+fn two_loop_lbfgs(
+    g: &[f64],
+    s_hist: &VecDeque<Vec<f64>>,
+    y_hist: &VecDeque<Vec<f64>>,
+    gamma_k: f64,
+    q_buf: &mut Vec<f64>,
+    d: &mut Vec<f64>,
+) {
+    let n = g.len();
+    let m_actual = s_hist.len();
+
+    // q ← g
+    q_buf.resize(n, 0.0);
+    q_buf.copy_from_slice(g);
+
+    let mut alphas = vec![0.0_f64; m_actual];
+
+    // Loop 1: newest to oldest
+    for i in (0..m_actual).rev() {
+        let s = &s_hist[i];
+        let y = &y_hist[i];
+        let rho_i = 1.0 / lbfgs_dot(y, s); // ρᵢ = 1 / (yᵢᵀsᵢ); sᵀy > 1e-20 by guard
+        alphas[i] = rho_i * lbfgs_dot(s, q_buf);
+        lbfgs_axpy(-alphas[i], y, q_buf); // q ← q - αᵢ yᵢ
+    }
+
+    // Apply initial Hessian scale: r ← γ_k · q
+    d.resize(n, 0.0);
+    for j in 0..n {
+        d[j] = gamma_k * q_buf[j];
+    }
+
+    // Loop 2: oldest to newest
+    for i in 0..m_actual {
+        let s = &s_hist[i];
+        let y = &y_hist[i];
+        let rho_i = 1.0 / lbfgs_dot(y, s);
+        let beta = rho_i * lbfgs_dot(y, d);
+        lbfgs_axpy(alphas[i] - beta, s, d); // r ← r + (αᵢ - βᵢ) sᵢ
+    }
+
+    // d = -r  (descent direction)
+    for v in d.iter_mut() {
+        *v = -*v;
+    }
+}
+
+/// Backtracking Armijo line search.
+///
+/// Returns `(alpha, f_new)`. If no step satisfies the Armijo condition within
+/// `max_bt` backtracks, returns the safeguarded minimum step `beta^max_bt` so
+/// the iteration cannot diverge (the barycenter still moves by a bounded amount).
+fn backtrack_armijo(
+    bary: &[f64],
+    d: &[f64],
+    f0: f64,
+    g0: &[f64],
+    rows: &[Vec<f64>],
+    gamma_sdtw: f64,
+    c1: f64,
+    beta: f64,
+    max_bt: usize,
+) -> (f64, f64) {
+    let slope = lbfgs_dot(g0, d); // must be < 0 (caller ensures descent direction)
+    let mut alpha = 1.0_f64;
+    let alpha_min = beta.powi(max_bt as i32);
+
+    for _ in 0..max_bt {
+        let x_new: Vec<f64> = bary
+            .iter()
+            .zip(d.iter())
+            .map(|(b, di)| b + alpha * di)
+            .collect();
+        let f_new: f64 = rows
+            .iter()
+            .map(|r| soft_dtw_distance(&x_new, r, gamma_sdtw))
+            .sum();
+        if f_new <= f0 + c1 * alpha * slope {
+            return (alpha, f_new);
+        }
+        alpha *= beta;
+    }
+
+    // Safeguard: use alpha_min — the update is tiny but avoids stall/divergence
+    let x_new: Vec<f64> = bary
+        .iter()
+        .zip(d.iter())
+        .map(|(b, di)| b + alpha_min * di)
+        .collect();
+    let f_new: f64 = rows
+        .iter()
+        .map(|r| soft_dtw_distance(&x_new, r, gamma_sdtw))
+        .sum();
+    (alpha_min, f_new)
 }
 
 /// Initialize the barycenter as the pointwise mean of all series.
@@ -440,13 +556,19 @@ fn init_barycenter_mean(rows: &[Vec<f64>]) -> Vec<f64> {
     bary
 }
 
-/// Compute the Soft-DTW barycenter of a set of time series using gradient descent.
+/// Compute the Soft-DTW barycenter of a set of time series using L-BFGS optimization.
+///
+/// Minimizes the total soft-DTW cost `Σᵢ soft_dtw_distance(bary, xᵢ)` with a
+/// hand-rolled limited-memory L-BFGS optimizer (two-loop recursion, m=10 history,
+/// backtracking Armijo line search) driven by the exact soft-DTW gradient.
+/// Initialized from the pointwise mean of the input series.
 ///
 /// # Arguments
 /// * `data` - Input time series as FdMatrix (n rows x m columns)
-/// * `gamma` - Soft-DTW smoothing parameter
-/// * `max_iter` - Maximum number of gradient descent iterations
-/// * `tol` - Convergence tolerance (relative change in barycenter)
+/// * `gamma` - Soft-DTW smoothing parameter (> 0)
+/// * `max_iter` - Maximum number of L-BFGS iterations
+/// * `tol` - Convergence tolerance: stops when gradient ∞-norm < `tol` OR
+///           relative cost change < `tol`
 ///
 /// # Returns
 /// [`SoftDtwBarycenterResult`] containing the barycenter, iteration count, and convergence flag.
@@ -467,20 +589,95 @@ pub fn soft_dtw_barycenter(
 
     let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
     let mut bary = init_barycenter_mean(&rows);
+
+    // L-BFGS hyperparameters (locked per CONTEXT.md design decisions)
+    let m_lbfgs: usize = 10;
+    let c1 = 1e-4_f64;
+    let beta_ls = 0.5_f64;
+    let max_bt: usize = 20;
+
+    // Allocate reusable buffers
+    let mut g = vec![0.0_f64; m];
+    let mut w_scratch = vec![0.0_f64; m]; // required by accumulate fn signature; unused by L-BFGS
+    let mut s_hist: VecDeque<Vec<f64>> = VecDeque::with_capacity(m_lbfgs);
+    let mut y_hist: VecDeque<Vec<f64>> = VecDeque::with_capacity(m_lbfgs);
+    let mut q_buf = vec![0.0_f64; m];
+    let mut d = vec![0.0_f64; m];
+
+    // Initial objective and gradient
+    let mut f = eval_obj_and_grad(&bary, &rows, gamma, &mut g, &mut w_scratch);
     let mut converged = false;
-    let mut n_iter = 0;
+    let mut n_iter = 0_usize;
 
     for iter in 0..max_iter {
         n_iter = iter + 1;
 
-        let mut grad = vec![0.0; m];
-        let mut weight = vec![0.0; m];
-        for row in &rows {
-            soft_dtw_accumulate_gradient_and_weight(&bary, row, gamma, &mut grad, &mut weight);
+        // Stopping check 1: gradient ∞-norm
+        let g_inf = g.iter().map(|v| v.abs()).fold(0.0_f64, f64::max);
+        if g_inf < tol {
+            converged = true;
+            break;
         }
 
-        if update_barycenter(&mut bary, &grad, &weight, tol) {
+        // Initial Hessian scale γ_k = (sᵀy)/(yᵀy); fallback to 1.0 when empty or near-zero
+        let gamma_k = if s_hist.is_empty() {
+            1.0
+        } else {
+            let s_last = s_hist.back().unwrap();
+            let y_last = y_hist.back().unwrap();
+            let yy = lbfgs_dot(y_last, y_last);
+            if yy < 1e-20 {
+                1.0
+            } else {
+                lbfgs_dot(s_last, y_last) / yy
+            }
+        };
+
+        // Compute descent direction d = -H_k * g via two-loop recursion
+        two_loop_lbfgs(&g, &s_hist, &y_hist, gamma_k, &mut q_buf, &mut d);
+
+        // Non-descent direction safeguard (Pitfall 5): if dot(g, d) >= 0, reset to steepest descent
+        if lbfgs_dot(&g, &d) >= 0.0 {
+            // d = -g
+            d.iter_mut().zip(g.iter()).for_each(|(di, gi)| *di = -*gi);
+            // Clear history to avoid repeating the ill-conditioned direction
+            s_hist.clear();
+            y_hist.clear();
+        }
+
+        // Backtracking Armijo line search
+        let (alpha, f_new) = backtrack_armijo(&bary, &d, f, &g, &rows, gamma, c1, beta_ls, max_bt);
+
+        // Stopping check 2: relative cost change
+        let rel_change = (f - f_new).abs() / f.abs().max(1.0);
+        if rel_change < tol {
             converged = true;
+        }
+
+        // Compute s = alpha * d; update bary
+        let s_vec: Vec<f64> = d.iter().map(|v| alpha * v).collect();
+        for (b, si) in bary.iter_mut().zip(s_vec.iter()) {
+            *b += si;
+        }
+
+        // Recompute gradient at new bary (and update f for next iteration's rel_change check)
+        let g_old = g.clone();
+        f = eval_obj_and_grad(&bary, &rows, gamma, &mut g, &mut w_scratch);
+
+        // Compute y = g_new - g_old
+        let y_vec: Vec<f64> = g.iter().zip(g_old.iter()).map(|(gn, go)| gn - go).collect();
+
+        // Curvature safeguard (Pitfall 1): only push when sᵀy > 1e-20
+        if lbfgs_dot(&s_vec, &y_vec) > 1e-20 {
+            if s_hist.len() == m_lbfgs {
+                s_hist.pop_front();
+                y_hist.pop_front();
+            }
+            s_hist.push_back(s_vec);
+            y_hist.push_back(y_vec);
+        }
+
+        if converged {
             break;
         }
     }
