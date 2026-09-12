@@ -1,48 +1,12 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.44.0 — Differentiable Core — Reverse-Mode & Broadened Subset",
-  "phases": [
-    {
-      "number": "94",
-      "name": "Reverse-Mode Autodiff Core (VJP Tape)",
-      "status": "complete"
-    },
-    {
-      "number": "95",
-      "name": "Generic Scalar Hot-Path Signatures",
-      "status": "complete"
-    },
-    {
-      "number": "96",
-      "name": "Differentiable Basis Evaluation & Inner Products",
-      "status": "complete"
-    },
-    {
-      "number": "97",
-      "name": "Differentiable Regression Prediction & Smoothing Penalties",
-      "status": "complete"
-    },
-    {
-      "number": "98",
-      "name": "Differentiable Depth & Curve Distances",
-      "status": "complete"
-    },
-    {
-      "number": "99",
-      "name": "End-to-End Autodiff Flow & Gradient API",
-      "status": "complete"
-    },
-    {
-      "number": "100",
-      "name": "Release Preparation & Verification",
-      "status": "complete"
-    }
-  ],
+  "milestone": "v0.45.0",
+  "phases": [],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:discuss-phase",
+    "label": "Discuss the first phase",
+    "reason": "Project initialized — plan your first phase"
   },
-  "updated_at": "2026-09-11T22:37:14.800Z"
+  "updated_at": "2026-09-12T21:52:44.158Z"
 }

@@ -7,16 +7,88 @@
 - ✅ **v0.42.0 1.0 API Finalization** — Phases 86–89 (shipped 2026-09-08)
 - ✅ **v0.43.0 Test Determinism & Release Hardening** — Phases 90–93 (shipped 2026-09-09)
 - ✅ **v0.44.0 Differentiable Core — Reverse-Mode & Broadened Subset** — Phases 94–100 (shipped 2026-09-12)
+- 🔨 **v0.45.0 Soft-DTW Barycenter — Global Optimizer (SDTW-O1)** — Phases 101–105 (active)
 
 ## Overview
 
-No active milestone. Start the next with `/gsd-new-milestone`.
+**Active milestone: v0.45.0 Soft-DTW Barycenter — Global Optimizer (SDTW-O1).** Replace the single-init MM-descent `soft_dtw_barycenter` with a proper global optimizer — an in-crate L-BFGS local optimizer (two-loop recursion + backtracking/Armijo line search) wrapped in a deterministically-seeded multi-restart loop — closing the last in-core algorithm-quality item (`SDTW-O1`) on `documentation/ROADMAP-TO-1.0.md`. Strictly additive/non-breaking (the legacy 4-arg `soft_dtw_barycenter(data, gamma, max_iter, tol)` fn is preserved as a thin wrapper; new config API is additive). **No new crate dependency** — L-BFGS hand-rolled in-crate (consistent with the v0.44.0 reverse-mode tape decision); must stay WASM- and default-feature-compatible (no `linalg`/`argmin` gating). Ships as 0.45.0 (still 0.x).
 
-With the **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.44.0, DIF-F1/F2/F3) sections of `documentation/ROADMAP-TO-1.0.md` all cleared, the remaining 1.0 blockers are **SDTW-O1** (algorithm — global `soft_dtw_barycenter` optimizer) and **fdars-j75** (R ecosystem — `fdars-r` FdMatrix migration), before the terminal **1.0-CUT**.
+With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.44.0, DIF-F1/F2/F3) cleared on the 1.0 gap checklist, this milestone clears the **algorithm (SDTW-O1)** blocker — leaving only **fdars-j75** (R ecosystem — `fdars-r` FdMatrix migration) before the terminal **1.0-CUT**.
 
-**Operator ship step pending:** `git push origin main` → `git tag v0.44.0` → `release.yml` publishes to crates.io — **0.44.0 supersedes the unpublished 0.41.0/0.42.0/0.43.0** (registry is still at 0.40.0, so one publish catches all four up). `git.create_tag` stays OFF because the tag auto-publishes.
+**Operator ship step pending (prior + this milestone):** `git push origin main` → `git tag v0.45.0` → `release.yml` publishes to crates.io — **0.45.0 supersedes the unpublished 0.41.0/0.42.0/0.43.0/0.44.0** (registry is still at 0.40.0, so one publish catches all up). `git.create_tag` stays OFF because the tag auto-publishes.
 
 ## Phases
+
+- [ ] **Phase 101: In-Crate L-BFGS Barycenter Optimizer** - Replace the MM-step descent with a hand-rolled limited-memory L-BFGS driven by the exact soft-DTW gradient
+- [ ] **Phase 102: Deterministic Multi-Restart Wrapper** - Run the local optimizer from multiple seeded inits and keep the lowest-cost barycenter, reproducibly
+- [ ] **Phase 103: `SoftDtwBarycenterConfig` API & Legacy Wrapper** - Add the builder-convention config struct + new entry point; preserve the 4-arg fn as a thin non-breaking wrapper
+- [ ] **Phase 104: Quality Evidence — Escapes-Local-Minimum & f64 Parity** - Demonstrate a strictly lower barycenter cost than MM where MM stalls, and preserved legacy f64 behavior
+- [ ] **Phase 105: Release Preparation & Verification** - Bump to 0.45.0, CHANGELOG, check off SDTW-O1, all whole-crate gates green
+
+## Phase Details
+
+### Phase 101: In-Crate L-BFGS Barycenter Optimizer
+**Goal**: The soft-DTW barycenter is refined by a proper local optimizer — an in-crate limited-memory L-BFGS (two-loop recursion + backtracking/Armijo line search) driven by the exact soft-DTW gradient the crate already computes — replacing the fixed-step MM/soft-DBA descent, and it works in the default feature set and on `wasm32`.
+**Depends on**: Phase 100 (v0.44.0 complete); reuses the correct soft-DTW gradient from v0.40.0 (CORR-01)
+**Requirements**: SDTW-01
+**Success Criteria** (what must be TRUE):
+  1. `soft_dtw_barycenter` (single-init path) reaches a soft-DTW cost no worse than — and on curved objectives strictly lower than — the previous MM-step descent for the same iteration budget.
+  2. The optimizer converges to a bounded barycenter within the data's convex hull (no divergence) and honors `max_iter` / `tol` stopping.
+  3. The code compiles and runs with the default feature set and on the `wasm32-unknown-unknown` target — no `linalg`/`argmin` gating and no new crate dependency.
+  4. The L-BFGS step consumes the exact soft-DTW gradient already in-crate; the objective and its gradient definitions are unchanged.
+**Plans**: TBD
+
+### Phase 102: Deterministic Multi-Restart Wrapper
+**Goal**: A multi-restart wrapper runs the L-BFGS local optimizer from multiple initializations (pointwise mean + deterministically-seeded perturbations) and returns the barycenter with the lowest total soft-DTW cost across restarts, escaping local minima of the non-convex objective — reproducibly for a fixed seed.
+**Depends on**: Phase 101
+**Requirements**: SDTW-02
+**Success Criteria** (what must be TRUE):
+  1. The optimizer runs from the pointwise mean plus one or more deterministically-seeded perturbed inits and keeps the restart with the lowest total soft-DTW cost.
+  2. Restart seeding follows the project's `StdRng::seed_from_u64(seed + k)` convention.
+  3. Repeated runs with the same seed and inputs produce a bit-identical barycenter (reproducible).
+  4. The kept barycenter's total soft-DTW cost is no worse than any individual restart's cost.
+**Plans**: TBD
+
+### Phase 103: `SoftDtwBarycenterConfig` API & Legacy Wrapper
+**Goal**: A `SoftDtwBarycenterConfig` builder-convention config struct (`n_restarts`, `max_iter`, `tol`, `gamma`, `seed`) and a new config-taking entry point expose the optimizer, while the existing `soft_dtw_barycenter(data, gamma, max_iter, tol)` signature is preserved as a thin, behavior-compatible wrapper so no existing call site, prelude re-export, R/WASM binding, or example changes.
+**Depends on**: Phase 102
+**Requirements**: SDTW-03
+**Success Criteria** (what must be TRUE):
+  1. A `SoftDtwBarycenterConfig` struct exists with `n_restarts`, `max_iter`, `tol`, `gamma`, and `seed` fields following the project's builder/`Default` convention, and a new config-taking entry point drives the optimizer.
+  2. The existing 4-arg `soft_dtw_barycenter(data, gamma, max_iter, tol)` fn still compiles with its original signature and delegates to the new path as a thin wrapper (single-restart, legacy behavior).
+  3. All 28 examples, the prelude re-exports, and doctests compile unchanged — the change is additive/non-breaking.
+  4. The new public items (`SoftDtwBarycenterConfig` + new entry point) are re-exported at the crate root and prelude with a running doctest.
+**Plans**: TBD
+
+### Phase 104: Quality Evidence — Escapes-Local-Minimum & f64 Parity
+**Goal**: A test (and/or example) demonstrates the new optimizer reaches a strictly lower total soft-DTW barycenter cost than the MM baseline on a case where MM stalls in a local optimum, and that the legacy-wrapper path preserves f64 behavior (converges to a bounded barycenter within the data's convex hull; no divergence).
+**Depends on**: Phase 103
+**Requirements**: SDTW-04
+**Success Criteria** (what must be TRUE):
+  1. A committed test (and/or example) constructs a case where the MM baseline stalls in a local optimum and asserts the new optimizer's total soft-DTW cost is strictly lower.
+  2. A test asserts the legacy-wrapper path converges to a bounded barycenter within the data's convex hull with no divergence (f64 behavior preserved).
+  3. The quality-evidence tests are deterministic (fixed seed) and pass under the full `cargo test` run.
+**Plans**: TBD
+
+### Phase 105: Release Preparation & Verification
+**Goal**: `fdars-core` is release-ready at 0.45.0 — version bumped, both CHANGELOGs written, `SDTW-O1` checked off on `documentation/ROADMAP-TO-1.0.md`, and all whole-crate release gates green; the `git tag v0.45.0` → crates.io publish remains the deferred operator step.
+**Depends on**: Phases 101, 102, 103, 104
+**Requirements**: REL-01
+**Success Criteria** (what must be TRUE):
+  1. `fdars-core` is bumped 0.44.0 → 0.45.0 with a `[0.45.0]` entry in both CHANGELOGs (root + crate), and `SDTW-O1` is checked off on `documentation/ROADMAP-TO-1.0.md`.
+  2. All whole-crate gates pass green: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, a `--features serde` build guard, all 28 examples + doctests, and `cargo package`.
+  3. No `git tag`/publish is performed inside the phase — the `git tag v0.45.0` → crates.io publish (via `release.yml`) is left as the deferred operator step (GSD `git.create_tag` stays off).
+**Plans**: TBD
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 101. In-Crate L-BFGS Barycenter Optimizer | 0/? | Not started | - |
+| 102. Deterministic Multi-Restart Wrapper | 0/? | Not started | - |
+| 103. `SoftDtwBarycenterConfig` API & Legacy Wrapper | 0/? | Not started | - |
+| 104. Quality Evidence — Escapes-Local-Minimum & f64 Parity | 0/? | Not started | - |
+| 105. Release Preparation & Verification | 0/? | Not started | - |
 
 <details>
 <summary>✅ v0.44.0 Differentiable Core — Reverse-Mode & Broadened Subset (Phases 94–100) — SHIPPED 2026-09-12</summary>
@@ -86,3 +158,5 @@ Full detail: [`milestones/v0.40.0-ROADMAP.md`](milestones/v0.40.0-ROADMAP.md).
 </details>
 
 **Shipped:** v0.14.0 → v0.44.0 (see the Milestones list above and the `milestones/` archives).
+</content>
+</invoke>
