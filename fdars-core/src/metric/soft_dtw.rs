@@ -1350,3 +1350,207 @@ mod barycenter_lbfgs_tests {
         );
     }
 }
+
+/// SDTW-02 unit tests for the deterministic multi-restart barycenter driver.
+///
+/// Covers Phase 102 success criteria:
+/// - lowest_cost_is_argmin: returned barycenter's total cost equals the minimum over all restarts
+/// - winner_le_each_restart: winner's cost <= restart-0 cost (and by construction <= all restarts)
+/// - never_worse_than_single_init: multi-restart total cost <= 4-arg single-init total cost (1e-9 slack)
+/// - deterministic: bit-identical barycenters for two calls with identical inputs + seed
+#[cfg(test)]
+mod barycenter_multirestart_tests {
+    use super::*;
+    use crate::matrix::FdMatrix;
+
+    /// Build a small FdMatrix from a list of row vecs (mirrors barycenter_lbfgs_tests helper).
+    fn mat_from_rows(rows: &[Vec<f64>]) -> FdMatrix {
+        let n = rows.len();
+        let m = rows[0].len();
+        let mut col_major = vec![0.0_f64; n * m];
+        for j in 0..m {
+            for i in 0..n {
+                col_major[i + j * n] = rows[i][j];
+            }
+        }
+        FdMatrix::from_column_major(col_major, n, m).unwrap()
+    }
+
+    /// Asymmetric shifted-sinusoid dataset with nonzero per-column std so restarts
+    /// perturb meaningfully.  Uses distinct amplitudes and phases to make the
+    /// soft-DTW objective truly non-symmetric.
+    fn shifted_sinusoid_data(m: usize) -> (FdMatrix, Vec<Vec<f64>>) {
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+        // 5 rows with distinct amplitudes and phases
+        let rows: Vec<Vec<f64>> = vec![
+            t.iter()
+                .map(|&s| (2.0 * std::f64::consts::PI * s).sin())
+                .collect(),
+            t.iter()
+                .map(|&s| 0.9 * (2.0 * std::f64::consts::PI * s + 0.4).sin())
+                .collect(),
+            t.iter()
+                .map(|&s| 1.1 * (2.0 * std::f64::consts::PI * s - 0.3).sin())
+                .collect(),
+            t.iter()
+                .map(|&s| 0.7 * (2.0 * std::f64::consts::PI * s + 0.8).sin())
+                .collect(),
+            t.iter()
+                .map(|&s| 1.2 * (2.0 * std::f64::consts::PI * s - 0.6).sin())
+                .collect(),
+        ];
+        let mat = mat_from_rows(&rows);
+        (mat, rows)
+    }
+
+    /// Compute total soft-DTW cost of `bary` against all rows.
+    fn total_cost(bary: &[f64], rows: &[Vec<f64>], gamma: f64) -> f64 {
+        rows.iter().map(|r| soft_dtw_distance(bary, r, gamma)).sum()
+    }
+
+    /// SDTW-02: the returned barycenter's total cost equals the true argmin over all restarts.
+    ///
+    /// Recomputes each restart's total cost independently (using the same seeds/inits as
+    /// the driver) and asserts the driver's answer matches the manual minimum.
+    #[test]
+    fn lowest_cost_is_argmin() {
+        let m = 30_usize;
+        let (data, rows) = shifted_sinusoid_data(m);
+        let gamma = 0.1_f64;
+        let max_iter = 50_usize;
+        let tol = 1e-6_f64;
+        let n_restarts = 4_usize;
+        let seed = 42_u64;
+
+        // Run the driver
+        let driver_result =
+            soft_dtw_barycenter_multirestart(&data, gamma, max_iter, tol, n_restarts, seed);
+        let driver_cost = total_cost(&driver_result.barycenter, &rows, gamma);
+
+        // Independently recompute each restart to find the manual argmin
+        let mean = init_barycenter_mean(&rows);
+        let col_std = per_col_std(&rows, m);
+        let mut manual_best_cost = f64::INFINITY;
+
+        for k in 0..n_restarts {
+            let init = if k == 0 {
+                mean.clone()
+            } else {
+                perturbed_init(&mean, &col_std, seed, k as u64)
+            };
+            let result = lbfgs_refine_from_init(&rows, init, gamma, max_iter, tol);
+            let cost = total_cost(&result.barycenter, &rows, gamma);
+            if cost < manual_best_cost {
+                manual_best_cost = cost;
+            }
+        }
+
+        // Driver cost must equal the manually computed minimum (within fp rounding)
+        assert!(
+            (driver_cost - manual_best_cost).abs() <= 1e-9 * manual_best_cost.abs().max(1.0),
+            "driver cost {driver_cost:.10} != manual argmin {manual_best_cost:.10}"
+        );
+    }
+
+    /// SDTW-02: the winner's total cost is <= restart-0's (unperturbed mean) total cost.
+    ///
+    /// Restart 0 is the deterministic pointwise-mean init; the multi-restart result can only
+    /// be as good or better (never worse).
+    #[test]
+    fn winner_le_each_restart() {
+        let m = 30_usize;
+        let (data, rows) = shifted_sinusoid_data(m);
+        let gamma = 0.1_f64;
+        let max_iter = 50_usize;
+        let tol = 1e-6_f64;
+        let n_restarts = 4_usize;
+        let seed = 42_u64;
+
+        // Run the driver
+        let winner =
+            soft_dtw_barycenter_multirestart(&data, gamma, max_iter, tol, n_restarts, seed);
+        let winner_cost = total_cost(&winner.barycenter, &rows, gamma);
+
+        // Compute every restart's cost independently and verify winner is cheapest
+        let mean = init_barycenter_mean(&rows);
+        let col_std = per_col_std(&rows, m);
+
+        for k in 0..n_restarts {
+            let init = if k == 0 {
+                mean.clone()
+            } else {
+                perturbed_init(&mean, &col_std, seed, k as u64)
+            };
+            let result = lbfgs_refine_from_init(&rows, init, gamma, max_iter, tol);
+            let restart_cost = total_cost(&result.barycenter, &rows, gamma);
+            assert!(
+                winner_cost <= restart_cost + 1e-9,
+                "winner cost {winner_cost:.10} > restart {k} cost {restart_cost:.10}"
+            );
+        }
+    }
+
+    /// SDTW-02: multi-restart total cost <= single-init (4-arg) total cost (with 1e-9 slack).
+    ///
+    /// Because restart 0 is the same unperturbed mean as the 4-arg entry, the multi-restart
+    /// result is never worse than the 4-arg result.
+    #[test]
+    fn never_worse_than_single_init() {
+        let m = 30_usize;
+        let (data, rows) = shifted_sinusoid_data(m);
+        let gamma = 0.1_f64;
+        let max_iter = 50_usize;
+        let tol = 1e-6_f64;
+        let n_restarts = 3_usize;
+        let seed = 99_u64;
+
+        // Multi-restart result
+        let multi = soft_dtw_barycenter_multirestart(&data, gamma, max_iter, tol, n_restarts, seed);
+        let cost_multi = total_cost(&multi.barycenter, &rows, gamma);
+
+        // Single-init (4-arg) result — identical to restart 0
+        let single = soft_dtw_barycenter(&data, gamma, max_iter, tol);
+        let cost_single = total_cost(&single.barycenter, &rows, gamma);
+
+        assert!(
+            cost_multi <= cost_single + 1e-9,
+            "multi-restart cost {cost_multi:.10} > single-init cost {cost_single:.10} + 1e-9"
+        );
+    }
+
+    /// SDTW-02: two calls with identical (data, gamma, max_iter, tol, n_restarts, seed) produce
+    /// bit-identical barycenters.
+    #[test]
+    fn deterministic() {
+        let m = 30_usize;
+        let (data, _rows) = shifted_sinusoid_data(m);
+        let gamma = 0.1_f64;
+        let max_iter = 50_usize;
+        let tol = 1e-6_f64;
+        let n_restarts = 4_usize;
+        let seed = 42_u64;
+
+        let result1 =
+            soft_dtw_barycenter_multirestart(&data, gamma, max_iter, tol, n_restarts, seed);
+        let result2 =
+            soft_dtw_barycenter_multirestart(&data, gamma, max_iter, tol, n_restarts, seed);
+
+        assert_eq!(
+            result1.barycenter.len(),
+            result2.barycenter.len(),
+            "barycenter length mismatch between two identical calls"
+        );
+        for (j, (a, b)) in result1
+            .barycenter
+            .iter()
+            .zip(result2.barycenter.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                a.to_bits(),
+                b.to_bits(),
+                "barycenter[{j}] not bit-identical between two calls: {a} vs {b}"
+            );
+        }
+    }
+}
