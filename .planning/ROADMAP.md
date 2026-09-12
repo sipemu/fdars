@@ -19,7 +19,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
 
 ## Phases
 
-- [ ] **Phase 101: In-Crate L-BFGS Barycenter Optimizer** - Replace the MM-step descent with a hand-rolled limited-memory L-BFGS driven by the exact soft-DTW gradient
+- [x] **Phase 101: In-Crate L-BFGS Barycenter Optimizer** - Replace the MM-step descent with a hand-rolled limited-memory L-BFGS driven by the exact soft-DTW gradient (completed 2026-09-13)
 - [ ] **Phase 102: Deterministic Multi-Restart Wrapper** - Run the local optimizer from multiple seeded inits and keep the lowest-cost barycenter, reproducibly
 - [ ] **Phase 103: `SoftDtwBarycenterConfig` API & Legacy Wrapper** - Add the builder-convention config struct + new entry point; preserve the 4-arg fn as a thin non-breaking wrapper
 - [ ] **Phase 104: Quality Evidence — Escapes-Local-Minimum & f64 Parity** - Demonstrate a strictly lower barycenter cost than MM where MM stalls, and preserved legacy f64 behavior
@@ -101,7 +101,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 101. In-Crate L-BFGS Barycenter Optimizer | 0/1 | Not started | - |
+| 101. In-Crate L-BFGS Barycenter Optimizer | 1/1 | Complete    | 2026-09-13 |
 | 102. Deterministic Multi-Restart Wrapper | 0/? | Not started | - |
 | 103. `SoftDtwBarycenterConfig` API & Legacy Wrapper | 0/? | Not started | - |
 | 104. Quality Evidence — Escapes-Local-Minimum & f64 Parity | 0/? | Not started | - |
