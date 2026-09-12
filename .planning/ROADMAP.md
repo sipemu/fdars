@@ -55,7 +55,8 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
   3. Repeated runs with the same seed and inputs produce a bit-identical barycenter (reproducible).
   4. The kept barycenter's total soft-DTW cost is no worse than any individual restart's cost.
 
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 102-01-PLAN.md — Extract single-init L-BFGS refiner; add deterministic seeded multi-restart driver selecting lowest-total-cost barycenter; SDTW-02 tests; wasm32/serde/clippy guards
 
 ### Phase 103: `SoftDtwBarycenterConfig` API & Legacy Wrapper
 
