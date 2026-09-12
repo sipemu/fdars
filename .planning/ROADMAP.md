@@ -36,7 +36,8 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
   2. The optimizer converges to a bounded barycenter within the data's convex hull (no divergence) and honors `max_iter` / `tol` stopping.
   3. The code compiles and runs with the default feature set and on the `wasm32-unknown-unknown` target — no `linalg`/`argmin` gating and no new crate dependency.
   4. The L-BFGS step consumes the exact soft-DTW gradient already in-crate; the objective and its gradient definitions are unchanged.
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 101-01-PLAN.md — Replace MM descent with in-crate L-BFGS (two-loop + Armijo), safeguards, SDTW-01 unit tests, wasm32/serde compile guards
 
 ### Phase 102: Deterministic Multi-Restart Wrapper
 **Goal**: A multi-restart wrapper runs the L-BFGS local optimizer from multiple initializations (pointwise mean + deterministically-seeded perturbations) and returns the barycenter with the lowest total soft-DTW cost across restarts, escaping local minima of the non-convex objective — reproducibly for a fixed seed.
@@ -84,7 +85,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 101. In-Crate L-BFGS Barycenter Optimizer | 0/? | Not started | - |
+| 101. In-Crate L-BFGS Barycenter Optimizer | 0/1 | Not started | - |
 | 102. Deterministic Multi-Restart Wrapper | 0/? | Not started | - |
 | 103. `SoftDtwBarycenterConfig` API & Legacy Wrapper | 0/? | Not started | - |
 | 104. Quality Evidence — Escapes-Local-Minimum & f64 Parity | 0/? | Not started | - |
