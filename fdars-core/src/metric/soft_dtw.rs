@@ -689,6 +689,30 @@ pub fn soft_dtw_barycenter(
     }
 }
 
+// ---- MM baseline helper (used only in tests) ---------------------------------
+// Reconstructed for the `lbfgs_cost_le_mm` test so SC#1 can be verified in-crate
+// after `update_barycenter` is removed from production code.
+
+/// One MM inverse-curvature (diagonal-Newton) update step: `bary[k] -= g[k]/(2*w[k])`.
+///
+/// This is the removed `update_barycenter` logic, reconstructed here so that
+/// `lbfgs_cost_le_mm` can compare L-BFGS cost against the MM baseline for the
+/// same iteration budget (SDTW-01 / Phase 101 SC#1). NOT called from production code.
+#[cfg(test)]
+fn mm_step(bary: &mut [f64], rows: &[Vec<f64>], gamma: f64) {
+    let m = bary.len();
+    let mut grad = vec![0.0_f64; m];
+    let mut weight = vec![0.0_f64; m];
+    for row in rows {
+        soft_dtw_accumulate_gradient_and_weight(bary, row, gamma, &mut grad, &mut weight);
+    }
+    for ((b, g), w) in bary.iter_mut().zip(grad.iter()).zip(weight.iter()) {
+        if *w > 1e-12 {
+            *b -= g / (2.0 * w);
+        }
+    }
+}
+
 #[cfg(test)]
 mod differentiable_tests {
     use super::*;
@@ -901,5 +925,257 @@ mod differentiable_tests {
                 );
             }
         }
+    }
+}
+
+/// SDTW-01 unit tests for the in-crate L-BFGS barycenter optimizer.
+///
+/// Covers Phase 101 success criteria:
+/// - cost_monotone: the Armijo line search guarantees cost non-increase at each step
+/// - lbfgs_boundedness_convex_hull: barycenter stays within data's convex hull
+/// - lbfgs_max_iter_and_tol_stop: max_iter and tol stopping rules are honored
+/// - lbfgs_deterministic: identical inputs produce bit-identical results (pure f64)
+/// - lbfgs_cost_le_mm: L-BFGS cost ≤ MM baseline for the same budget (Phase 101 SC#1)
+#[cfg(test)]
+mod barycenter_lbfgs_tests {
+    use super::*;
+    use crate::matrix::FdMatrix;
+
+    /// Build a small FdMatrix from a list of row vecs.
+    fn mat_from_rows(rows: &[Vec<f64>]) -> FdMatrix {
+        let n = rows.len();
+        let m = rows[0].len();
+        let mut col_major = vec![0.0_f64; n * m];
+        for j in 0..m {
+            for i in 0..n {
+                col_major[i + j * n] = rows[i][j];
+            }
+        }
+        FdMatrix::from_column_major(col_major, n, m).unwrap()
+    }
+
+    /// 5-row sinusoidal / quadratic curved dataset for L-BFGS tests.
+    fn curved_data_5rows(m: usize) -> FdMatrix {
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+        let rows: Vec<Vec<f64>> = (0..5)
+            .map(|i| {
+                let phase = i as f64 * 0.3;
+                t.iter()
+                    .map(|&s| (2.0 * std::f64::consts::PI * s + phase).sin())
+                    .collect()
+            })
+            .collect();
+        mat_from_rows(&rows)
+    }
+
+    /// SDTW-01 SC: the L-BFGS Armijo line search guarantees that each accepted step
+    /// satisfies f(k+1) ≤ f(k) + c1*alpha*slope (sufficient decrease condition),
+    /// so the cost sequence produced by separate runs with increasing budgets must
+    /// be non-increasing.  We verify this by running for 1, 2, …, 10 iterations and
+    /// checking that cost(k+1) ≤ cost(k) + small fp tolerance.
+    #[test]
+    fn cost_monotone() {
+        let m = 30_usize;
+        let data = curved_data_5rows(m);
+        let gamma = 1.0_f64;
+        let tol = 1e-12; // tiny tol so we only stop on max_iter
+
+        // Collect total soft-DTW cost after each iteration budget.
+        // Each call runs from the same init (pointwise mean); we use increasing
+        // max_iter and check that costs are non-increasing.
+        let mut prev_cost = f64::INFINITY;
+        for budget in 1..=10_usize {
+            let result = soft_dtw_barycenter(&data, gamma, budget, tol);
+            let rows: Vec<Vec<f64>> = (0..data.nrows()).map(|i| data.row(i)).collect();
+            let cost: f64 = rows
+                .iter()
+                .map(|r| soft_dtw_distance(&result.barycenter, r, gamma))
+                .sum();
+            assert!(
+                cost <= prev_cost + 1e-8,
+                "cost increased from budget {} to {}: {:.10} -> {:.10}",
+                budget - 1,
+                budget,
+                prev_cost,
+                cost
+            );
+            prev_cost = cost.min(prev_cost);
+        }
+    }
+
+    /// SDTW-01 SC: the returned barycenter must lie within the data's convex hull
+    /// (coordinate-wise bounding box) and contain no NaN or inf values.
+    #[test]
+    fn lbfgs_boundedness_convex_hull() {
+        let m = 30_usize;
+        let data = curved_data_5rows(m);
+        let gamma = 1.0_f64;
+        let result = soft_dtw_barycenter(&data, gamma, 20, 1e-6);
+
+        assert!(
+            result.barycenter.len() == m,
+            "barycenter length mismatch: {} vs {m}",
+            result.barycenter.len()
+        );
+
+        // Compute column-wise min/max across all input rows
+        let rows: Vec<Vec<f64>> = (0..data.nrows()).map(|i| data.row(i)).collect();
+        for j in 0..m {
+            let col_min = rows.iter().map(|r| r[j]).fold(f64::INFINITY, f64::min);
+            let col_max = rows.iter().map(|r| r[j]).fold(f64::NEG_INFINITY, f64::max);
+            let bj = result.barycenter[j];
+            assert!(
+                bj.is_finite(),
+                "barycenter[{j}] = {bj} is not finite (NaN or inf)"
+            );
+            // Soft-DTW barycenter may lie slightly outside the bounding box due to
+            // the elastic alignment, but must not diverge — allow 10% slack.
+            let range = (col_max - col_min).max(1e-6);
+            assert!(
+                bj >= col_min - 0.1 * range && bj <= col_max + 0.1 * range,
+                "barycenter[{j}] = {bj:.6} outside 10%-slack convex hull [{:.6}, {:.6}]",
+                col_min - 0.1 * range,
+                col_max + 0.1 * range
+            );
+        }
+    }
+
+    /// SDTW-01 SC: max_iter and tol stopping rules are honored.
+    /// - With max_iter=3 on a non-trivial problem, n_iter <= 3 and converged == false.
+    /// - With large max_iter and loose tol, converged == true and n_iter <= max_iter.
+    #[test]
+    fn lbfgs_max_iter_and_tol_stop() {
+        let m = 30_usize;
+        let data = curved_data_5rows(m);
+        let gamma = 1.0_f64;
+
+        // Case 1: tight budget — must stop at max_iter, not converge
+        let result_tight = soft_dtw_barycenter(&data, gamma, 3, 1e-15);
+        assert!(
+            result_tight.n_iter <= 3,
+            "n_iter ({}) exceeded max_iter=3",
+            result_tight.n_iter
+        );
+        assert!(
+            !result_tight.converged,
+            "should not converge in 3 iterations with tol=1e-15"
+        );
+
+        // Case 2: large budget + loose tol — must converge
+        let result_loose = soft_dtw_barycenter(&data, gamma, 500, 1e-2);
+        assert!(
+            result_loose.converged,
+            "should converge with max_iter=500 and loose tol=1e-2 (n_iter={})",
+            result_loose.n_iter
+        );
+        assert!(
+            result_loose.n_iter <= 500,
+            "n_iter ({}) exceeded max_iter=500",
+            result_loose.n_iter
+        );
+    }
+
+    /// SDTW-01 SC: two identical calls produce bit-identical barycenter vectors.
+    /// The L-BFGS optimizer is pure f64 with no randomness — determinism is required.
+    #[test]
+    fn lbfgs_deterministic() {
+        let m = 30_usize;
+        let data = curved_data_5rows(m);
+        let gamma = 1.0_f64;
+
+        let result1 = soft_dtw_barycenter(&data, gamma, 20, 1e-6);
+        let result2 = soft_dtw_barycenter(&data, gamma, 20, 1e-6);
+
+        assert_eq!(
+            result1.n_iter, result2.n_iter,
+            "n_iter differs between two identical calls: {} vs {}",
+            result1.n_iter, result2.n_iter
+        );
+        assert_eq!(
+            result1.converged, result2.converged,
+            "converged flag differs: {} vs {}",
+            result1.converged, result2.converged
+        );
+        for (j, (a, b)) in result1
+            .barycenter
+            .iter()
+            .zip(result2.barycenter.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                a.to_bits(),
+                b.to_bits(),
+                "barycenter[{j}] not bit-identical: {a} vs {b}"
+            );
+        }
+    }
+
+    /// SDTW-01 / Phase 101 SC#1: L-BFGS reaches total soft-DTW cost ≤ MM baseline
+    /// for the same iteration budget, and strictly lower on a curved objective.
+    ///
+    /// The MM baseline is reconstructed in-test using the removed inverse-curvature
+    /// step logic (g/(2w) per coordinate) so the comparison is self-contained.
+    /// This is the unit-level cost-comparison required by 101-VALIDATION.md.
+    /// The fuller SDTW-04 escape-from-local-minimum demonstration is deferred to Phase 104.
+    #[test]
+    fn lbfgs_cost_le_mm() {
+        // Use a curved (sinusoidal, multi-row) dataset where the MM step behaves
+        // differently from L-BFGS (both start from the same pointwise-mean init).
+        let m = 30_usize;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        // 5 rows with distinct phases and amplitudes to create a non-trivial curved objective
+        let rows: Vec<Vec<f64>> = vec![
+            t.iter()
+                .map(|&s| (2.0 * std::f64::consts::PI * s).sin())
+                .collect(),
+            t.iter()
+                .map(|&s| (2.0 * std::f64::consts::PI * s + 0.5).sin())
+                .collect(),
+            t.iter()
+                .map(|&s| 0.8 * (2.0 * std::f64::consts::PI * s + 1.0).sin())
+                .collect(),
+            t.iter()
+                .map(|&s| 1.2 * (2.0 * std::f64::consts::PI * s - 0.4).sin())
+                .collect(),
+            t.iter()
+                .map(|&s| (2.0 * std::f64::consts::PI * s + 1.5).sin())
+                .collect(),
+        ];
+        let data = mat_from_rows(&rows);
+        let gamma = 1.0_f64;
+        let budget = 10_usize; // same number of gradient steps for both
+
+        // --- L-BFGS cost ---
+        let lbfgs_result = soft_dtw_barycenter(&data, gamma, budget, 1e-15);
+        let lbfgs_cost: f64 = rows
+            .iter()
+            .map(|r| soft_dtw_distance(&lbfgs_result.barycenter, r, gamma))
+            .sum();
+
+        // --- MM baseline cost (reconstructed inverse-curvature step) ---
+        let mut mm_bary = init_barycenter_mean(&rows);
+        for _ in 0..budget {
+            mm_step(&mut mm_bary, &rows, gamma);
+        }
+        let mm_cost: f64 = rows
+            .iter()
+            .map(|r| soft_dtw_distance(&mm_bary, r, gamma))
+            .sum();
+
+        // SC#1a: L-BFGS cost must be no worse than MM (with tiny eps for fp noise)
+        let tiny_eps = 1e-6 * mm_cost.abs().max(1.0);
+        assert!(
+            lbfgs_cost <= mm_cost + tiny_eps,
+            "L-BFGS cost ({lbfgs_cost:.8}) > MM cost ({mm_cost:.8}) + eps ({tiny_eps:.2e}) — \
+             L-BFGS should be no worse than MM for the same budget"
+        );
+
+        // SC#1b: L-BFGS must be strictly lower on this curved case
+        // (L-BFGS uses curvature information; MM is a first-order diagonal step)
+        assert!(
+            lbfgs_cost < mm_cost,
+            "L-BFGS cost ({lbfgs_cost:.8}) is not strictly lower than MM cost ({mm_cost:.8}) \
+             on the curved sinusoidal case — Phase 101 SC#1 requires strictly lower on curved objectives"
+        );
     }
 }
