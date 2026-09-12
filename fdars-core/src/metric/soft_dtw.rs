@@ -7,6 +7,9 @@ use crate::autodiff::Scalar;
 use crate::dim::Dim;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
+use rand::prelude::*;
+use rand::rngs::StdRng;
+use rand_distr::Normal;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 use std::collections::VecDeque;
@@ -559,6 +562,241 @@ fn init_barycenter_mean(rows: &[Vec<f64>]) -> Vec<f64> {
     bary
 }
 
+/// Run one L-BFGS descent from a given initial barycenter.
+///
+/// Private helper shared by `soft_dtw_barycenter` (single-init path) and
+/// `soft_dtw_barycenter_multirestart` (called once per restart). The caller
+/// is responsible for providing a valid `gamma > 0` and a non-empty `rows`.
+///
+/// Carries all Phase 101 safeguards:
+/// - curvature guard `sᵀy > 1e-20` before history push
+/// - non-descent direction fallback `d = -g` + history clear
+/// - Armijo safeguarded minimum step (`beta^max_bt`)
+fn lbfgs_refine_from_init(
+    rows: &[Vec<f64>],
+    init: Vec<f64>,
+    gamma: f64,
+    max_iter: usize,
+    tol: f64,
+) -> SoftDtwBarycenterResult {
+    let m = init.len();
+    let mut bary = init;
+
+    // L-BFGS hyperparameters (locked per CONTEXT.md design decisions)
+    let m_lbfgs: usize = 10;
+    let c1 = 1e-4_f64;
+    let beta_ls = 0.5_f64;
+    let max_bt: usize = 20;
+
+    // Allocate reusable buffers
+    let mut g = vec![0.0_f64; m];
+    let mut w_scratch = vec![0.0_f64; m]; // required by accumulate fn signature; unused by L-BFGS
+    let mut s_hist: VecDeque<Vec<f64>> = VecDeque::with_capacity(m_lbfgs);
+    let mut y_hist: VecDeque<Vec<f64>> = VecDeque::with_capacity(m_lbfgs);
+    let mut q_buf = vec![0.0_f64; m];
+    let mut d = vec![0.0_f64; m];
+
+    // Initial objective and gradient
+    let mut f = eval_obj_and_grad(&bary, rows, gamma, &mut g, &mut w_scratch);
+    let mut converged = false;
+    let mut n_iter = 0_usize;
+
+    for iter in 0..max_iter {
+        n_iter = iter + 1;
+
+        // Stopping check 1: gradient ∞-norm
+        let g_inf = g.iter().map(|v| v.abs()).fold(0.0_f64, f64::max);
+        if g_inf < tol {
+            converged = true;
+            break;
+        }
+
+        // Initial Hessian scale γ_k = (sᵀy)/(yᵀy); fallback to 1.0 when empty or near-zero
+        let gamma_k = if s_hist.is_empty() {
+            1.0
+        } else {
+            let s_last = s_hist.back().unwrap();
+            let y_last = y_hist.back().unwrap();
+            let yy = lbfgs_dot(y_last, y_last);
+            if yy < 1e-20 {
+                1.0
+            } else {
+                lbfgs_dot(s_last, y_last) / yy
+            }
+        };
+
+        // Compute descent direction d = -H_k * g via two-loop recursion
+        two_loop_lbfgs(&g, &s_hist, &y_hist, gamma_k, &mut q_buf, &mut d);
+
+        // Non-descent direction safeguard (Pitfall 5): if dot(g, d) >= 0, reset to steepest descent
+        if lbfgs_dot(&g, &d) >= 0.0 {
+            // d = -g
+            d.iter_mut().zip(g.iter()).for_each(|(di, gi)| *di = -*gi);
+            // Clear history to avoid repeating the ill-conditioned direction
+            s_hist.clear();
+            y_hist.clear();
+        }
+
+        // Backtracking Armijo line search
+        let (alpha, f_new) = backtrack_armijo(&bary, &d, f, &g, rows, gamma, c1, beta_ls, max_bt);
+
+        // Stopping check 2: relative cost change
+        let rel_change = (f - f_new).abs() / f.abs().max(1.0);
+        if rel_change < tol {
+            converged = true;
+        }
+
+        // Compute s = alpha * d; update bary
+        let s_vec: Vec<f64> = d.iter().map(|v| alpha * v).collect();
+        for (b, si) in bary.iter_mut().zip(s_vec.iter()) {
+            *b += si;
+        }
+
+        // Recompute gradient at new bary (and update f for next iteration's rel_change check)
+        let g_old = g.clone();
+        f = eval_obj_and_grad(&bary, rows, gamma, &mut g, &mut w_scratch);
+
+        // Compute y = g_new - g_old
+        let y_vec: Vec<f64> = g.iter().zip(g_old.iter()).map(|(gn, go)| gn - go).collect();
+
+        // Curvature safeguard (Pitfall 1): only push when sᵀy > 1e-20
+        if lbfgs_dot(&s_vec, &y_vec) > 1e-20 {
+            if s_hist.len() == m_lbfgs {
+                s_hist.pop_front();
+                y_hist.pop_front();
+            }
+            s_hist.push_back(s_vec);
+            y_hist.push_back(y_vec);
+        }
+
+        if converged {
+            break;
+        }
+    }
+
+    SoftDtwBarycenterResult {
+        barycenter: bary,
+        n_iter,
+        converged,
+    }
+}
+
+/// Compute the per-evaluation-point (column) population standard deviation of the input rows.
+///
+/// For each column `j` (0..m), computes the population std of `{rows[i][j]}` across `n` rows.
+/// A column with zero spread (or n <= 1) returns 0.0 — those coordinates will not be perturbed
+/// in `perturbed_init` (restart 0 already covers the unperturbed mean).
+#[allow(dead_code)]
+fn per_col_std(rows: &[Vec<f64>], m: usize) -> Vec<f64> {
+    let n = rows.len();
+    if n <= 1 {
+        return vec![0.0; m];
+    }
+    let n_f = n as f64;
+    let mut stds = vec![0.0_f64; m];
+    for j in 0..m {
+        let mean = rows.iter().map(|r| r[j]).sum::<f64>() / n_f;
+        let var = rows
+            .iter()
+            .map(|r| (r[j] - mean) * (r[j] - mean))
+            .sum::<f64>()
+            / n_f;
+        stds[j] = var.sqrt();
+    }
+    stds
+}
+
+/// Build a seeded Gaussian-perturbed init for restart `k`.
+///
+/// Draws additive noise from `N(0, col_std[j])` for each coordinate `j`.
+/// RNG is seeded `StdRng::seed_from_u64(seed + k)` per project convention.
+/// Noise is drawn in a single left-to-right pass over `j` so the RNG consumption
+/// order is fixed — determinism depends on this exact order.
+#[allow(dead_code)]
+fn perturbed_init(mean: &[f64], col_std: &[f64], seed: u64, k: u64) -> Vec<f64> {
+    let mut rng = StdRng::seed_from_u64(seed + k);
+    let normal = Normal::new(0.0_f64, 1.0_f64).expect("Normal::new(0,1) always succeeds");
+    mean.iter()
+        .zip(col_std.iter())
+        .map(|(&mu, &std)| mu + std * rng.sample(normal))
+        .collect()
+}
+
+/// Deterministic multi-restart soft-DTW barycenter driver (SDTW-02, internal).
+///
+/// Runs the L-BFGS refiner from `n_restarts.max(1)` initializations:
+/// - Restart 0: unperturbed pointwise mean (`init_barycenter_mean`).
+/// - Restart k ≥ 1: mean + additive Gaussian noise scaled to per-evaluation-point std,
+///   seeded with `StdRng::seed_from_u64(seed + k)`.
+///
+/// Returns the barycenter with the lowest total soft-DTW cost
+/// `Σᵢ soft_dtw_distance(barycenter, row_i, gamma)`, with ties broken by the lowest
+/// restart index (strictly-less comparison — never replaces on equal cost).
+///
+/// Caller note: the public config entry point (Phase 103) will expose `n_restarts` and
+/// `seed`; this function is private until that API is designed.
+#[allow(dead_code)]
+fn soft_dtw_barycenter_multirestart(
+    data: &FdMatrix,
+    gamma: f64,
+    max_iter: usize,
+    tol: f64,
+    n_restarts: usize,
+    seed: u64,
+) -> SoftDtwBarycenterResult {
+    let (n, m) = data.shape();
+    if n == 0 || m == 0 {
+        return SoftDtwBarycenterResult {
+            barycenter: Vec::new(),
+            n_iter: 0,
+            converged: true,
+        };
+    }
+
+    let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
+
+    // Guard: gamma must be strictly positive and finite — same fallback as the 4-arg entry.
+    if !gamma.is_finite() || gamma <= 0.0 {
+        return SoftDtwBarycenterResult {
+            barycenter: init_barycenter_mean(&rows),
+            n_iter: 0,
+            converged: false,
+        };
+    }
+
+    let mean = init_barycenter_mean(&rows);
+    let col_std = per_col_std(&rows, m);
+    let n_runs = n_restarts.max(1);
+
+    let mut best_result: Option<SoftDtwBarycenterResult> = None;
+    let mut best_total = f64::INFINITY;
+
+    for k in 0..n_runs {
+        let init = if k == 0 {
+            mean.clone()
+        } else {
+            perturbed_init(&mean, &col_std, seed, k as u64)
+        };
+
+        let result = lbfgs_refine_from_init(&rows, init, gamma, max_iter, tol);
+
+        // Compute total soft-DTW cost for this restart's barycenter
+        let total: f64 = rows
+            .iter()
+            .map(|r| soft_dtw_distance(&result.barycenter, r, gamma))
+            .sum();
+
+        // Strictly-less comparison: ties go to the earlier (lower-index) restart
+        if total < best_total {
+            best_total = total;
+            best_result = Some(result);
+        }
+    }
+
+    // SAFETY: n_runs >= 1, so best_result is always Some after the loop.
+    best_result.unwrap()
+}
+
 /// Compute the Soft-DTW barycenter of a set of time series using L-BFGS optimization.
 ///
 /// Minimizes the total soft-DTW cost `Σᵢ soft_dtw_distance(bary, xᵢ)` with a
@@ -612,105 +850,10 @@ pub fn soft_dtw_barycenter(
         };
     }
 
-    let mut bary = init_barycenter_mean(&rows);
-
-    // L-BFGS hyperparameters (locked per CONTEXT.md design decisions)
-    let m_lbfgs: usize = 10;
-    let c1 = 1e-4_f64;
-    let beta_ls = 0.5_f64;
-    let max_bt: usize = 20;
-
-    // Allocate reusable buffers
-    let mut g = vec![0.0_f64; m];
-    let mut w_scratch = vec![0.0_f64; m]; // required by accumulate fn signature; unused by L-BFGS
-    let mut s_hist: VecDeque<Vec<f64>> = VecDeque::with_capacity(m_lbfgs);
-    let mut y_hist: VecDeque<Vec<f64>> = VecDeque::with_capacity(m_lbfgs);
-    let mut q_buf = vec![0.0_f64; m];
-    let mut d = vec![0.0_f64; m];
-
-    // Initial objective and gradient
-    let mut f = eval_obj_and_grad(&bary, &rows, gamma, &mut g, &mut w_scratch);
-    let mut converged = false;
-    let mut n_iter = 0_usize;
-
-    for iter in 0..max_iter {
-        n_iter = iter + 1;
-
-        // Stopping check 1: gradient ∞-norm
-        let g_inf = g.iter().map(|v| v.abs()).fold(0.0_f64, f64::max);
-        if g_inf < tol {
-            converged = true;
-            break;
-        }
-
-        // Initial Hessian scale γ_k = (sᵀy)/(yᵀy); fallback to 1.0 when empty or near-zero
-        let gamma_k = if s_hist.is_empty() {
-            1.0
-        } else {
-            let s_last = s_hist.back().unwrap();
-            let y_last = y_hist.back().unwrap();
-            let yy = lbfgs_dot(y_last, y_last);
-            if yy < 1e-20 {
-                1.0
-            } else {
-                lbfgs_dot(s_last, y_last) / yy
-            }
-        };
-
-        // Compute descent direction d = -H_k * g via two-loop recursion
-        two_loop_lbfgs(&g, &s_hist, &y_hist, gamma_k, &mut q_buf, &mut d);
-
-        // Non-descent direction safeguard (Pitfall 5): if dot(g, d) >= 0, reset to steepest descent
-        if lbfgs_dot(&g, &d) >= 0.0 {
-            // d = -g
-            d.iter_mut().zip(g.iter()).for_each(|(di, gi)| *di = -*gi);
-            // Clear history to avoid repeating the ill-conditioned direction
-            s_hist.clear();
-            y_hist.clear();
-        }
-
-        // Backtracking Armijo line search
-        let (alpha, f_new) = backtrack_armijo(&bary, &d, f, &g, &rows, gamma, c1, beta_ls, max_bt);
-
-        // Stopping check 2: relative cost change
-        let rel_change = (f - f_new).abs() / f.abs().max(1.0);
-        if rel_change < tol {
-            converged = true;
-        }
-
-        // Compute s = alpha * d; update bary
-        let s_vec: Vec<f64> = d.iter().map(|v| alpha * v).collect();
-        for (b, si) in bary.iter_mut().zip(s_vec.iter()) {
-            *b += si;
-        }
-
-        // Recompute gradient at new bary (and update f for next iteration's rel_change check)
-        let g_old = g.clone();
-        f = eval_obj_and_grad(&bary, &rows, gamma, &mut g, &mut w_scratch);
-
-        // Compute y = g_new - g_old
-        let y_vec: Vec<f64> = g.iter().zip(g_old.iter()).map(|(gn, go)| gn - go).collect();
-
-        // Curvature safeguard (Pitfall 1): only push when sᵀy > 1e-20
-        if lbfgs_dot(&s_vec, &y_vec) > 1e-20 {
-            if s_hist.len() == m_lbfgs {
-                s_hist.pop_front();
-                y_hist.pop_front();
-            }
-            s_hist.push_back(s_vec);
-            y_hist.push_back(y_vec);
-        }
-
-        if converged {
-            break;
-        }
-    }
-
-    SoftDtwBarycenterResult {
-        barycenter: bary,
-        n_iter,
-        converged,
-    }
+    // Delegate to the reusable single-init refiner; restart 0 of the multi-restart
+    // driver calls the same path with an identical init, ensuring the public 4-arg entry
+    // and multi-restart restart-0 produce identical descents.
+    lbfgs_refine_from_init(&rows, init_barycenter_mean(&rows), gamma, max_iter, tol)
 }
 
 // ---- MM baseline helper (used only in tests) ---------------------------------
