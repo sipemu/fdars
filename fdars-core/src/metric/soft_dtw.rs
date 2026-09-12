@@ -568,7 +568,7 @@ fn init_barycenter_mean(rows: &[Vec<f64>]) -> Vec<f64> {
 /// * `gamma` - Soft-DTW smoothing parameter (> 0)
 /// * `max_iter` - Maximum number of L-BFGS iterations
 /// * `tol` - Convergence tolerance: stops when gradient ∞-norm < `tol` OR
-///           relative cost change < `tol`
+///   relative cost change < `tol`
 ///
 /// # Returns
 /// [`SoftDtwBarycenterResult`] containing the barycenter, iteration count, and convergence flag.
