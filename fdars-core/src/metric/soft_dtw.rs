@@ -460,13 +460,17 @@ fn two_loop_lbfgs(
     q_buf.copy_from_slice(g);
 
     let mut alphas = vec![0.0_f64; m_actual];
+    // Store rho_i once (Nocedal & Wright Algorithm 7.4) — reused in both loops to
+    // avoid recomputing lbfgs_dot(y, s) twice per history entry and to keep both
+    // loops consistent if the denominator formula ever changes.
+    let mut rhos = vec![0.0_f64; m_actual];
 
     // Loop 1: newest to oldest
     for i in (0..m_actual).rev() {
         let s = &s_hist[i];
         let y = &y_hist[i];
-        let rho_i = 1.0 / lbfgs_dot(y, s); // ρᵢ = 1 / (yᵢᵀsᵢ); sᵀy > 1e-20 by guard
-        alphas[i] = rho_i * lbfgs_dot(s, q_buf);
+        rhos[i] = 1.0 / lbfgs_dot(y, s); // ρᵢ = 1 / (yᵢᵀsᵢ); sᵀy > 1e-20 by guard
+        alphas[i] = rhos[i] * lbfgs_dot(s, q_buf);
         lbfgs_axpy(-alphas[i], y, q_buf); // q ← q - αᵢ yᵢ
     }
 
@@ -480,8 +484,7 @@ fn two_loop_lbfgs(
     for i in 0..m_actual {
         let s = &s_hist[i];
         let y = &y_hist[i];
-        let rho_i = 1.0 / lbfgs_dot(y, s);
-        let beta = rho_i * lbfgs_dot(y, d);
+        let beta = rhos[i] * lbfgs_dot(y, d);
         lbfgs_axpy(alphas[i] - beta, s, d); // r ← r + (αᵢ - βᵢ) sᵢ
     }
 
@@ -572,6 +575,13 @@ fn init_barycenter_mean(rows: &[Vec<f64>]) -> Vec<f64> {
 ///
 /// # Returns
 /// [`SoftDtwBarycenterResult`] containing the barycenter, iteration count, and convergence flag.
+///
+/// # Notes
+/// `gamma` is clamped defensively: non-positive or non-finite values return the pointwise-mean
+/// barycenter immediately (n_iter=0, converged=false) to avoid NaN propagation. Strict
+/// `InvalidParameter` validation for gamma is deferred to the Phase 103 `Result`-returning
+/// config entry point (SDTW-03).
+#[must_use]
 pub fn soft_dtw_barycenter(
     data: &FdMatrix,
     gamma: f64,
@@ -588,6 +598,20 @@ pub fn soft_dtw_barycenter(
     }
 
     let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
+
+    // Guard: gamma must be strictly positive and finite. NaN/inf/zero silently corrupt
+    // the softmin3 computation (neg_inv_gamma = -inf or NaN → all-NaN DP table →
+    // false converged=true with all-NaN barycenter). Return the pointwise mean as a
+    // safe fallback. Strict InvalidParameter error is deferred to the Phase 103
+    // Result-returning config entry point (SDTW-03).
+    if !gamma.is_finite() || gamma <= 0.0 {
+        return SoftDtwBarycenterResult {
+            barycenter: init_barycenter_mean(&rows),
+            n_iter: 0,
+            converged: false,
+        };
+    }
+
     let mut bary = init_barycenter_mean(&rows);
 
     // L-BFGS hyperparameters (locked per CONTEXT.md design decisions)
@@ -980,9 +1004,13 @@ mod barycenter_lbfgs_tests {
         let gamma = 1.0_f64;
         let tol = 1e-12; // tiny tol so we only stop on max_iter
 
-        // Collect total soft-DTW cost after each iteration budget.
-        // Each call runs from the same init (pointwise mean); we use increasing
-        // max_iter and check that costs are non-increasing.
+        // Each call is independent (restarts from the same pointwise-mean init).
+        // Because the optimizer is deterministic, budget=k+1 reproduces all k steps of
+        // budget=k and then takes one additional Armijo-guaranteed descent step.
+        // So costs across runs are non-increasing iff (a) determinism holds and (b)
+        // Armijo is satisfied — both properties we want to verify.
+        // Note: this validates cross-run monotonicity across independent increasing-budget
+        // restarts, not intra-run step descent within a single call.
         let mut prev_cost = f64::INFINITY;
         for budget in 1..=10_usize {
             let result = soft_dtw_barycenter(&data, gamma, budget, tol);
