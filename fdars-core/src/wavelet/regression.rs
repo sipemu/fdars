@@ -1096,6 +1096,37 @@ pub(crate) fn wnet_cv_lambda(
     config: &WnetConfig,
 ) -> Result<f64, FdarError> {
     let (n, _p) = design.shape();
+    wnet_cv_validate(design, y, config)?;
+
+    let grid = build_lambda_grid(design, y, config);
+    let folds = crate::cv::create_folds(n, config.n_folds, config.seed);
+
+    // Precompute per-fold train/test index sets (shared across all λ).
+    let fold_sets: Vec<(Vec<usize>, Vec<usize>)> = (0..config.n_folds)
+        .map(|f| crate::cv::fold_indices(&folds, f))
+        .collect();
+
+    let mut best_lambda = grid[0];
+    let mut best_mse = f64::INFINITY;
+    let tie_eps = 1e-12;
+
+    for &lam in &grid {
+        if let Some(mse) = wnet_cv_score_lambda(design, y, lam, config, &fold_sets)? {
+            // Grid is descending (largest λ first). Strictly-less keeps the FIRST
+            // (larger) λ on a tie; the epsilon guards float noise so a marginally
+            // smaller MSE at a smaller λ does not override a near-equal larger λ.
+            if mse < best_mse - tie_eps {
+                best_mse = mse;
+                best_lambda = lam;
+            }
+        }
+    }
+
+    Ok(best_lambda)
+}
+
+fn wnet_cv_validate(design: &FdMatrix, y: &[f64], config: &WnetConfig) -> Result<(), FdarError> {
+    let (n, _p) = design.shape();
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
@@ -1132,60 +1163,49 @@ pub(crate) fn wnet_cv_lambda(
             });
         }
     }
+    Ok(())
+}
 
-    let grid = build_lambda_grid(design, y, config);
-    let folds = crate::cv::create_folds(n, config.n_folds, config.seed);
-
-    // Precompute per-fold train/test index sets (shared across all λ).
-    let fold_sets: Vec<(Vec<usize>, Vec<usize>)> = (0..config.n_folds)
-        .map(|f| crate::cv::fold_indices(&folds, f))
-        .collect();
-
-    let mut best_lambda = grid[0];
-    let mut best_mse = f64::INFINITY;
-    let tie_eps = 1e-12;
-
-    for &lam in &grid {
-        let mut total_sse = 0.0_f64;
-        let mut scored = 0usize;
-        for (train_idx, test_idx) in &fold_sets {
-            if train_idx.is_empty() || test_idx.is_empty() {
-                continue;
-            }
-            let train_data = crate::cv::subset_rows(design, train_idx);
-            let train_y = crate::cv::subset_vec(y, train_idx);
-            let (intercept, beta) = elastic_net_cd(
-                &train_data,
-                &train_y,
-                lam,
-                config.alpha,
-                config.max_iter,
-                config.tol,
-            )?;
-            for &oi in test_idx {
-                let mut yhat = intercept;
-                for j in 0..design.ncols() {
-                    yhat += design[(oi, j)] * beta[j];
-                }
-                let e = y[oi] - yhat;
-                total_sse += e * e;
-                scored += 1;
-            }
-        }
-        if scored == 0 {
+/// Per-lambda CV scoring: fits elastic-net on each training fold and scores on
+/// the held-out fold. Returns `Some(mse)` if at least one fold was scored,
+/// `None` if every fold was empty (skipped).
+fn wnet_cv_score_lambda(
+    design: &FdMatrix,
+    y: &[f64],
+    lam: f64,
+    config: &WnetConfig,
+    fold_sets: &[(Vec<usize>, Vec<usize>)],
+) -> Result<Option<f64>, FdarError> {
+    let mut total_sse = 0.0_f64;
+    let mut scored = 0usize;
+    for (train_idx, test_idx) in fold_sets {
+        if train_idx.is_empty() || test_idx.is_empty() {
             continue;
         }
-        let mse = total_sse / scored as f64;
-        // Grid is descending (largest λ first). Strictly-less keeps the FIRST
-        // (larger) λ on a tie; the epsilon guards float noise so a marginally
-        // smaller MSE at a smaller λ does not override a near-equal larger λ.
-        if mse < best_mse - tie_eps {
-            best_mse = mse;
-            best_lambda = lam;
+        let train_data = crate::cv::subset_rows(design, train_idx);
+        let train_y = crate::cv::subset_vec(y, train_idx);
+        let (intercept, beta) = elastic_net_cd(
+            &train_data,
+            &train_y,
+            lam,
+            config.alpha,
+            config.max_iter,
+            config.tol,
+        )?;
+        for &oi in test_idx {
+            let mut yhat = intercept;
+            for j in 0..design.ncols() {
+                yhat += design[(oi, j)] * beta[j];
+            }
+            let e = y[oi] - yhat;
+            total_sse += e * e;
+            scored += 1;
         }
     }
-
-    Ok(best_lambda)
+    if scored == 0 {
+        return Ok(None);
+    }
+    Ok(Some(total_sse / scored as f64))
 }
 
 // ---------------------------------------------------------------------------
