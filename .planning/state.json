@@ -26,13 +26,13 @@
     {
       "number": "105",
       "name": "Release Preparation & Verification",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 105)",
-    "reason": "Phase 105 of 5 — needs a plan"
+    "command": "/gsd:new-milestone",
+    "label": "Start a new milestone",
+    "reason": "All phases complete — start a new milestone"
   },
-  "updated_at": "2026-09-13T12:19:12.471Z"
+  "updated_at": "2026-09-13T12:37:29.593Z"
 }

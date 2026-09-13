@@ -23,7 +23,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
 - [x] **Phase 102: Deterministic Multi-Restart Wrapper** - Run the local optimizer from multiple seeded inits and keep the lowest-cost barycenter, reproducibly (completed 2026-09-13)
 - [x] **Phase 103: `SoftDtwBarycenterConfig` API & Legacy Wrapper** - Add the builder-convention config struct + new entry point; preserve the 4-arg fn as a thin non-breaking wrapper (completed 2026-09-13)
 - [x] **Phase 104: Quality Evidence — Escapes-Local-Minimum & f64 Parity** - Demonstrate a strictly lower barycenter cost than MM where MM stalls, and preserved legacy f64 behavior (completed 2026-09-13)
-- [ ] **Phase 105: Release Preparation & Verification** - Bump to 0.45.0, CHANGELOG, check off SDTW-O1, all whole-crate gates green
+- [x] **Phase 105: Release Preparation & Verification** - Bump to 0.45.0, CHANGELOG, check off SDTW-O1, all whole-crate gates green (completed 2026-09-13)
 
 ## Phase Details
 
@@ -104,7 +104,8 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
 **Plans**: 1 plan
 
 Plans:
-- [ ] 105-01-PLAN.md — Bump 0.45.0 + both CHANGELOGs + SDTW-O1 checkoff; full whole-crate gate battery green (no tag/publish)
+
+- [x] 105-01-PLAN.md — Bump 0.45.0 + both CHANGELOGs + SDTW-O1 checkoff; full whole-crate gate battery green (no tag/publish)
 
 ## Progress
 
@@ -114,7 +115,7 @@ Plans:
 | 102. Deterministic Multi-Restart Wrapper | 1/1 | Complete    | 2026-09-13 |
 | 103. `SoftDtwBarycenterConfig` API & Legacy Wrapper | 1/1 | Complete    | 2026-09-13 |
 | 104. Quality Evidence — Escapes-Local-Minimum & f64 Parity | 1/1 | Complete    | 2026-09-13 |
-| 105. Release Preparation & Verification | 0/? | Not started | - |
+| 105. Release Preparation & Verification | 1/1 | Complete    | 2026-09-13 |
 
 <details>
 <summary>✅ v0.44.0 Differentiable Core — Reverse-Mode & Broadened Subset (Phases 94–100) — SHIPPED 2026-09-12</summary>

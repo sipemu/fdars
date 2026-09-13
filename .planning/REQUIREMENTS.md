@@ -43,7 +43,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Release
 
-- [ ] **REL-01**: Bump `fdars-core` 0.44.0 → 0.45.0 with a `[0.45.0]` entry in both CHANGELOGs
+- [x] **REL-01**: Bump `fdars-core` 0.44.0 → 0.45.0 with a `[0.45.0]` entry in both CHANGELOGs
   (root + crate), check off `SDTW-O1` on `documentation/ROADMAP-TO-1.0.md`, and pass all
   whole-crate gates green: `cargo fmt --check`, `cargo clippy --all-targets --features
   linalg,parallel -- -D warnings`, full `cargo test`, a `--features serde` build guard, all 28
@@ -84,7 +84,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | SDTW-02 | Phase 102 | Complete |
 | SDTW-03 | Phase 103 | Complete |
 | SDTW-04 | Phase 104 | Complete |
-| REL-01  | Phase 105 | Pending |
+| REL-01  | Phase 105 | Complete |
 
 **Coverage:**
 
