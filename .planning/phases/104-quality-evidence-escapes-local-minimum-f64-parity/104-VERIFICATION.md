@@ -4,12 +4,14 @@ verified: 2026-09-13T12:14:36Z
 status: passed
 score: 3/3 must-haves verified
 covered_files:
-  - .planning/REQUIREMENTS.md
+  - .planning/phases/104-quality-evidence-escapes-local-minimum-f64-parity/104-01-PLAN.md
   - .planning/phases/104-quality-evidence-escapes-local-minimum-f64-parity/104-01-SUMMARY.md
+  - .planning/REQUIREMENTS.md
   - fdars-core/src/metric/soft_dtw.rs
-covered_digest: "v1:sha256:be3c72a22b5602419c028cda353cce4b65fe0b066675550bc105856dcf52da63"
+covered_digest: "v1:sha256:c3a68193a0b0617bdae381fa571b9445d1ddf941ea6dcf8e4f418f0b1d859143"
 behavior_unverified: 0
 overrides_applied: 0
+re_verification: null
 ---
 
 # Phase 104: Quality Evidence — Escapes Local Minimum & f64 Parity — Verification Report
