@@ -22,7 +22,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
 - [x] **Phase 101: In-Crate L-BFGS Barycenter Optimizer** - Replace the MM-step descent with a hand-rolled limited-memory L-BFGS driven by the exact soft-DTW gradient (completed 2026-09-13)
 - [x] **Phase 102: Deterministic Multi-Restart Wrapper** - Run the local optimizer from multiple seeded inits and keep the lowest-cost barycenter, reproducibly (completed 2026-09-13)
 - [x] **Phase 103: `SoftDtwBarycenterConfig` API & Legacy Wrapper** - Add the builder-convention config struct + new entry point; preserve the 4-arg fn as a thin non-breaking wrapper (completed 2026-09-13)
-- [ ] **Phase 104: Quality Evidence — Escapes-Local-Minimum & f64 Parity** - Demonstrate a strictly lower barycenter cost than MM where MM stalls, and preserved legacy f64 behavior
+- [x] **Phase 104: Quality Evidence — Escapes-Local-Minimum & f64 Parity** - Demonstrate a strictly lower barycenter cost than MM where MM stalls, and preserved legacy f64 behavior (completed 2026-09-13)
 - [ ] **Phase 105: Release Preparation & Verification** - Bump to 0.45.0, CHANGELOG, check off SDTW-O1, all whole-crate gates green
 
 ## Phase Details
@@ -87,7 +87,8 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
   3. The quality-evidence tests are deterministic (fixed seed) and pass under the full `cargo test` run.
 
 **Plans**: 1 plan
-- [ ] 104-01-PLAN.md — escape-from-local-minimum + legacy convex-hull f64-parity tests (SDTW-04)
+
+- [x] 104-01-PLAN.md — escape-from-local-minimum + legacy convex-hull f64-parity tests (SDTW-04)
 
 ### Phase 105: Release Preparation & Verification
 
@@ -109,7 +110,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
 | 101. In-Crate L-BFGS Barycenter Optimizer | 1/1 | Complete    | 2026-09-13 |
 | 102. Deterministic Multi-Restart Wrapper | 1/1 | Complete    | 2026-09-13 |
 | 103. `SoftDtwBarycenterConfig` API & Legacy Wrapper | 1/1 | Complete    | 2026-09-13 |
-| 104. Quality Evidence — Escapes-Local-Minimum & f64 Parity | 0/? | Not started | - |
+| 104. Quality Evidence — Escapes-Local-Minimum & f64 Parity | 1/1 | Complete    | 2026-09-13 |
 | 105. Release Preparation & Verification | 0/? | Not started | - |
 
 <details>

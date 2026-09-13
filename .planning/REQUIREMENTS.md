@@ -36,7 +36,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### Quality Evidence
 
-- [ ] **SDTW-04**: A test (and/or example) demonstrates the new optimizer reaches a strictly lower
+- [x] **SDTW-04**: A test (and/or example) demonstrates the new optimizer reaches a strictly lower
   total soft-DTW barycenter cost than the MM baseline on a case where MM stalls in a local
   optimum, and that the legacy-wrapper path preserves f64 behavior (converges to a bounded
   barycenter within the data's convex hull; no divergence).
@@ -83,7 +83,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | SDTW-01 | Phase 101 | Complete |
 | SDTW-02 | Phase 102 | Complete |
 | SDTW-03 | Phase 103 | Complete |
-| SDTW-04 | Phase 104 | Pending |
+| SDTW-04 | Phase 104 | Complete |
 | REL-01  | Phase 105 | Pending |
 
 **Coverage:**
