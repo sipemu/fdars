@@ -101,7 +101,10 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
   2. All whole-crate gates pass green: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, a `--features serde` build guard, all 28 examples + doctests, and `cargo package`.
   3. No `git tag`/publish is performed inside the phase — the `git tag v0.45.0` → crates.io publish (via `release.yml`) is left as the deferred operator step (GSD `git.create_tag` stays off).
 
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 105-01-PLAN.md — Bump 0.45.0 + both CHANGELOGs + SDTW-O1 checkoff; full whole-crate gate battery green (no tag/publish)
 
 ## Progress
 
