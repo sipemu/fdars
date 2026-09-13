@@ -849,6 +849,47 @@ pub(crate) fn elastic_net_cd(
     tol: f64,
 ) -> Result<(f64, Vec<f64>), FdarError> {
     let (n, p) = design.shape();
+    elastic_net_validate(design, y, lambda, alpha, max_iter, tol)?;
+
+    let (col_means, xc, col_norm_sq_over_n, y_centered) =
+        elastic_net_center_design(design, y, n, p);
+
+    // Coefficients start at zero; the running fit tracks Σⱼ βⱼ X_c,ⱼ so a
+    // coordinate's partial residual is (y_centered - fit + βⱼ X_c,ⱼ) in O(n).
+    let mut beta = vec![0.0_f64; p];
+    let mut fit = vec![0.0_f64; n]; // Σⱼ βⱼ X_c,ⱼ
+    let l1 = lambda * alpha;
+    let l2 = lambda * (1.0 - alpha);
+
+    elastic_net_cd_sweep(
+        &xc,
+        &y_centered,
+        &col_norm_sq_over_n,
+        l1,
+        l2,
+        n,
+        p,
+        max_iter,
+        tol,
+        &mut beta,
+        &mut fit,
+    );
+
+    // Intercept on un-centered column means: mu_y - Σ βⱼ·mean(Xⱼ).
+    let mu_y = y.iter().sum::<f64>() / n as f64;
+    let intercept = mu_y - (0..p).map(|j| beta[j] * col_means[j]).sum::<f64>();
+    Ok((intercept, beta))
+}
+
+fn elastic_net_validate(
+    design: &FdMatrix,
+    y: &[f64],
+    lambda: f64,
+    alpha: f64,
+    max_iter: usize,
+    tol: f64,
+) -> Result<(), FdarError> {
+    let (n, _p) = design.shape();
     if y.len() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
@@ -880,7 +921,15 @@ pub(crate) fn elastic_net_cd(
             message: "max_iter must be >= 1".to_string(),
         });
     }
+    Ok(())
+}
 
+fn elastic_net_center_design(
+    design: &FdMatrix,
+    y: &[f64],
+    n: usize,
+    p: usize,
+) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
     let n_f = n as f64;
     let mu_y = y.iter().sum::<f64>() / n_f;
     let y_centered: Vec<f64> = y.iter().map(|&v| v - mu_y).collect();
@@ -902,57 +951,86 @@ pub(crate) fn elastic_net_cd(
         }
         col_norm_sq_over_n[j] = norm_sq / n_f;
     }
+    (col_means, xc, col_norm_sq_over_n, y_centered)
+}
 
-    // Coefficients start at zero; the running fit tracks Σⱼ βⱼ X_c,ⱼ so a
-    // coordinate's partial residual is (y_centered - fit + βⱼ X_c,ⱼ) in O(n).
-    let mut beta = vec![0.0_f64; p];
-    let mut fit = vec![0.0_f64; n]; // Σⱼ βⱼ X_c,ⱼ
-    let l1 = lambda * alpha;
-    let l2 = lambda * (1.0 - alpha);
-
+/// Hot-path coordinate-descent sweep. Iterates columns (j) then observations (i)
+/// — loop order preserved verbatim for numeric-identical FP accumulation.
+#[inline]
+fn elastic_net_cd_sweep(
+    xc: &[f64],
+    y_centered: &[f64],
+    col_norm_sq_over_n: &[f64],
+    l1: f64,
+    l2: f64,
+    n: usize,
+    p: usize,
+    max_iter: usize,
+    tol: f64,
+    beta: &mut [f64],
+    fit: &mut [f64],
+) {
     for _sweep in 0..max_iter {
         let mut max_delta = 0.0_f64;
         for j in 0..p {
-            let denom = col_norm_sq_over_n[j] + l2;
-            if denom <= 0.0 {
-                // Dead column (zero-variance) with no ridge: leave at zero.
-                if beta[j] != 0.0 {
-                    let old = beta[j];
-                    for i in 0..n {
-                        fit[i] -= old * xc[i + j * n];
-                    }
-                    max_delta = max_delta.max(old.abs());
-                    beta[j] = 0.0;
-                }
-                continue;
-            }
-            // z_j = (X_c,ⱼ · partial_residual)/n where
-            // partial_residual = y_centered - (fit - βⱼ X_c,ⱼ).
-            let old = beta[j];
-            let mut dot = 0.0;
-            for i in 0..n {
-                let r = y_centered[i] - fit[i] + old * xc[i + j * n];
-                dot += xc[i + j * n] * r;
-            }
-            let z = dot / n_f;
-            let new = soft_threshold(z, l1) / denom;
-            if new != old {
-                let diff = new - old;
-                for i in 0..n {
-                    fit[i] += diff * xc[i + j * n];
-                }
-                max_delta = max_delta.max(diff.abs());
-                beta[j] = new;
-            }
+            let delta =
+                elastic_net_cd_update(xc, y_centered, col_norm_sq_over_n, l1, l2, n, j, beta, fit);
+            max_delta = max_delta.max(delta);
         }
         if max_delta < tol {
             break;
         }
     }
+}
 
-    // Intercept on un-centered column means: mu_y - Σ βⱼ·mean(Xⱼ).
-    let intercept = mu_y - (0..p).map(|j| beta[j] * col_means[j]).sum::<f64>();
-    Ok((intercept, beta))
+/// Single-coordinate update for column `j` in the elastic-net CD algorithm.
+/// Returns the absolute change in beta[j] (used for convergence tracking).
+/// Loop order (inner: observations i) preserved verbatim for numeric identity.
+#[inline]
+fn elastic_net_cd_update(
+    xc: &[f64],
+    y_centered: &[f64],
+    col_norm_sq_over_n: &[f64],
+    l1: f64,
+    l2: f64,
+    n: usize,
+    j: usize,
+    beta: &mut [f64],
+    fit: &mut [f64],
+) -> f64 {
+    let n_f = n as f64;
+    let denom = col_norm_sq_over_n[j] + l2;
+    if denom <= 0.0 {
+        // Dead column (zero-variance) with no ridge: leave at zero.
+        if beta[j] != 0.0 {
+            let old = beta[j];
+            for i in 0..n {
+                fit[i] -= old * xc[i + j * n];
+            }
+            beta[j] = 0.0;
+            return old.abs();
+        }
+        return 0.0;
+    }
+    // z_j = (X_c,ⱼ · partial_residual)/n where
+    // partial_residual = y_centered - (fit - βⱼ X_c,ⱼ).
+    let old = beta[j];
+    let mut dot = 0.0;
+    for i in 0..n {
+        let r = y_centered[i] - fit[i] + old * xc[i + j * n];
+        dot += xc[i + j * n] * r;
+    }
+    let z = dot / n_f;
+    let new = soft_threshold(z, l1) / denom;
+    if new != old {
+        let diff = new - old;
+        for i in 0..n {
+            fit[i] += diff * xc[i + j * n];
+        }
+        beta[j] = new;
+        return diff.abs();
+    }
+    0.0
 }
 
 /// Build the geometric λ grid used by [`wnet_cv_lambda`].
