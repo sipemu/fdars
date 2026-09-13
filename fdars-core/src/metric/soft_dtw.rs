@@ -64,11 +64,14 @@ pub struct SoftDtwBarycenterConfig {
     ///
     /// Stops when gradient ∞-norm < `tol` OR relative cost change < `tol`.
     pub tol: f64,
-    /// Number of random restarts (default: `10`).
+    /// Number of restarts (default: `10`).
     ///
-    /// Restart 0 uses the unperturbed pointwise mean; restarts 1..n use
-    /// Gaussian-perturbed inits. The barycenter with the lowest total
-    /// soft-DTW cost over all restarts is returned.
+    /// Total runs = `n_restarts` (clamped to 1 if set to 0). Restart 0 always
+    /// uses the unperturbed pointwise mean. Restarts 1 through `n_restarts - 1`
+    /// use Gaussian-perturbed initializations. The run with the lowest total
+    /// soft-DTW cost is returned.
+    ///
+    /// A value of `0` is treated as `1` (the unperturbed-mean restart only).
     pub n_restarts: usize,
     /// RNG seed for reproducible perturbations (default: `0`).
     ///
@@ -787,7 +790,9 @@ fn perturbed_init(mean: &[f64], col_std: &[f64], seed: u64, k: u64) -> Vec<f64> 
 /// Runs the L-BFGS refiner from `n_restarts.max(1)` initializations:
 /// - Restart 0: unperturbed pointwise mean (`init_barycenter_mean`).
 /// - Restart k ≥ 1: mean + additive Gaussian noise scaled to per-evaluation-point std,
-///   seeded with `StdRng::seed_from_u64(seed + k)`.
+///   seeded with `StdRng::seed_from_u64(seed.wrapping_add(k))`.
+///
+/// A value of `n_restarts = 0` is treated as `1` (the unperturbed-mean restart only).
 ///
 /// Returns the barycenter with the lowest total soft-DTW cost
 /// `Σᵢ soft_dtw_distance(barycenter, row_i, gamma)`, with ties broken by the lowest
@@ -889,6 +894,10 @@ pub(crate) fn soft_dtw_barycenter_multirestart(
 /// barycenter immediately (n_iter=0, converged=false) to avoid NaN propagation. Strict
 /// `InvalidParameter` validation for gamma is deferred to the Phase 103 `Result`-returning
 /// config entry point (SDTW-03).
+///
+/// This function delegates to [`soft_dtw_barycenter_multirestart`] with `n_restarts=1, seed=0`,
+/// ensuring bit-identical output to `soft_dtw_barycenter_with_config` when `config.n_restarts=1`
+/// on all inputs, including NaN-valued data (SDTW-03 non-breaking parity guarantee).
 #[must_use]
 pub fn soft_dtw_barycenter(
     data: &FdMatrix,
@@ -896,38 +905,7 @@ pub fn soft_dtw_barycenter(
     max_iter: usize,
     tol: f64,
 ) -> SoftDtwBarycenterResult {
-    let (n, m) = data.shape();
-    if n == 0 || m == 0 {
-        return SoftDtwBarycenterResult {
-            barycenter: Vec::new(),
-            n_iter: 0,
-            converged: true,
-        };
-    }
-
-    let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
-
-    // Compute the pointwise mean once; reused by the gamma-guard fallback and
-    // by the L-BFGS initialisation — a single allocation on all paths.
-    let mean = init_barycenter_mean(&rows);
-
-    // Guard: gamma must be strictly positive and finite. NaN/inf/zero silently corrupt
-    // the softmin3 computation (neg_inv_gamma = -inf or NaN → all-NaN DP table →
-    // false converged=true with all-NaN barycenter). Return the pointwise mean as a
-    // safe fallback. Strict InvalidParameter error is deferred to the Phase 103
-    // Result-returning config entry point (SDTW-03).
-    if !gamma.is_finite() || gamma <= 0.0 {
-        return SoftDtwBarycenterResult {
-            barycenter: mean,
-            n_iter: 0,
-            converged: false,
-        };
-    }
-
-    // Delegate to the reusable single-init refiner; restart 0 of the multi-restart
-    // driver calls the same path with an identical init, ensuring the public 4-arg entry
-    // and multi-restart restart-0 produce identical descents.
-    lbfgs_refine_from_init(&rows, mean, gamma, max_iter, tol)
+    soft_dtw_barycenter_multirestart(data, gamma, max_iter, tol, 1, 0)
 }
 
 /// Compute the Soft-DTW barycenter using a [`SoftDtwBarycenterConfig`] for all tuning parameters.
@@ -1800,6 +1778,75 @@ mod barycenter_config_tests {
         assert_eq!(
             legacy.converged, config_result.converged,
             "converged flag must match between legacy and config path at n_restarts=1"
+        );
+    }
+
+    /// SDTW-03 parity: both paths return the same result (not NaN) when input contains
+    /// a NaN row — CR-01 regression guard.
+    ///
+    /// Prior to CR-01 fix: legacy path returned NaN barycenter (lbfgs returns NaN);
+    /// config path returned the unperturbed mean (NaN cost never beat `f64::INFINITY`).
+    /// After the fix both paths call the same driver, so they are identical by construction.
+    #[test]
+    fn legacy_equals_config_nan_row_parity() {
+        // 3-row dataset with one all-NaN row
+        let n = 3_usize;
+        let m = 5_usize;
+        let mut col_major = vec![0.0_f64; n * m];
+        // Row 0: [1, 2, 3, 4, 5]
+        for j in 0..m {
+            col_major[j * n] = (j + 1) as f64;
+        }
+        // Row 1: [2, 3, 4, 5, 6]
+        for j in 0..m {
+            col_major[1 + j * n] = (j + 2) as f64;
+        }
+        // Row 2: all NaN
+        for j in 0..m {
+            col_major[2 + j * n] = f64::NAN;
+        }
+        let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+        let gamma = 1.0_f64;
+        let max_iter = 10_usize;
+        let tol = 1e-6_f64;
+
+        let legacy = soft_dtw_barycenter(&data, gamma, max_iter, tol);
+        let config = SoftDtwBarycenterConfig {
+            gamma,
+            max_iter,
+            tol,
+            n_restarts: 1,
+            seed: 0,
+        };
+        let config_result = soft_dtw_barycenter_with_config(&data, &config);
+
+        // Both paths must return the same barycenter (bit-identical, by construction)
+        assert_eq!(
+            legacy.barycenter.len(),
+            config_result.barycenter.len(),
+            "NaN-row parity: barycenter lengths differ"
+        );
+        for (j, (&a, &b)) in legacy
+            .barycenter
+            .iter()
+            .zip(config_result.barycenter.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                a.to_bits(),
+                b.to_bits(),
+                "NaN-row parity: barycenter[{j}] differs between legacy and config path: \
+                 legacy={a} config={b}"
+            );
+        }
+        assert_eq!(
+            legacy.n_iter, config_result.n_iter,
+            "NaN-row parity: n_iter differs: legacy={} config={}",
+            legacy.n_iter, config_result.n_iter
+        );
+        assert_eq!(
+            legacy.converged, config_result.converged,
+            "NaN-row parity: converged flag differs"
         );
     }
 
