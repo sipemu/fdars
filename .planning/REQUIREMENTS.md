@@ -67,23 +67,24 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Which phases cover which requirements. Filled during roadmap creation.
+Which phases cover which requirements.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| QUAL-01 | TBD | Pending |
-| QUAL-02 | TBD | Pending |
-| QUAL-03 | TBD | Pending |
-| QUAL-04 | TBD | Pending |
-| QUAL-05 | TBD | Pending |
-| CI-01 | TBD | Pending |
-| REL-01 | TBD | Pending |
+| QUAL-01 | Phase 106 | Pending |
+| QUAL-02 | Phase 107 | Pending |
+| QUAL-04 | Phase 108 | Pending |
+| QUAL-05 | Phase 108 | Pending |
+| QUAL-03 | Phase 109 | Pending |
+| CI-01 | Phase 110 | Pending |
+| REL-01 | Phase 111 | Pending |
 
 **Coverage:**
 - v0.46.0 requirements: 7 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 7 ⚠️
+- Mapped to phases: 7 (100%) ✓
+- Unmapped: 0 ✓
+- No orphans, no duplicates (QUAL-04 and QUAL-05 share Phase 108 — independent cleanup work grouped by fine-granularity boundary)
 
 ---
 *Requirements defined: 2026-09-13*
-*Last updated: 2026-09-13 after initial definition*
+*Last updated: 2026-09-13 after roadmap creation (traceability filled)*
