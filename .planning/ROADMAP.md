@@ -86,7 +86,8 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
   2. A test asserts the legacy-wrapper path converges to a bounded barycenter within the data's convex hull with no divergence (f64 behavior preserved).
   3. The quality-evidence tests are deterministic (fixed seed) and pass under the full `cargo test` run.
 
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 104-01-PLAN.md — escape-from-local-minimum + legacy convex-hull f64-parity tests (SDTW-04)
 
 ### Phase 105: Release Preparation & Verification
 
