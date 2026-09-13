@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
 milestone: v0.45.0
-current_phase: 102
-current_phase_name: Deterministic Multi-Restart Wrapper
+current_phase: 103
+current_phase_name: "`SoftDtwBarycenterConfig` API & Legacy Wrapper"
 status: planning
-stopped_at: Phase 101 complete, ready to plan Phase 102
-last_updated: "2026-09-12T23:31:24.643Z"
+stopped_at: Phase 102 complete, ready to plan Phase 103
+last_updated: "2026-09-13T00:08:55.525Z"
 last_activity: 2026-09-13
-last_activity_desc: Phase 101 complete, transitioned to Phase 102
-state_head: 2ca6167750af93cd7aa29be4608c9d273799082a
+last_activity_desc: Phase 102 complete, transitioned to Phase 103
+state_head: d73cd5fbfa532a417df5b2999c3ad6a71d05497f
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_plans: 2
+  completed_plans: 2
 milestone_name: Soft-DTW Barycenter — Global Optimizer (SDTW-O1)
 ---
 
@@ -24,14 +24,14 @@ milestone_name: Soft-DTW Barycenter — Global Optimizer (SDTW-O1)
 See: .planning/PROJECT.md (updated 2026-09-13)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps on the road to a deliberate 1.0 cut.
-**Current focus:** Phase 101 — In-Crate L-BFGS Barycenter Optimizer
+**Current focus:** Phase 102 — Deterministic Multi-Restart Wrapper
 
 ## Current Position
 
-Phase: 102 — Deterministic Multi-Restart Wrapper
+Phase: 103 — `SoftDtwBarycenterConfig` API & Legacy Wrapper
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-13 — Phase 101 complete, transitioned to Phase 102
+Last activity: 2026-09-13 — Phase 102 complete, transitioned to Phase 103
 
 ## Milestone Roadmap (v0.45.0)
 
@@ -128,7 +128,7 @@ Items acknowledged and deferred, most recent first:
 ## Session Continuity
 
 Last session: 2026-09-12T23:20:08.817Z
-Stopped at: Phase 101 complete, ready to plan Phase 102
+Stopped at: Phase 102 complete, ready to plan Phase 103
 Resume file: None
 
 ## Operator Next Steps

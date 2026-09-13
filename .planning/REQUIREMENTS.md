@@ -20,7 +20,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
   search) driven by the exact soft-DTW gradient the crate already computes, replacing the
   fixed-step MM descent. No new crate dependency; compiles and runs in the default feature set
   and on `wasm32` (no `linalg`/`argmin` gating).
-- [ ] **SDTW-02**: A multi-restart wrapper runs the local optimizer from multiple initializations
+- [x] **SDTW-02**: A multi-restart wrapper runs the local optimizer from multiple initializations
   (pointwise mean + deterministically-seeded perturbations, seeded via the project's
   `StdRng::seed_from_u64(seed + k)` convention) and returns the barycenter with the lowest total
   soft-DTW cost across restarts; results are reproducible for a fixed seed.
@@ -81,7 +81,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | SDTW-01 | Phase 101 | Complete |
-| SDTW-02 | Phase 102 | Pending |
+| SDTW-02 | Phase 102 | Complete |
 | SDTW-03 | Phase 103 | Pending |
 | SDTW-04 | Phase 104 | Pending |
 | REL-01  | Phase 105 | Pending |

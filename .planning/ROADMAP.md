@@ -20,7 +20,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
 ## Phases
 
 - [x] **Phase 101: In-Crate L-BFGS Barycenter Optimizer** - Replace the MM-step descent with a hand-rolled limited-memory L-BFGS driven by the exact soft-DTW gradient (completed 2026-09-13)
-- [ ] **Phase 102: Deterministic Multi-Restart Wrapper** - Run the local optimizer from multiple seeded inits and keep the lowest-cost barycenter, reproducibly
+- [x] **Phase 102: Deterministic Multi-Restart Wrapper** - Run the local optimizer from multiple seeded inits and keep the lowest-cost barycenter, reproducibly (completed 2026-09-13)
 - [ ] **Phase 103: `SoftDtwBarycenterConfig` API & Legacy Wrapper** - Add the builder-convention config struct + new entry point; preserve the 4-arg fn as a thin non-breaking wrapper
 - [ ] **Phase 104: Quality Evidence — Escapes-Local-Minimum & f64 Parity** - Demonstrate a strictly lower barycenter cost than MM where MM stalls, and preserved legacy f64 behavior
 - [ ] **Phase 105: Release Preparation & Verification** - Bump to 0.45.0, CHANGELOG, check off SDTW-O1, all whole-crate gates green
@@ -56,7 +56,8 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
   4. The kept barycenter's total soft-DTW cost is no worse than any individual restart's cost.
 
 **Plans**: 1 plan
-- [ ] 102-01-PLAN.md — Extract single-init L-BFGS refiner; add deterministic seeded multi-restart driver selecting lowest-total-cost barycenter; SDTW-02 tests; wasm32/serde/clippy guards
+
+- [x] 102-01-PLAN.md — Extract single-init L-BFGS refiner; add deterministic seeded multi-restart driver selecting lowest-total-cost barycenter; SDTW-02 tests; wasm32/serde/clippy guards
 
 ### Phase 103: `SoftDtwBarycenterConfig` API & Legacy Wrapper
 
@@ -103,7 +104,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 101. In-Crate L-BFGS Barycenter Optimizer | 1/1 | Complete    | 2026-09-13 |
-| 102. Deterministic Multi-Restart Wrapper | 0/? | Not started | - |
+| 102. Deterministic Multi-Restart Wrapper | 1/1 | Complete    | 2026-09-13 |
 | 103. `SoftDtwBarycenterConfig` API & Legacy Wrapper | 0/? | Not started | - |
 | 104. Quality Evidence — Escapes-Local-Minimum & f64 Parity | 0/? | Not started | - |
 | 105. Release Preparation & Verification | 0/? | Not started | - |
