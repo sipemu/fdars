@@ -1,5 +1,19 @@
 # Milestones
 
+## v0.45.0 Soft-DTW Barycenter — Global Optimizer (SDTW-O1) (Shipped: 2026-09-13)
+
+**Phases completed:** 5 phases, 5 plans, 12 tasks
+
+**Key accomplishments:**
+
+- Hand-rolled L-BFGS (two-loop recursion, m=10 VecDeque history, Armijo backtracking) replaces the MM diagonal-Newton step in `soft_dtw_barycenter` — no new crate dependency, wasm32-safe, 5 SDTW-01 unit tests including in-crate SC#1 cost-comparison
+- Extracted Phase 101's single-init L-BFGS descent into a reusable private helper and wrapped it with a deterministic multi-restart driver (SDTW-02) — no new dependency, wasm32-safe, 4 SDTW-02 unit tests including lowest-cost argmin, winner<=restarts, never-worse-than-single-init, and bit-identical determinism
+- Sealed `SoftDtwBarycenterConfig` struct + `soft_dtw_barycenter_with_config` multi-restart entry point with manual Default (gamma=1.0/n_restarts=10), parity-tested legacy wrapper, and additive re-exports at crate root + prelude (SDTW-03).
+- Two deterministic SDTW-04 evidence tests committed: multi-restart escapes a bimodal Gaussian-pulse local minimum by 367% improvement; legacy path returns finite, convex-hull-bounded barycenter on sinusoidal data
+- Version bump 0.44.0 → 0.45.0 with dual CHANGELOG entries (SDTW-01/02/03/04 summary), SDTW-O1 checkoff on ROADMAP-TO-1.0.md, and full whole-crate gate battery green — REL-01 milestone proof for v0.45.0
+
+---
+
 ## v0.44.0 Differentiable Core — Reverse-Mode & Broadened Subset (Shipped: 2026-09-12)
 
 **Phases completed:** 7 phases, 16 plans, 19 tasks
