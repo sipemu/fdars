@@ -1241,69 +1241,7 @@ fn wnet_cv_score_lambda(
 /// - [`FdarError::ComputationFailed`] if the underlying transform fails.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn wnet(data: &FdMatrix, y: &[f64], config: &WnetConfig) -> Result<WnetResult, FdarError> {
-    let (n, m) = data.shape();
-    if n < 3 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "at least 3 rows (observations)".to_string(),
-            actual: format!("{n} rows"),
-        });
-    }
-    if m == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "at least 1 column (evaluation point)".to_string(),
-            actual: format!("{m} columns"),
-        });
-    }
-    if y.len() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y",
-            expected: format!("{n} elements (== data rows)"),
-            actual: format!("{} elements", y.len()),
-        });
-    }
-    if !(0.0..=1.0).contains(&config.alpha) {
-        return Err(FdarError::InvalidParameter {
-            parameter: "alpha",
-            message: format!("alpha must be in [0, 1], got {}", config.alpha),
-        });
-    }
-    if config.n_folds < 2 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "n_folds",
-            message: format!("n_folds must be >= 2, got {}", config.n_folds),
-        });
-    }
-    if config.n_folds > n {
-        return Err(FdarError::InvalidParameter {
-            parameter: "n_folds",
-            message: format!(
-                "n_folds ({}) must not exceed the number of observations ({n})",
-                config.n_folds
-            ),
-        });
-    }
-    if config.max_iter == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "max_iter",
-            message: "max_iter must be >= 1".to_string(),
-        });
-    }
-    if !config.tol.is_finite() || config.tol < 0.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "tol",
-            message: format!("tol must be finite and >= 0, got {}", config.tol),
-        });
-    }
-    if let Some(grid) = &config.lambda_grid {
-        if grid.is_empty() {
-            return Err(FdarError::InvalidParameter {
-                parameter: "lambda_grid",
-                message: "explicit lambda_grid must be non-empty".to_string(),
-            });
-        }
-    }
+    wnet_validate(data, y, config)?;
 
     // Curves -> coefficient design (shared seam). Surfaces DWT errors unchanged.
     let (design, layout) =
@@ -1352,6 +1290,84 @@ pub fn wnet(data: &FdMatrix, y: &[f64], config: &WnetConfig) -> Result<WnetResul
         mode: config.mode,
         level: layout.levels(),
     })
+}
+
+fn wnet_validate(data: &FdMatrix, y: &[f64], config: &WnetConfig) -> Result<(), FdarError> {
+    let (n, _m) = data.shape();
+    wnet_validate_dims(data, y, n)?;
+    wnet_validate_config(config, n)?;
+    Ok(())
+}
+
+fn wnet_validate_dims(data: &FdMatrix, y: &[f64], n: usize) -> Result<(), FdarError> {
+    let (_, m) = data.shape();
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 rows (observations)".to_string(),
+            actual: format!("{n} rows"),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 column (evaluation point)".to_string(),
+            actual: format!("{m} columns"),
+        });
+    }
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{n} elements (== data rows)"),
+            actual: format!("{} elements", y.len()),
+        });
+    }
+    Ok(())
+}
+
+fn wnet_validate_config(config: &WnetConfig, n: usize) -> Result<(), FdarError> {
+    if !(0.0..=1.0).contains(&config.alpha) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "alpha",
+            message: format!("alpha must be in [0, 1], got {}", config.alpha),
+        });
+    }
+    if config.n_folds < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_folds",
+            message: format!("n_folds must be >= 2, got {}", config.n_folds),
+        });
+    }
+    if config.n_folds > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_folds",
+            message: format!(
+                "n_folds ({}) must not exceed the number of observations ({n})",
+                config.n_folds
+            ),
+        });
+    }
+    if config.max_iter == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "max_iter",
+            message: "max_iter must be >= 1".to_string(),
+        });
+    }
+    if !config.tol.is_finite() || config.tol < 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "tol",
+            message: format!("tol must be finite and >= 0, got {}", config.tol),
+        });
+    }
+    if let Some(grid) = &config.lambda_grid {
+        if grid.is_empty() {
+            return Err(FdarError::InvalidParameter {
+                parameter: "lambda_grid",
+                message: "explicit lambda_grid must be non-empty".to_string(),
+            });
+        }
+    }
+    Ok(())
 }
 
 impl WnetResult {
