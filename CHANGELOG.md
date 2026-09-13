@@ -11,6 +11,45 @@ signatures and dependencies, with one intentional exception: the v0.40.0 soft-DT
 barycenter correction changes convergence behavior intentionally (see [0.40.0]
 Changed below).
 
+## [0.45.0] - 2026-09-13
+
+**Soft-DTW Barycenter — Global Optimizer (SDTW-O1).** Strictly additive, non-breaking.
+Replaces the fixed-step MM/soft-DBA barycenter descent with an in-crate L-BFGS global
+optimizer plus a deterministic multi-restart wrapper, adds a new `SoftDtwBarycenterConfig`
+config struct and `soft_dtw_barycenter_with_config` entry point, and provides
+quality-evidence tests showing the optimizer escapes local minima. No new crate dependency;
+the 4-arg `soft_dtw_barycenter` signature is preserved as a thin non-breaking wrapper.
+
+### Added
+
+- **In-crate L-BFGS optimizer (`SDTW-01`).** Hand-rolled two-loop L-BFGS recursion with a
+  VecDeque-based history ring (m=10), Armijo backtracking line search, curvature guard
+  (`sᵀy > 1e-20`), non-descent direction fallback, and safeguarded minimum step size.
+  Consumes the exact soft-DTW gradient from `soft_dtw_backward`; wasm32-safe, no `linalg`
+  or `argmin` dependency. Replaces the MM diagonal-Newton `update_barycenter` step entirely.
+
+- **Deterministic multi-restart wrapper (`SDTW-02`).** Wraps the L-BFGS single-init
+  descent with a configurable number of restarts: restart 0 uses the unperturbed pointwise
+  mean; restarts k≥1 use per-column population-std Gaussian perturbations seeded via the
+  crate-standard `StdRng::seed_from_u64(seed + k)` convention. The restart with the
+  strictly lowest total soft-DTW cost is selected (lowest-index tiebreak for determinism).
+  Fixed-seed runs are bit-identical across platforms.
+
+- **`SoftDtwBarycenterConfig` + `soft_dtw_barycenter_with_config` (`SDTW-03`).**
+  A sealed (`#[non_exhaustive]`), manually-defaulted config struct with fields `gamma`,
+  `max_iter`, `tol`, `n_restarts` (default 10), and `seed`. The companion
+  `soft_dtw_barycenter_with_config` entry point delegates to the multi-restart driver.
+  Both items are re-exported at the crate root and in `prelude`. The existing 4-arg
+  `soft_dtw_barycenter(data, gamma, max_iter, tol)` signature is preserved as a thin
+  behavior-compatible wrapper — no call site, R/WASM binding, or example required any
+  change.
+
+- **Quality-evidence tests (`SDTW-04`).** Two deterministic `#[cfg(test)]` tests in
+  `barycenter_escape_evidence_tests`: `escape_from_local_minimum` proves multi-restart
+  reaches a strictly lower total soft-DTW cost than the MM baseline (367% improvement on a
+  bimodal Gaussian-pulse MM-stall dataset); `legacy_bounded_convex_hull` proves the legacy
+  path stays f64-bounded within the per-column convex hull of the input data.
+
 ## [0.44.0] - 2026-09-11
 
 **Differentiable Core — Reverse-Mode & Broadened Subset.** Strictly additive,

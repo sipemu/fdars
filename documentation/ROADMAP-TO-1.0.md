@@ -65,11 +65,13 @@ forced into Phases 82/83) to the 1.0 gap.
 
 ## Pre-existing backlog
 
-- [ ] **`SDTW-O1` — `soft_dtw_barycenter` optimizer replacement.** Replace the current
+- [x] **`SDTW-O1` — `soft_dtw_barycenter` optimizer replacement.** Replace the current
   MM-step barycenter descent with a proper global optimizer. **Note:** the `soft_dtw_backward`
   zero-gradient bug itself was **already FIXED in v0.40.0 (CORR-01)** — this remaining item is
   the optimizer-quality improvement, not the gradient correctness fix. *Scope: 1.0 milestone
-  (algorithm quality) or a dedicated backlog milestone.*
+  (algorithm quality) or a dedicated backlog milestone.* — **Done v0.45.0** (in-crate L-BFGS +
+  deterministic multi-restart; `SoftDtwBarycenterConfig` + non-breaking legacy wrapper). Only
+  `fdars-j75` (R ecosystem) and the terminal 1.0-CUT remain before 1.0.
 - [x] **`DIF-F1` — reverse-mode / VJP.** Add reverse-mode (vector-Jacobian-product)
   differentiation to the differentiable core. *Scope: differentiable-core expansion.* — **Done v0.44.0** (in-crate Wengert-list tape + `Var`/`vjp`).
 - [x] **`DIF-F2` — broaden the differentiable subset.** Extend the set of algorithms that are

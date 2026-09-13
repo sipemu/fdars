@@ -5,6 +5,26 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.45.0] - 2026-09-13
+
+**Soft-DTW Barycenter — Global Optimizer (SDTW-O1).** Strictly additive, non-breaking;
+no new crate dependency.
+
+### Added
+
+- In-crate hand-rolled L-BFGS optimizer (two-loop recursion, m=10 VecDeque history,
+  Armijo backtracking) replaces the MM diagonal-Newton step in `soft_dtw_barycenter`;
+  wasm32-safe, no `linalg`/`argmin` gating (`SDTW-01`).
+- Deterministic multi-restart wrapper: unperturbed pointwise-mean seed + per-column
+  Gaussian perturbations via `StdRng::seed_from_u64(seed + k)`, lowest-cost restart
+  selected with bit-identical determinism for a fixed seed (`SDTW-02`).
+- `SoftDtwBarycenterConfig` (#[non_exhaustive], manual Default: gamma=1.0, n_restarts=10)
+  and `soft_dtw_barycenter_with_config`; both re-exported at crate root and prelude. The
+  existing 4-arg `soft_dtw_barycenter` preserved as a thin non-breaking wrapper (`SDTW-03`).
+- Quality-evidence tests: `escape_from_local_minimum` (367% cost improvement on bimodal
+  Gaussian-pulse MM-stall dataset) and `legacy_bounded_convex_hull` (legacy path stays
+  within per-column convex hull) (`SDTW-04`).
+
 ## [0.44.0] - 2026-09-11
 
 **Differentiable Core — Reverse-Mode & Broadened Subset.** Strictly additive, non-breaking;
