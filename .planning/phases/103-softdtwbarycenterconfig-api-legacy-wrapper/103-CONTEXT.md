@@ -22,10 +22,16 @@ local-minimum quality evidence is Phase 104 and release prep is Phase 105.
 ### Config API Design
 - **New entry point:** `soft_dtw_barycenter_with_config(data: &FdMatrix, config: &SoftDtwBarycenterConfig) -> SoftDtwBarycenterResult` — mirrors the crate's `stl_decompose_with_config` naming convention.
 - **`SoftDtwBarycenterConfig`** fields + defaults: `gamma = 1.0`, `max_iter = 100`,
-  `tol = 1e-6`, `n_restarts = 10`, `seed = 0`. Derives `#[derive(Debug, Clone, PartialEq,
-  Default)]` and is `#[non_exhaustive]` — matching `StlConfig` and the sealed-config
-  convention (external construction via `SoftDtwBarycenterConfig::default()` + field-assign).
-  It internally drives `soft_dtw_barycenter_multirestart` (Phase 102).
+  `tol = 1e-6`, `n_restarts = 10`, `seed = 0`. Derives `#[derive(Debug, Clone, PartialEq)]`
+  and is `#[non_exhaustive]` — matching the sealed-config convention (external construction
+  via `SoftDtwBarycenterConfig::default()` + field-assign). **`Default` is a MANUAL `impl`,
+  NOT `#[derive(Default)]`** — a derived Default on the numeric fields would give
+  `gamma = 0.0` / `max_iter = 0` (a broken soft-DTW config: gamma=0 is exactly the invalid
+  input Phase 101's guard rejects). The manual impl returns the documented non-zero defaults
+  above. (This corrects the incidental "derive Default" shorthand from the original discuss —
+  the substantive locked decision is the default VALUES, which only a manual impl can deliver;
+  `StlConfig` can derive Default only because its fields are all `Option`/`bool`.) It
+  internally drives `soft_dtw_barycenter_multirestart` (Phase 102).
 - **Legacy wrapper:** `soft_dtw_barycenter(data, gamma, max_iter, tol)` keeps its exact 4-arg
   signature and delegates to the config path with `n_restarts = 1` — bit-identical to the
   current single-init behavior (a single unperturbed-mean L-BFGS restart). No behavior change
