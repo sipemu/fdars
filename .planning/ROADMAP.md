@@ -20,6 +20,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 ## Phases
 
 **Phase Numbering:**
+
 - Integer phases (106, 107, …): Planned milestone work (continues from v0.45.0 — no reset)
 - Decimal phases (106.1, 106.2): Urgent insertions (marked with INSERTED)
 
@@ -33,72 +34,91 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 ## Phase Details
 
 ### Phase 106: Top-Level Complexity Hotspots
+
 **Goal**: Decompose the worst top-level complexity hotspots into smaller helper functions so each falls under pmat's cognitive/cyclomatic thresholds — behavior and numeric output unchanged.
 **Depends on**: Nothing (first phase of this milestone; independent of 107/108)
 **Requirements**: QUAL-01
 **Success Criteria** (what must be TRUE):
+
   1. Each of `funfem_cluster` (cyc 59), `elastic_net_cd` (cog 54), `wnet_cv_lambda` (cog 45), `wnet` (cog 31), `boost_fofr` (cyc 39), `pace_fpca` (cyc 37), `bayesian_fosr` (cyc 36), and `kcfc_cluster` (cyc 28) is refactored into smaller helpers, each under pmat's cognitive/cyclomatic thresholds.
   2. `pmat analyze complexity` shows these 8 functions no longer appear as violations (the complexity count drops by the corresponding number of findings).
   3. The full `cargo test` suite (2942 lib + 215 doctests) passes with identical numeric output — no behavior or numeric drift.
   4. `cargo clippy --all-targets --features linalg,parallel -- -D warnings` and `cargo fmt --check` stay clean; the public API surface is unchanged (no signature or visibility change).
+
 **Plans**: 4 plans
-- [ ] 106-01-PLAN.md — TRACER: decompose wavelet/regression.rs hotspots (elastic_net_cd, wnet_cv_lambda, wnet) below pmat thresholds
+
+- [x] 106-01-PLAN.md — TRACER: decompose wavelet/regression.rs hotspots (elastic_net_cd, wnet_cv_lambda, wnet) below pmat thresholds
 - [ ] 106-02-PLAN.md — decompose clustering_advanced.rs hotspots (funfem_cluster, kcfc_cluster) below pmat thresholds
 - [ ] 106-03-PLAN.md — decompose boosting_regression hotspots (boost_fofr, bayesian_fosr) below pmat thresholds
 - [ ] 106-04-PLAN.md — decompose pace_fpca (BLUP closure extraction) below pmat thresholds
 
 ### Phase 107: SPM Complexity Cluster
+
 **Goal**: Decompose the concentrated complexity cluster inside `src/spm/` into smaller helpers under pmat thresholds — behavior and numeric output unchanged.
 **Depends on**: Nothing (independent of 106/108; may run in parallel)
 **Requirements**: QUAL-02
 **Success Criteria** (what must be TRUE):
+
   1. The SPM cluster — `mfpca`, `spm_phase1_iterative`, `spm_mewma_monitor`, `select_ncomp`, `conditional_expectation` (partial), `spm_monitor_from_fields` (phase), `profile_phase1`, `spe_multivariate` (stats) — is refactored so each falls under pmat's cognitive/cyclomatic thresholds.
   2. `pmat analyze complexity` shows the `src/spm/` functions no longer appear as violations.
   3. The full `cargo test` suite passes with identical numeric output — no behavior or numeric drift in any SPM code path.
   4. `cargo clippy --all-targets --features linalg,parallel -- -D warnings` and `cargo fmt --check` stay clean; the public SPM API surface is unchanged.
+
 **Plans**: TBD
 
 ### Phase 108: Entropy Extraction & SATD/Unwrap Cleanup
+
 **Goal**: Extract the repeated `DataTransformation` patterns flagged by pmat entropy into shared helpers, reword the two SATD doc-comment false-positives, and replace the one critical `.unwrap()` with proper error handling — all behavior-preserving.
 **Depends on**: Nothing (independent of the complexity refactors; may run early or in parallel)
 **Requirements**: QUAL-04, QUAL-05
 **Success Criteria** (what must be TRUE):
+
   1. The 11 repeated `DataTransformation` patterns (across `metric/tests.rs`, `fem_smoothing.rs`, `explain_generic/friedman.rs`, `seasonal/tests.rs`, `regression.rs`, `covariance.rs`, `detrend/tests.rs`, `scalar_on_function/tests.rs`, plus the project-level pattern-diversity finding) are extracted into shared helpers, and `pmat analyze entropy` reports 0 actionable violations.
   2. The 2 SATD doc-comment false-positives (`depth/dispatch.rs:281`, `metric/lp.rs:175`) are reworded so keyword matchers no longer flag them, and `pmat analyze satd` reports 0 violations.
   3. The critical `.unwrap()` at `depth/rpd.rs:229` is replaced with proper error handling (`?` or `.expect()` with a descriptive message), and `pmat analyze defects` reports 0 violations.
   4. The full `cargo test` suite passes with identical numeric output; clippy `--all-targets` and fmt stay clean; the public API surface is unchanged.
+
 **Plans**: TBD
 
 ### Phase 109: Complexity Tail & Quality-Gate Green
+
 **Goal**: Resolve every remaining complexity violation across `fdars-core` so `pmat quality-gate` reports 0 findings of any kind — the milestone's central verifiable target.
 **Depends on**: Phase 106, Phase 107, Phase 108 (the count is only verifiable once the hotspot, SPM, entropy, SATD, and defect work has landed)
 **Requirements**: QUAL-03
 **Success Criteria** (what must be TRUE):
+
   1. All remaining complexity violations (beyond the Phase 106/107 hotspots) are refactored into helpers under pmat thresholds — behavior and numeric output unchanged.
   2. `pmat analyze complexity` reports 0 complexity findings across `fdars-core`.
   3. `pmat quality-gate` reports 0 violations overall (0 complexity + 0 entropy + 0 SATD + 0 defect) — the gate PASSES.
   4. The full `cargo test` suite passes with identical numeric output; clippy `--all-targets` and fmt stay clean; the public API surface is unchanged.
+
 **Plans**: TBD
 
 ### Phase 110: pmat CI Guardrail
+
 **Goal**: Add a GitHub Actions CI job that installs pmat and runs `pmat quality-gate` against `fdars-core`, failing the build if violations return — mirroring the v0.43.0 `determinism-guardrail` pattern — so quality can't silently regress.
 **Depends on**: Phase 109 (the gate must be green before it is enforced in CI, or it would fail the build on introduction)
 **Requirements**: CI-01
 **Success Criteria** (what must be TRUE):
+
   1. A new GitHub Actions job installs pmat and runs `pmat quality-gate` (and/or a complexity-threshold check) against `fdars-core`, failing the build if pmat violations are present.
   2. The job passes against the current (post-Phase-109) green tree, and would fail if a complexity/entropy/SATD/defect violation were reintroduced.
   3. The guardrail is documented (e.g., in the workflow and/or contributor docs) so contributors can reproduce the check locally.
+
 **Plans**: TBD
 
 ### Phase 111: Release Preparation & Verification
+
 **Goal**: Bump the crate to 0.46.0, record the milestone in both CHANGELOGs, and verify every whole-crate gate — including `pmat quality-gate` — is green, leaving the crate release-ready.
 **Depends on**: Phase 106, Phase 107, Phase 108, Phase 109, Phase 110 (terminal — all prior work must be complete)
 **Requirements**: REL-01
 **Success Criteria** (what must be TRUE):
+
   1. The crate version is bumped 0.45.0 → 0.46.0 with a `[0.46.0]` entry in both CHANGELOGs (repository root + `fdars-core`).
   2. All whole-crate gates are green: `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, the `--features serde` build guard, all 28 examples + doctests, and `cargo package`.
   3. `pmat quality-gate` passes on the release tree (0 violations) — the milestone's defining exit criterion.
   4. The `git tag v0.46.0` → crates.io publish is left as the DEFERRED operator step (GSD `git.create_tag` is off because `release.yml` couples tag-push to publish) — never performed inside a phase.
+
 **Plans**: TBD
 
 ## Progress

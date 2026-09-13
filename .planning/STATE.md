@@ -2,15 +2,19 @@
 gsd_state_version: "1.0"
 milestone: v0.46.0
 milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
-status: planning
-last_updated: "2026-09-13T20:22:36.707Z"
+current_phase: 106
+current_phase_name: Top-Level Complexity Hotspots
+status: executing
+stopped_at: "Completed 106-01 (tracer): elastic_net_cd/wnet_cv_lambda/wnet decomposed; all below pmat thresholds; full suite green"
+last_updated: "2026-09-13T21:23:50.482Z"
 last_activity: 2026-09-13
+last_activity_desc: Phase 106 execution started
+state_head: da7cc8ef74fee0131956d6683da2900c2afdfe7f
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 4
+  completed_plans: 1
 ---
 
 # Project State
@@ -20,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-13)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps on the road to a deliberate 1.0 cut.
-**Current focus:** v0.46.0 Quality Hardening — drive `pmat quality-gate` to PASS on `fdars-core` (0 complexity + 0 entropy + 0 SATD + 0 defect violations) behavior-preservingly, then wire a pmat CI guardrail.
+**Current focus:** Phase 106 — Top-Level Complexity Hotspots
 
 ## Current Position
 
-Phase: Not started (roadmap created, ready to plan Phase 106)
-Plan: —
-Status: Roadmap complete — awaiting phase planning
-Last activity: 2026-09-13 — Milestone v0.46.0 roadmap created (6 phases, 106–111)
+Phase: 106 (Top-Level Complexity Hotspots) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-09-13 — Phase 106 execution started
 
 ## Milestone Roadmap (v0.46.0)
 
@@ -81,6 +85,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | (none yet — v0.46.0) | — | — | — |
+| Phase 106 P01 | 7 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -100,6 +105,8 @@ Decisions relevant to current work (v0.46.0):
 - **Phase numbering continues** — v0.45.0 ended at Phase 105 → v0.46.0 starts at Phase 106. No reset.
 - **7 requirements → 6 phases:** 106 QUAL-01; 107 QUAL-02; 108 QUAL-04 + QUAL-05; 109 QUAL-03; 110 CI-01; 111 REL-01. All mapped, no orphans, no duplicates.
 - **REL-01 lands last (Phase 111)** — bump/CHANGELOG/gates are the final proof; the full-suite `cargo test` + `pmat quality-gate` are the end-to-end milestone proof. The `git tag v0.46.0` → crates.io publish is the DEFERRED operator step (GSD `git.create_tag` is off because `release.yml` couples tag-push to publish) — never tagged/published inside a phase.
+- [Phase 106]: elastic_net_cd needed 4 private helpers (not 3 per RESEARCH.md): sweep fn itself scored cog 34 after extraction; added elastic_net_cd_update (single-column update, #[inline]) to bring sweep to cog 8
+- [Phase 106]: Split-validate pattern established: when extracted validate fn exceeds cog 25, split along natural dimension boundary (data shape guards vs. config param guards)
 
 ### Pending Todos
 
@@ -125,8 +132,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-13
-Stopped at: v0.46.0 roadmap created (6 phases 106–111, 7 requirements mapped 100%)
+Last session: 2026-09-13T21:23:50.466Z
+Stopped at: Completed 106-01 (tracer): elastic_net_cd/wnet_cv_lambda/wnet decomposed; all below pmat thresholds; full suite green
 Resume file: None
 
 ## Operator Next Steps
