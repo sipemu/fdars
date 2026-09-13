@@ -41,7 +41,11 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
   2. `pmat analyze complexity` shows these 8 functions no longer appear as violations (the complexity count drops by the corresponding number of findings).
   3. The full `cargo test` suite (2942 lib + 215 doctests) passes with identical numeric output — no behavior or numeric drift.
   4. `cargo clippy --all-targets --features linalg,parallel -- -D warnings` and `cargo fmt --check` stay clean; the public API surface is unchanged (no signature or visibility change).
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 106-01-PLAN.md — TRACER: decompose wavelet/regression.rs hotspots (elastic_net_cd, wnet_cv_lambda, wnet) below pmat thresholds
+- [ ] 106-02-PLAN.md — decompose clustering_advanced.rs hotspots (funfem_cluster, kcfc_cluster) below pmat thresholds
+- [ ] 106-03-PLAN.md — decompose boosting_regression hotspots (boost_fofr, bayesian_fosr) below pmat thresholds
+- [ ] 106-04-PLAN.md — decompose pace_fpca (BLUP closure extraction) below pmat thresholds
 
 ### Phase 107: SPM Complexity Cluster
 **Goal**: Decompose the concentrated complexity cluster inside `src/spm/` into smaller helpers under pmat thresholds — behavior and numeric output unchanged.
