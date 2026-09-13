@@ -714,7 +714,7 @@ fn per_col_std(rows: &[Vec<f64>], m: usize) -> Vec<f64> {
 /// order is fixed — determinism depends on this exact order.
 #[allow(dead_code)]
 fn perturbed_init(mean: &[f64], col_std: &[f64], seed: u64, k: u64) -> Vec<f64> {
-    let mut rng = StdRng::seed_from_u64(seed + k);
+    let mut rng = StdRng::seed_from_u64(seed.wrapping_add(k));
     let normal = Normal::new(0.0_f64, 1.0_f64).expect("Normal::new(0,1) always succeeds");
     mean.iter()
         .zip(col_std.iter())
@@ -735,6 +735,7 @@ fn perturbed_init(mean: &[f64], col_std: &[f64], seed: u64, k: u64) -> Vec<f64> 
 ///
 /// Caller note: the public config entry point (Phase 103) will expose `n_restarts` and
 /// `seed`; this function is private until that API is designed.
+#[must_use]
 #[allow(dead_code)]
 fn soft_dtw_barycenter_multirestart(
     data: &FdMatrix,
@@ -793,8 +794,17 @@ fn soft_dtw_barycenter_multirestart(
         }
     }
 
-    // SAFETY: n_runs >= 1, so best_result is always Some after the loop.
-    best_result.unwrap()
+    // SAFETY: n_runs >= 1, so best_result is always Some after the loop when at
+    // least one restart produces a finite cost. If all restart costs are NaN (e.g.
+    // NaN values in the input FdMatrix — FdMatrix does not validate NaN at
+    // construction), no replacement fires because `NaN < f64::INFINITY` is false.
+    // In that case we return the unperturbed pointwise mean as the least-bad
+    // fallback with converged=false, matching the gamma-guard fallback semantics.
+    best_result.unwrap_or(SoftDtwBarycenterResult {
+        barycenter: mean,
+        n_iter: 0,
+        converged: false,
+    })
 }
 
 /// Compute the Soft-DTW barycenter of a set of time series using L-BFGS optimization.
@@ -837,6 +847,10 @@ pub fn soft_dtw_barycenter(
 
     let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
 
+    // Compute the pointwise mean once; reused by the gamma-guard fallback and
+    // by the L-BFGS initialisation — a single allocation on all paths.
+    let mean = init_barycenter_mean(&rows);
+
     // Guard: gamma must be strictly positive and finite. NaN/inf/zero silently corrupt
     // the softmin3 computation (neg_inv_gamma = -inf or NaN → all-NaN DP table →
     // false converged=true with all-NaN barycenter). Return the pointwise mean as a
@@ -844,7 +858,7 @@ pub fn soft_dtw_barycenter(
     // Result-returning config entry point (SDTW-03).
     if !gamma.is_finite() || gamma <= 0.0 {
         return SoftDtwBarycenterResult {
-            barycenter: init_barycenter_mean(&rows),
+            barycenter: mean,
             n_iter: 0,
             converged: false,
         };
@@ -853,7 +867,7 @@ pub fn soft_dtw_barycenter(
     // Delegate to the reusable single-init refiner; restart 0 of the multi-restart
     // driver calls the same path with an identical init, ensuring the public 4-arg entry
     // and multi-restart restart-0 produce identical descents.
-    lbfgs_refine_from_init(&rows, init_barycenter_mean(&rows), gamma, max_iter, tol)
+    lbfgs_refine_from_init(&rows, mean, gamma, max_iter, tol)
 }
 
 // ---- MM baseline helper (used only in tests) ---------------------------------
