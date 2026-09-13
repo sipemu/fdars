@@ -16,7 +16,7 @@
     {
       "number": "103",
       "name": "`SoftDtwBarycenterConfig` API & Legacy Wrapper",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "104",
@@ -31,8 +31,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step",
-    "reason": "Phase 103 of 5 · executing"
+    "label": "Advance to the next step (plan phase 104)",
+    "reason": "Phase 104 of 5 — needs a plan"
   },
-  "updated_at": "2026-09-13T00:10:51.913Z"
+  "updated_at": "2026-09-13T09:13:18.145Z"
 }

@@ -27,7 +27,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 ### API
 
-- [ ] **SDTW-03**: A `SoftDtwBarycenterConfig` builder-convention config struct (fields incl.
+- [x] **SDTW-03**: A `SoftDtwBarycenterConfig` builder-convention config struct (fields incl.
   `n_restarts`, `max_iter`, `tol`, `gamma`, `seed`) plus a new config-taking entry point expose
   the new optimizer; the existing `soft_dtw_barycenter(data, gamma, max_iter, tol)` signature is
   preserved as a thin, behavior-compatible wrapper so no existing call site, prelude re-export,
@@ -82,7 +82,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 |-------------|-------|--------|
 | SDTW-01 | Phase 101 | Complete |
 | SDTW-02 | Phase 102 | Complete |
-| SDTW-03 | Phase 103 | Pending |
+| SDTW-03 | Phase 103 | Complete |
 | SDTW-04 | Phase 104 | Pending |
 | REL-01  | Phase 105 | Pending |
 
