@@ -17,7 +17,7 @@ use std::collections::VecDeque;
 use super::{cross_distance_matrix, self_distance_matrix};
 
 /// Result of the Soft-DTW barycenter computation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct SoftDtwBarycenterResult {
     /// The barycenter time series.
@@ -26,6 +26,68 @@ pub struct SoftDtwBarycenterResult {
     pub n_iter: usize,
     /// Whether the algorithm converged.
     pub converged: bool,
+}
+
+/// Configuration for the Soft-DTW barycenter optimizer.
+///
+/// Collects all tuning parameters for [`soft_dtw_barycenter_with_config`], with
+/// sensible defaults obtained via [`SoftDtwBarycenterConfig::default()`].
+///
+/// **Note:** `Default` is a manual `impl` (not `#[derive(Default)]`) because the
+/// numeric fields require non-zero defaults — a derived Default would give
+/// `gamma = 0.0` / `max_iter = 0`, both of which are invalid inputs that the
+/// optimizer rejects immediately. The manual impl delivers the documented values.
+///
+/// External construction follows the sealed-config convention (SEAL-02, v0.42.0):
+/// obtain a default and assign desired fields:
+///
+/// ```rust
+/// use fdars_core::SoftDtwBarycenterConfig;
+///
+/// let mut config = SoftDtwBarycenterConfig::default();
+/// config.n_restarts = 5;
+/// config.gamma = 0.5;
+/// ```
+///
+/// (SDTW-03)
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct SoftDtwBarycenterConfig {
+    /// Soft-DTW smoothing parameter (default: `1.0`).
+    ///
+    /// Must be strictly positive. Values close to 0 approach hard-DTW; larger
+    /// values produce smoother, more mean-like barycenters.
+    pub gamma: f64,
+    /// Maximum number of L-BFGS iterations per restart (default: `100`).
+    pub max_iter: usize,
+    /// Convergence tolerance (default: `1e-6`).
+    ///
+    /// Stops when gradient ∞-norm < `tol` OR relative cost change < `tol`.
+    pub tol: f64,
+    /// Number of random restarts (default: `10`).
+    ///
+    /// Restart 0 uses the unperturbed pointwise mean; restarts 1..n use
+    /// Gaussian-perturbed inits. The barycenter with the lowest total
+    /// soft-DTW cost over all restarts is returned.
+    pub n_restarts: usize,
+    /// RNG seed for reproducible perturbations (default: `0`).
+    ///
+    /// Restart `k` is seeded with `seed.wrapping_add(k)` per project convention.
+    pub seed: u64,
+}
+
+impl Default for SoftDtwBarycenterConfig {
+    /// Returns a `SoftDtwBarycenterConfig` with sensible non-zero defaults:
+    /// `gamma = 1.0`, `max_iter = 100`, `tol = 1e-6`, `n_restarts = 10`, `seed = 0`.
+    fn default() -> Self {
+        Self {
+            gamma: 1.0,
+            max_iter: 100,
+            tol: 1e-6,
+            n_restarts: 10,
+            seed: 0,
+        }
+    }
 }
 
 /// Soft minimum of three values using log-sum-exp trick for numerical stability.
@@ -686,7 +748,6 @@ fn lbfgs_refine_from_init(
 /// For each column `j` (0..m), computes the population std of `{rows[i][j]}` across `n` rows.
 /// A column with zero spread (or n <= 1) returns 0.0 — those coordinates will not be perturbed
 /// in `perturbed_init` (restart 0 already covers the unperturbed mean).
-#[allow(dead_code)]
 fn per_col_std(rows: &[Vec<f64>], m: usize) -> Vec<f64> {
     let n = rows.len();
     if n <= 1 {
@@ -712,7 +773,6 @@ fn per_col_std(rows: &[Vec<f64>], m: usize) -> Vec<f64> {
 /// RNG is seeded `StdRng::seed_from_u64(seed + k)` per project convention.
 /// Noise is drawn in a single left-to-right pass over `j` so the RNG consumption
 /// order is fixed — determinism depends on this exact order.
-#[allow(dead_code)]
 fn perturbed_init(mean: &[f64], col_std: &[f64], seed: u64, k: u64) -> Vec<f64> {
     let mut rng = StdRng::seed_from_u64(seed.wrapping_add(k));
     let normal = Normal::new(0.0_f64, 1.0_f64).expect("Normal::new(0,1) always succeeds");
@@ -733,11 +793,11 @@ fn perturbed_init(mean: &[f64], col_std: &[f64], seed: u64, k: u64) -> Vec<f64> 
 /// `Σᵢ soft_dtw_distance(barycenter, row_i, gamma)`, with ties broken by the lowest
 /// restart index (strictly-less comparison — never replaces on equal cost).
 ///
-/// Caller note: the public config entry point (Phase 103) will expose `n_restarts` and
-/// `seed`; this function is private until that API is designed.
+/// Caller note: exposed publicly through [`soft_dtw_barycenter_with_config`] (Phase 103,
+/// SDTW-03); this function remains `pub(crate)` so the config entry point can delegate
+/// without requiring it to be `pub`.
 #[must_use]
-#[allow(dead_code)]
-fn soft_dtw_barycenter_multirestart(
+pub(crate) fn soft_dtw_barycenter_multirestart(
     data: &FdMatrix,
     gamma: f64,
     max_iter: usize,
@@ -868,6 +928,68 @@ pub fn soft_dtw_barycenter(
     // driver calls the same path with an identical init, ensuring the public 4-arg entry
     // and multi-restart restart-0 produce identical descents.
     lbfgs_refine_from_init(&rows, mean, gamma, max_iter, tol)
+}
+
+/// Compute the Soft-DTW barycenter using a [`SoftDtwBarycenterConfig`] for all tuning parameters.
+///
+/// This is the config-based entry point for the multi-restart soft-DTW barycenter optimizer
+/// (Phase 102 / SDTW-02). It delegates to the internal multi-restart driver with the
+/// parameters from `config`, returning the barycenter with the lowest total soft-DTW cost
+/// across all restarts.
+///
+/// For callers who do not need multiple restarts, the 4-argument legacy entry point
+/// [`soft_dtw_barycenter`] remains available and is bit-identical to this function with
+/// `config.n_restarts = 1` (SDTW-03 non-breaking guarantee).
+///
+/// # Arguments
+/// * `data` — Input time series as `FdMatrix` (n rows × m columns).
+/// * `config` — Tuning parameters; use [`SoftDtwBarycenterConfig::default()`] for sensible
+///   defaults (`gamma = 1.0`, `max_iter = 100`, `tol = 1e-6`, `n_restarts = 10`, `seed = 0`).
+///
+/// # Returns
+/// [`SoftDtwBarycenterResult`] containing the barycenter (length m), iteration count, and
+/// convergence flag of the winning restart.
+///
+/// # Example
+/// ```rust
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::{SoftDtwBarycenterConfig, soft_dtw_barycenter_with_config};
+///
+/// // Build a small 3×10 FdMatrix (3 curves, 10 evaluation points each).
+/// let n = 3_usize;
+/// let m = 10_usize;
+/// let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+/// let mut col_major = vec![0.0_f64; n * m];
+/// for i in 0..n {
+///     let phase = i as f64 * 0.5;
+///     for j in 0..m {
+///         col_major[i + j * n] = (t[j] + phase).sin();
+///     }
+/// }
+/// let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+///
+/// let config = SoftDtwBarycenterConfig::default();
+/// let result = soft_dtw_barycenter_with_config(&data, &config);
+///
+/// // The barycenter has one value per evaluation point.
+/// assert_eq!(result.barycenter.len(), m);
+/// assert!(result.barycenter.iter().all(|v| v.is_finite()));
+/// ```
+///
+/// (SDTW-03)
+#[must_use]
+pub fn soft_dtw_barycenter_with_config(
+    data: &FdMatrix,
+    config: &SoftDtwBarycenterConfig,
+) -> SoftDtwBarycenterResult {
+    soft_dtw_barycenter_multirestart(
+        data,
+        config.gamma,
+        config.max_iter,
+        config.tol,
+        config.n_restarts,
+        config.seed,
+    )
 }
 
 // ---- MM baseline helper (used only in tests) ---------------------------------
@@ -1566,5 +1688,163 @@ mod barycenter_multirestart_tests {
                 "barycenter[{j}] not bit-identical between two calls: {a} vs {b}"
             );
         }
+    }
+}
+
+/// Tests for `SoftDtwBarycenterConfig`, `soft_dtw_barycenter_with_config`, and the
+/// parity guarantee between the legacy 4-arg entry and the config path at `n_restarts=1`.
+/// Also covers crate-root and prelude reachability (SDTW-03).
+#[cfg(test)]
+mod barycenter_config_tests {
+    use super::*;
+    use crate::matrix::FdMatrix;
+
+    /// Build a small FdMatrix from a list of row vecs (mirrors barycenter_lbfgs_tests helper).
+    fn mat_from_rows(rows: &[Vec<f64>]) -> FdMatrix {
+        let n = rows.len();
+        let m = rows[0].len();
+        let mut col_major = vec![0.0_f64; n * m];
+        for j in 0..m {
+            for i in 0..n {
+                col_major[i + j * n] = rows[i][j];
+            }
+        }
+        FdMatrix::from_column_major(col_major, n, m).unwrap()
+    }
+
+    /// 5-row sinusoidal curved dataset for config tests.
+    fn curved_data_5rows(m: usize) -> FdMatrix {
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect();
+        let rows: Vec<Vec<f64>> = (0..5)
+            .map(|i| {
+                let phase = i as f64 * 0.3;
+                t.iter()
+                    .map(|&s| (2.0 * std::f64::consts::PI * s + phase).sin())
+                    .collect()
+            })
+            .collect();
+        mat_from_rows(&rows)
+    }
+
+    /// SDTW-03: `SoftDtwBarycenterConfig::default()` must return the documented non-zero defaults.
+    #[test]
+    fn config_default_values() {
+        let cfg = SoftDtwBarycenterConfig::default();
+        assert_eq!(cfg.gamma, 1.0, "gamma default must be 1.0");
+        assert_eq!(cfg.max_iter, 100, "max_iter default must be 100");
+        assert_eq!(cfg.tol, 1e-6, "tol default must be 1e-6");
+        assert_eq!(cfg.n_restarts, 10, "n_restarts default must be 10");
+        assert_eq!(cfg.seed, 0, "seed default must be 0");
+    }
+
+    /// SDTW-03: `soft_dtw_barycenter_with_config` runs on a small dataset and returns
+    /// a finite barycenter of the correct length.
+    #[test]
+    fn config_path_runs() {
+        let m = 20_usize;
+        let data = curved_data_5rows(m);
+        let config = SoftDtwBarycenterConfig::default();
+        let result = soft_dtw_barycenter_with_config(&data, &config);
+        assert_eq!(result.barycenter.len(), m, "barycenter length must equal m");
+        assert!(
+            result.barycenter.iter().all(|v| v.is_finite()),
+            "all barycenter values must be finite"
+        );
+    }
+
+    /// SDTW-03 parity: `soft_dtw_barycenter(data, gamma, max_iter, tol)` must produce a
+    /// result bit-identical to `soft_dtw_barycenter_with_config` with `n_restarts=1, seed=0`.
+    ///
+    /// Bit-identity is required because both paths call `lbfgs_refine_from_init` from the
+    /// identical unperturbed-mean init (restart 0 of the multi-restart driver uses the same
+    /// unperturbed mean as the legacy single-init path).
+    #[test]
+    fn legacy_equals_config_single_restart() {
+        let m = 20_usize;
+        let data = curved_data_5rows(m);
+        let gamma = 1.0_f64;
+        let max_iter = 50_usize;
+        let tol = 1e-6_f64;
+
+        let legacy = soft_dtw_barycenter(&data, gamma, max_iter, tol);
+        let config = SoftDtwBarycenterConfig {
+            gamma,
+            max_iter,
+            tol,
+            n_restarts: 1,
+            seed: 0,
+        };
+        let config_result = soft_dtw_barycenter_with_config(&data, &config);
+
+        assert_eq!(
+            legacy.barycenter.len(),
+            config_result.barycenter.len(),
+            "barycenter lengths must match"
+        );
+        for (j, (&a, &b)) in legacy
+            .barycenter
+            .iter()
+            .zip(config_result.barycenter.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                a.to_bits(),
+                b.to_bits(),
+                "barycenter[{j}] not bit-identical: legacy={a} config={b}"
+            );
+        }
+        assert_eq!(
+            legacy.n_iter, config_result.n_iter,
+            "n_iter must match between legacy and config path at n_restarts=1"
+        );
+        assert_eq!(
+            legacy.converged, config_result.converged,
+            "converged flag must match between legacy and config path at n_restarts=1"
+        );
+    }
+
+    /// SDTW-03 reachability: `SoftDtwBarycenterConfig` and `soft_dtw_barycenter_with_config`
+    /// are reachable at crate root (via `crate::` re-export chain — compile-time proof).
+    #[test]
+    fn crate_root_reexport_reachable() {
+        use crate::soft_dtw_barycenter_with_config;
+        use crate::FdMatrix;
+        use crate::SoftDtwBarycenterConfig;
+
+        let rows: Vec<Vec<f64>> = vec![vec![1.0, 2.0, 3.0], vec![1.5, 2.5, 3.5]];
+        let n = rows.len();
+        let m = rows[0].len();
+        let mut col_major = vec![0.0_f64; n * m];
+        for j in 0..m {
+            for i in 0..n {
+                col_major[i + j * n] = rows[i][j];
+            }
+        }
+        let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+        let config = SoftDtwBarycenterConfig::default();
+        let result = soft_dtw_barycenter_with_config(&data, &config);
+        assert_eq!(result.barycenter.len(), m);
+    }
+
+    /// SDTW-03 reachability: `SoftDtwBarycenterConfig` and `soft_dtw_barycenter_with_config`
+    /// are reachable via the prelude (compile-time proof via `crate::prelude::*`).
+    #[test]
+    fn prelude_reexport_reachable() {
+        use crate::prelude::*;
+        use crate::FdMatrix;
+
+        let rows: Vec<Vec<f64>> = vec![vec![0.1, 0.5, 0.9], vec![0.2, 0.6, 1.0]];
+        let n = rows.len();
+        let m = rows[0].len();
+        let mut col_major = vec![0.0_f64; n * m];
+        for j in 0..m {
+            for i in 0..n {
+                col_major[i + j * n] = rows[i][j];
+            }
+        }
+        let data = FdMatrix::from_column_major(col_major, n, m).unwrap();
+        let config = SoftDtwBarycenterConfig::default();
+        let result = soft_dtw_barycenter_with_config(&data, &config);
+        assert_eq!(result.barycenter.len(), m);
     }
 }

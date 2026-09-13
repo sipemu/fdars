@@ -633,9 +633,10 @@ pub use metric::{
     fourier_cross, fourier_self, gak, gak_gram_matrix, gak_gram_predict, gak_gram_train,
     hausdorff_3d, hausdorff_cross, hausdorff_self, hshift_cross, hshift_self, kl_cross, kl_self,
     lp_cross, lp_self, pca_cross, pca_self, sbd, sbd_distance_matrix, sigma_gak,
-    soft_dtw_barycenter, soft_dtw_cross, soft_dtw_distance, soft_dtw_distance_generic,
-    soft_dtw_div_cross, soft_dtw_div_self, soft_dtw_divergence, soft_dtw_self, GakConfig,
-    GakGramTrain, LpDomain, SbdResult, SoftDtwBarycenterResult,
+    soft_dtw_barycenter, soft_dtw_barycenter_with_config, soft_dtw_cross, soft_dtw_distance,
+    soft_dtw_distance_generic, soft_dtw_div_cross, soft_dtw_div_self, soft_dtw_divergence,
+    soft_dtw_self, GakConfig, GakGramTrain, LpDomain, SbdResult, SoftDtwBarycenterConfig,
+    SoftDtwBarycenterResult,
 };
 
 // Re-export depth measure functions

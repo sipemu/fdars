@@ -46,8 +46,8 @@ pub use crate::depth::{
 
 // Metric functions
 pub use crate::metric::{
-    dtw_distance, lp_cross, lp_self, sbd, sbd_distance_matrix, soft_dtw_distance_generic, LpDomain,
-    SbdResult,
+    dtw_distance, lp_cross, lp_self, sbd, sbd_distance_matrix, soft_dtw_barycenter_with_config,
+    soft_dtw_distance_generic, LpDomain, SbdResult, SoftDtwBarycenterConfig,
 };
 
 // k-Shape clustering + SBD-backed k-medoids
