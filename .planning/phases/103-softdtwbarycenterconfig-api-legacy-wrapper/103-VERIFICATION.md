@@ -11,7 +11,7 @@ covered_files:
   - fdars-core/src/metric/mod.rs
   - fdars-core/src/lib.rs
   - fdars-core/src/prelude.rs
-covered_digest: "v1:uncomputed"
+covered_digest: "v1:sha256:44b078fc3606e53712da7ae763a392fffefdfa52e35cbbc604b510f8df8173fe"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification: null
