@@ -71,7 +71,8 @@ With **API** (v0.42.0), **Quality** (v0.43.0), and **differentiable-core** (v0.4
   3. All 28 examples, the prelude re-exports, and doctests compile unchanged — the change is additive/non-breaking.
   4. The new public items (`SoftDtwBarycenterConfig` + new entry point) are re-exported at the crate root and prelude with a running doctest.
 
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 103-01-PLAN.md — Config struct + config entry point + legacy delegation + PartialEq on result, additive three-site re-exports, non-breaking guards (SDTW-03)
 
 ### Phase 104: Quality Evidence — Escapes-Local-Minimum & f64 Parity
 
