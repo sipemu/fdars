@@ -798,13 +798,7 @@ fn reassign_to_centroids(
 /// Run up to 10 Lloyd assign-update iterations on argument-point profiles.
 ///
 /// Modifies `col_labels` in place; returns when stable or after 10 rounds.
-fn kmeans_iterate(
-    data: &FdMatrix,
-    col_labels: &mut Vec<usize>,
-    n: usize,
-    m: usize,
-    l_blocks: usize,
-) {
+fn kmeans_iterate(data: &FdMatrix, col_labels: &mut [usize], n: usize, m: usize, l_blocks: usize) {
     let mut cent = vec![0.0_f64; n * l_blocks];
     for _ in 0..10 {
         recompute_centroids(data, col_labels, &mut cent, n, m, l_blocks);

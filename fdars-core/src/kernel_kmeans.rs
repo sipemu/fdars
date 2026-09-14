@@ -305,6 +305,55 @@ struct RestartOutcome {
     restart_idx: usize,
 }
 
+/// Compute the full n×k squared-distance matrix `d²(i, c)` from the Gram.
+///
+/// `d²(i, c) = K[i,i] − (2/|C_c|)·Σ_{j∈C_c} K[i,j] + within_c`.
+/// Stores into the pre-allocated row-major buffer `d2` (length n*k).
+fn compute_d2_matrix(
+    gram: &FdMatrix,
+    cluster: &[usize],
+    sizes: &[usize],
+    within: &[f64],
+    d2: &mut [f64],
+    n: usize,
+    k: usize,
+) {
+    for i in 0..n {
+        let mut cross = vec![0.0f64; k];
+        for j in 0..n {
+            cross[cluster[j]] += gram[(i, j)];
+        }
+        let kii = gram[(i, i)];
+        for c in 0..k {
+            d2[i * k + c] = if sizes[c] == 0 {
+                f64::INFINITY
+            } else {
+                kii - (2.0 / sizes[c] as f64) * cross[c] + within[c]
+            };
+        }
+    }
+}
+
+/// Reassign each point to its argmin-d² cluster.
+///
+/// Returns the new cluster assignment vector.
+fn argmin_reassign(d2: &[f64], n: usize, k: usize) -> Vec<usize> {
+    let mut new_cluster = vec![0usize; n];
+    for i in 0..n {
+        let mut best_c = 0usize;
+        let mut best_d = f64::INFINITY;
+        for c in 0..k {
+            let v = d2[i * k + c];
+            if v < best_d {
+                best_d = v;
+                best_c = c;
+            }
+        }
+        new_cluster[i] = best_c;
+    }
+    new_cluster
+}
+
 /// Run one kernel-k-means restart (Lloyd iterations) on the fixed Gram.
 fn run_restart(
     gram: &FdMatrix,
@@ -330,52 +379,20 @@ fn run_restart(
     while iter < max_iter {
         iter += 1;
 
-        // Per-cluster sizes and within-cluster sums for the current assignment.
         compute_cluster_stats(gram, &cluster, n, k, &mut sizes, &mut within);
+        compute_d2_matrix(gram, &cluster, &sizes, &within, &mut d2, n, k);
 
-        // d²(i, c) = K[i,i] − (2/|C_c|)·Σ_{j∈C_c} K[i,j] + within_c.
-        for i in 0..n {
-            // Cross sums Σ_{j∈C_c} K[i,j] per cluster.
-            let mut cross = vec![0.0f64; k];
-            for j in 0..n {
-                cross[cluster[j]] += gram[(i, j)];
-            }
-            let kii = gram[(i, i)];
-            for c in 0..k {
-                d2[i * k + c] = if sizes[c] == 0 {
-                    f64::INFINITY
-                } else {
-                    kii - (2.0 / sizes[c] as f64) * cross[c] + within[c]
-                };
-            }
-        }
-
-        // Reassign each point to its argmin cluster.
-        let mut new_cluster = vec![0usize; n];
-        for i in 0..n {
-            let mut best_c = 0usize;
-            let mut best_d = f64::INFINITY;
-            for c in 0..k {
-                let v = d2[i * k + c];
-                if v < best_d {
-                    best_d = v;
-                    best_c = c;
-                }
-            }
-            new_cluster[i] = best_c;
-        }
+        let mut new_cluster = argmin_reassign(&d2, n, k);
 
         // Empty-cluster recovery: reseed each empty cluster with the point that is
         // currently farthest (max d²) from its assigned cluster. Never panics.
         recover_empty_clusters(&mut new_cluster, &d2, n, k);
 
-        // Inertia of the new assignment.
         let inertia: f64 = (0..n).map(|i| d2[i * k + new_cluster[i]]).sum();
 
         let changed = new_cluster != cluster;
         cluster = new_cluster;
 
-        // Convergence: labels stable, or relative inertia change below tol.
         let rel = if prev_inertia.is_finite() && prev_inertia.abs() > 0.0 {
             (prev_inertia - inertia).abs() / prev_inertia.abs()
         } else {

@@ -506,6 +506,87 @@ fn refine_centroids(
     }
 }
 
+/// SBD-align each member to the current centroid, returning z-normalized rows.
+///
+/// If centroid is all-zero (first refinement), SBD returns shift 0 and members
+/// are used unshifted — correct for a random-partition seed.
+fn build_aligned_members(
+    series: &[Vec<f64>],
+    members: &[usize],
+    centroid: &[f64],
+) -> Vec<Vec<f64>> {
+    let mut x_aligned = Vec::with_capacity(members.len());
+    for &i in members {
+        let shift = sbd(centroid, &series[i]).map(|r| r.shift).unwrap_or(0);
+        let shifted = circular_shift(&series[i], shift);
+        x_aligned.push(z_normalize_window(&shifted));
+    }
+    x_aligned
+}
+
+/// Build `S = XᵀX` (m×m) from the aligned, z-normalized rows.
+fn build_xtx(x_aligned: &[Vec<f64>], m: usize) -> DMatrix<f64> {
+    let mut s = DMatrix::<f64>::zeros(m, m);
+    for row_vec in x_aligned {
+        for a in 0..m {
+            let va = row_vec[a];
+            if va == 0.0 {
+                continue;
+            }
+            for b in 0..m {
+                s[(a, b)] += va * row_vec[b];
+            }
+        }
+    }
+    s
+}
+
+/// Apply Q-centering `M = QSQ` and symmetrize the result.
+///
+/// Q = I_m − O_m/m. Both QS and (QS)Q are computed column-wise / row-wise.
+fn apply_q_centering(s: DMatrix<f64>, m: usize) -> DMatrix<f64> {
+    let inv_m = 1.0 / m as f64;
+    let mut qs = s.clone();
+    for b in 0..m {
+        let mut col_mean = 0.0;
+        for a in 0..m {
+            col_mean += s[(a, b)];
+        }
+        col_mean *= inv_m;
+        for a in 0..m {
+            qs[(a, b)] -= col_mean;
+        }
+    }
+    let mut mmat = qs.clone();
+    for a in 0..m {
+        let mut row_mean = 0.0;
+        for b in 0..m {
+            row_mean += qs[(a, b)];
+        }
+        row_mean *= inv_m;
+        for b in 0..m {
+            mmat[(a, b)] -= row_mean;
+        }
+    }
+    for a in 0..m {
+        for b in (a + 1)..m {
+            let avg = 0.5 * (mmat[(a, b)] + mmat[(b, a)]);
+            mmat[(a, b)] = avg;
+            mmat[(b, a)] = avg;
+        }
+    }
+    mmat
+}
+
+/// Compute M = QᵀSQ from the aligned rows, where S = XᵀX.
+///
+/// Q = I_m − O_m/m (centering over time; divisor m).
+/// Returns the symmetric m×m matrix M (symmetrized defensively).
+fn compute_shape_matrix(x_aligned: &[Vec<f64>], m: usize) -> DMatrix<f64> {
+    let s = build_xtx(x_aligned, m);
+    apply_q_centering(s, m)
+}
+
 /// Shape-extraction centroid for one cluster (decision 5 — the k-Shape crux).
 ///
 /// Each member is aligned to `centroid` by its SBD optimal shift, stacked into
@@ -520,70 +601,8 @@ fn shape_extraction(
     centroid: &[f64],
     m: usize,
 ) -> Vec<f64> {
-    let n_k = members.len();
-
-    // Align each member to the current centroid by its SBD shift, then
-    // re-z-normalize the shifted vector. If the centroid is all-zero (first
-    // refinement, before any assignment produced a shape), SBD's constant-series
-    // guard returns shift 0 — the members are used unshifted, which is correct
-    // for a random-partition seed.
-    let mut x_aligned: Vec<Vec<f64>> = Vec::with_capacity(n_k);
-    for &i in members {
-        let shift = sbd(centroid, &series[i]).map(|r| r.shift).unwrap_or(0);
-        let shifted = circular_shift(&series[i], shift);
-        x_aligned.push(z_normalize_window(&shifted));
-    }
-
-    // S = XᵀX  (m × m). S[a][b] = Σ_i X[i][a] · X[i][b].
-    let mut s = DMatrix::<f64>::zeros(m, m);
-    for row_vec in &x_aligned {
-        for a in 0..m {
-            let va = row_vec[a];
-            if va == 0.0 {
-                continue;
-            }
-            for b in 0..m {
-                s[(a, b)] += va * row_vec[b];
-            }
-        }
-    }
-
-    // M = Qᵀ S Q with Q = I_m − O_m/m (centering over time; divisor m).
-    // Q is symmetric, so M = Q S Q. Compute QS then (QS)Q.
-    // (Q A)[a][b] = A[a][b] − mean_over_a(A[:,b]); (B Q)[a][b] = B[a][b] − mean_over_b(B[a][:]).
-    let inv_m = 1.0 / m as f64;
-    // QS: subtract, from each column, that column's mean over rows.
-    let mut qs = s.clone();
-    for b in 0..m {
-        let mut col_mean = 0.0;
-        for a in 0..m {
-            col_mean += s[(a, b)];
-        }
-        col_mean *= inv_m;
-        for a in 0..m {
-            qs[(a, b)] -= col_mean;
-        }
-    }
-    // (QS)Q: subtract, from each row, that row's mean over columns.
-    let mut mmat = qs.clone();
-    for a in 0..m {
-        let mut row_mean = 0.0;
-        for b in 0..m {
-            row_mean += qs[(a, b)];
-        }
-        row_mean *= inv_m;
-        for b in 0..m {
-            mmat[(a, b)] -= row_mean;
-        }
-    }
-    // Symmetrize defensively (M is symmetric in exact arithmetic).
-    for a in 0..m {
-        for b in (a + 1)..m {
-            let avg = 0.5 * (mmat[(a, b)] + mmat[(b, a)]);
-            mmat[(a, b)] = avg;
-            mmat[(b, a)] = avg;
-        }
-    }
+    let x_aligned = build_aligned_members(series, members, centroid);
+    let mmat = compute_shape_matrix(&x_aligned, m);
 
     // Top eigenvector: nalgebra returns eigenvalues ASCENDING → take argmax.
     let eig = SymmetricEigen::new(mmat);
@@ -609,7 +628,6 @@ fn shape_extraction(
         v = neg;
     }
 
-    // z-normalize the centroid (mean 0, std 1) for the next iteration's SBD.
     z_normalize_window(&v)
 }
 
