@@ -272,6 +272,107 @@ fn block_score_reg(block_scores: &[f64], n: usize, l_blocks: usize, eff_ncomp: u
     }
 }
 
+/// Accumulate block-score mean for one (k, l) block; returns (mean_vec, count).
+fn block_mean_pass(
+    block_scores: &[f64],
+    row_labels: &[usize],
+    n: usize,
+    k: usize,
+    l: usize,
+    l_blocks: usize,
+    eff_ncomp: usize,
+) -> (Vec<f64>, u64) {
+    let mut mean = vec![0.0_f64; eff_ncomp];
+    let mut cnt = 0u64;
+    for i in 0..n {
+        if row_labels[i] != k {
+            continue;
+        }
+        cnt += 1;
+        let base = (i * l_blocks + l) * eff_ncomp;
+        for comp in 0..eff_ncomp {
+            mean[comp] += block_scores[base + comp];
+        }
+    }
+    if cnt > 0 {
+        let nf = cnt as f64;
+        for comp in 0..eff_ncomp {
+            mean[comp] /= nf;
+        }
+    }
+    (mean, cnt)
+}
+
+/// Compute variance for one (k, l) block given the already-computed mean.
+fn block_var_pass(
+    block_scores: &[f64],
+    row_labels: &[usize],
+    mean: &[f64],
+    n: usize,
+    k: usize,
+    l: usize,
+    l_blocks: usize,
+    eff_ncomp: usize,
+    cnt: u64,
+    reg: f64,
+) -> Vec<f64> {
+    let mut var = vec![0.0_f64; eff_ncomp];
+    let nf = cnt as f64;
+    for i in 0..n {
+        if row_labels[i] != k {
+            continue;
+        }
+        let base = (i * l_blocks + l) * eff_ncomp;
+        for comp in 0..eff_ncomp {
+            let d = block_scores[base + comp] - mean[comp];
+            var[comp] += d * d;
+        }
+    }
+    for comp in 0..eff_ncomp {
+        var[comp] = var[comp] / nf + reg;
+    }
+    var
+}
+
+/// Compute Gaussian parameters (mean, variance) for one (k, l) block.
+///
+/// First pass accumulates the mean; second pass computes the variance.
+/// An empty block gets variance = `reg` to avoid NaN.
+fn m_step_block_params(
+    block_scores: &[f64],
+    row_labels: &[usize],
+    n: usize,
+    k: usize,
+    l: usize,
+    l_blocks: usize,
+    eff_ncomp: usize,
+    reg: f64,
+) -> BlockParams {
+    let (mean, cnt) = block_mean_pass(block_scores, row_labels, n, k, l, l_blocks, eff_ncomp);
+
+    let var = if cnt > 0 {
+        block_var_pass(
+            block_scores,
+            row_labels,
+            &mean,
+            n,
+            k,
+            l,
+            l_blocks,
+            eff_ncomp,
+            cnt,
+            reg,
+        )
+    } else {
+        vec![reg; eff_ncomp]
+    };
+
+    BlockParams {
+        mean,
+        variance: var,
+    }
+}
+
 /// M-step: recompute row_props, col_props, and block_params from current labels.
 fn m_step(
     block_scores: &[f64],
@@ -302,51 +403,16 @@ fn m_step(
     let mut block_params = Vec::with_capacity(k_blocks * l_blocks);
     for k in 0..k_blocks {
         for l in 0..l_blocks {
-            let mut mean = vec![0.0_f64; eff_ncomp];
-            let mut var = vec![0.0_f64; eff_ncomp];
-            let mut cnt = 0u64;
-
-            for i in 0..n {
-                if row_labels[i] != k {
-                    continue;
-                }
-                cnt += 1;
-                let base = (i * l_blocks + l) * eff_ncomp;
-                for comp in 0..eff_ncomp {
-                    mean[comp] += block_scores[base + comp];
-                }
-            }
-
-            if cnt > 0 {
-                let nf = cnt as f64;
-                for comp in 0..eff_ncomp {
-                    mean[comp] /= nf;
-                }
-                // Second pass for variance
-                for i in 0..n {
-                    if row_labels[i] != k {
-                        continue;
-                    }
-                    let base = (i * l_blocks + l) * eff_ncomp;
-                    for comp in 0..eff_ncomp {
-                        let d = block_scores[base + comp] - mean[comp];
-                        var[comp] += d * d;
-                    }
-                }
-                for comp in 0..eff_ncomp {
-                    var[comp] = var[comp] / nf + reg;
-                }
-            } else {
-                // Empty block: use flat variance = reg to avoid NaN
-                for comp in 0..eff_ncomp {
-                    var[comp] = reg;
-                }
-            }
-
-            block_params.push(BlockParams {
-                mean,
-                variance: var,
-            });
+            block_params.push(m_step_block_params(
+                block_scores,
+                row_labels,
+                n,
+                k,
+                l,
+                l_blocks,
+                eff_ncomp,
+                reg,
+            ));
         }
     }
 
@@ -564,6 +630,141 @@ fn e_col_step(
     new_col_labels
 }
 
+/// k-means++ center selection on argument-point profiles.
+///
+/// Draws the first center uniformly and subsequent centers proportional to
+/// squared distance to the nearest existing center. RNG draw order is the same
+/// as the inlined version: `gen_range(0..m)` once, then per-round
+/// `gen::<f64>()` for threshold sampling. The `&mut StdRng` is consumed in
+/// the same order as before extraction.
+fn kmeans_pp_select_centers(
+    data: &FdMatrix,
+    m: usize,
+    l_blocks: usize,
+    rng: &mut StdRng,
+) -> Vec<usize> {
+    let profile_l2sq = |j1: usize, j2: usize| -> f64 {
+        let c1 = data.column(j1);
+        let c2 = data.column(j2);
+        c1.iter().zip(c2.iter()).map(|(a, b)| (a - b).powi(2)).sum()
+    };
+
+    let first = rng.gen_range(0..m);
+    let mut centers: Vec<usize> = vec![first];
+
+    for _ in 1..l_blocks {
+        let dists: Vec<f64> = (0..m)
+            .map(|j| {
+                centers
+                    .iter()
+                    .map(|&c| profile_l2sq(j, c))
+                    .fold(f64::INFINITY, f64::min)
+            })
+            .collect();
+        let total: f64 = dists.iter().sum();
+        if total < 1e-15 {
+            centers.push(centers.len() % m);
+            continue;
+        }
+        let threshold = rng.gen::<f64>() * total;
+        let mut cum = 0.0;
+        let mut next = m - 1;
+        for (j, &d) in dists.iter().enumerate() {
+            cum += d;
+            if cum >= threshold {
+                next = j;
+                break;
+            }
+        }
+        centers.push(next);
+    }
+
+    centers
+}
+
+/// Recompute centroids in feature space R^n from current assignments.
+///
+/// `cent` is a column-major buffer of size `n * l_blocks`: centroid l occupies
+/// `cent[l*n .. l*n + n]`. Updated in place.
+fn recompute_centroids(
+    data: &FdMatrix,
+    col_labels: &[usize],
+    cent: &mut [f64],
+    n: usize,
+    m: usize,
+    l_blocks: usize,
+) {
+    cent.iter_mut().for_each(|v| *v = 0.0);
+    let mut cnt = vec![0u64; l_blocks];
+    for j in 0..m {
+        let l = col_labels[j];
+        cnt[l] += 1;
+        let col = data.column(j);
+        for i in 0..n {
+            cent[l * n + i] += col[i];
+        }
+    }
+    for l in 0..l_blocks {
+        if cnt[l] > 0 {
+            let c = cnt[l] as f64;
+            for i in 0..n {
+                cent[l * n + i] /= c;
+            }
+        }
+    }
+}
+
+/// Reassign each argument point to its nearest centroid.
+///
+/// Returns `true` if any label changed.
+fn reassign_to_centroids(
+    data: &FdMatrix,
+    col_labels: &mut [usize],
+    cent: &[f64],
+    n: usize,
+    m: usize,
+    l_blocks: usize,
+) -> bool {
+    let mut changed = false;
+    for j in 0..m {
+        let col = data.column(j);
+        let mut best_l = 0usize;
+        let mut best_d = f64::INFINITY;
+        for l in 0..l_blocks {
+            let d: f64 = (0..n).map(|i| (col[i] - cent[l * n + i]).powi(2)).sum();
+            if d < best_d {
+                best_d = d;
+                best_l = l;
+            }
+        }
+        if col_labels[j] != best_l {
+            changed = true;
+            col_labels[j] = best_l;
+        }
+    }
+    changed
+}
+
+/// Run up to 10 Lloyd assign-update iterations on argument-point profiles.
+///
+/// Modifies `col_labels` in place; returns when stable or after 10 rounds.
+fn kmeans_iterate(
+    data: &FdMatrix,
+    col_labels: &mut Vec<usize>,
+    n: usize,
+    m: usize,
+    l_blocks: usize,
+) {
+    let mut cent = vec![0.0_f64; n * l_blocks];
+    for _ in 0..10 {
+        recompute_centroids(data, col_labels, &mut cent, n, m, l_blocks);
+        let changed = reassign_to_centroids(data, col_labels, &cent, n, m, l_blocks);
+        if !changed {
+            break;
+        }
+    }
+}
+
 /// Column k-means++ initialization on argument-point profiles (each point j has n-dim profile).
 fn col_kmeans_init(data: &FdMatrix, n: usize, m: usize, l_blocks: usize, seed: u64) -> Vec<usize> {
     if l_blocks >= m {
@@ -581,41 +782,10 @@ fn col_kmeans_init(data: &FdMatrix, n: usize, m: usize, l_blocks: usize, seed: u
         c1.iter().zip(c2.iter()).map(|(a, b)| (a - b).powi(2)).sum()
     };
 
-    // k-means++ initialization
-    let first = rng.gen_range(0..m);
-    let mut centers: Vec<usize> = vec![first];
+    // k-means++ center selection (consumes rng draws in same order as before)
+    let centers = kmeans_pp_select_centers(data, m, l_blocks, &mut rng);
 
-    for _ in 1..l_blocks {
-        // Compute distance from each point to nearest center
-        let dists: Vec<f64> = (0..m)
-            .map(|j| {
-                centers
-                    .iter()
-                    .map(|&c| profile_l2sq(j, c))
-                    .fold(f64::INFINITY, f64::min)
-            })
-            .collect();
-        let total: f64 = dists.iter().sum();
-        if total < 1e-15 {
-            // All points are identical; assign round-robin
-            centers.push(centers.len() % m);
-            continue;
-        }
-        // Sample proportional to distance squared
-        let threshold = rng.gen::<f64>() * total;
-        let mut cum = 0.0;
-        let mut next = m - 1;
-        for (j, &d) in dists.iter().enumerate() {
-            cum += d;
-            if cum >= threshold {
-                next = j;
-                break;
-            }
-        }
-        centers.push(next);
-    }
-
-    // Assign each point to nearest center; run 10 assign-update iterations
+    // Assign each point to nearest center
     let mut col_labels: Vec<usize> = (0..m)
         .map(|j| {
             centers
@@ -628,51 +798,8 @@ fn col_kmeans_init(data: &FdMatrix, n: usize, m: usize, l_blocks: usize, seed: u
         })
         .collect();
 
-    for _ in 0..10 {
-        // Recompute centroids as mean of assigned profiles (in feature space R^n)
-        // We track centroid as column-major buffer of size n*l_blocks
-        let mut cent = vec![0.0_f64; n * l_blocks];
-        let mut cnt = vec![0u64; l_blocks];
-        for j in 0..m {
-            let l = col_labels[j];
-            cnt[l] += 1;
-            let col = data.column(j);
-            for i in 0..n {
-                cent[l * n + i] += col[i];
-            }
-        }
-        for l in 0..l_blocks {
-            if cnt[l] > 0 {
-                let c = cnt[l] as f64;
-                for i in 0..n {
-                    cent[l * n + i] /= c;
-                }
-            }
-        }
-
-        // Reassign
-        let mut changed = false;
-        for j in 0..m {
-            let col = data.column(j);
-            let mut best_l = 0usize;
-            let mut best_d = f64::INFINITY;
-            for l in 0..l_blocks {
-                let d: f64 = (0..n).map(|i| (col[i] - cent[l * n + i]).powi(2)).sum();
-                if d < best_d {
-                    best_d = d;
-                    best_l = l;
-                }
-            }
-            if col_labels[j] != best_l {
-                changed = true;
-                col_labels[j] = best_l;
-            }
-        }
-
-        if !changed {
-            break;
-        }
-    }
+    // Run up to 10 Lloyd iterations
+    kmeans_iterate(data, &mut col_labels, n, m, l_blocks);
 
     col_labels
 }
