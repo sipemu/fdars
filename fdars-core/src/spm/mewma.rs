@@ -141,35 +141,7 @@ pub fn spm_mewma_monitor(
     argvals: &[f64],
     config: &MewmaConfig,
 ) -> Result<MewmaMonitorResult, FdarError> {
-    let m = chart.fpca.mean.len();
-    if sequential_data.ncols() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "sequential_data",
-            expected: format!("{m} columns"),
-            actual: format!("{} columns", sequential_data.ncols()),
-        });
-    }
-    if config.lambda <= 0.0 || config.lambda > 1.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "lambda",
-            message: format!("lambda must be in (0, 1], got {}", config.lambda),
-        });
-    }
-
-    let ncomp = chart.eigenvalues.len().min(config.ncomp);
-
-    // Guard against non-positive eigenvalues
-    for l in 0..ncomp {
-        if chart.eigenvalues[l] <= 0.0 {
-            return Err(FdarError::InvalidParameter {
-                parameter: "eigenvalues",
-                message: format!(
-                    "eigenvalue[{l}] = {} must be positive for MEWMA covariance",
-                    chart.eigenvalues[l]
-                ),
-            });
-        }
-    }
+    let ncomp = mewma_validate(chart, sequential_data, config)?;
 
     let n = sequential_data.nrows();
 
@@ -205,23 +177,7 @@ pub fn spm_mewma_monitor(
         hotelling_t2(&smoothed, &adj_eigenvalues)?
     } else {
         // Exact time-dependent covariance
-        let lambda = config.lambda;
-        let one_minus_lambda = 1.0 - lambda;
-        let lambda_factor = lambda / (2.0 - lambda);
-
-        let mut stats = Vec::with_capacity(n);
-        for i in 0..n {
-            let t = (i + 1) as f64;
-            let time_factor = 1.0 - one_minus_lambda.powf(2.0 * t);
-            let mut t2 = 0.0;
-            for l in 0..actual_ncomp {
-                let sigma_z_inv = 1.0 / (lambda_factor * time_factor * chart.eigenvalues[l]);
-                let z = smoothed[(i, l)];
-                t2 += z * z * sigma_z_inv;
-            }
-            stats.push(t2);
-        }
-        stats
+        mewma_compute_exact_t2(&smoothed, &chart.eigenvalues, config.lambda, actual_ncomp)
     };
 
     // SPE from reconstruction error (uses raw scores, not smoothed)
@@ -246,4 +202,67 @@ pub fn spm_mewma_monitor(
         spe_limit,
         spe_alarm,
     })
+}
+
+/// Validate inputs for MEWMA monitoring, returning the effective `ncomp`.
+fn mewma_validate(
+    chart: &SpmChart,
+    sequential_data: &FdMatrix,
+    config: &MewmaConfig,
+) -> Result<usize, FdarError> {
+    let m = chart.fpca.mean.len();
+    if sequential_data.ncols() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "sequential_data",
+            expected: format!("{m} columns"),
+            actual: format!("{} columns", sequential_data.ncols()),
+        });
+    }
+    if config.lambda <= 0.0 || config.lambda > 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda",
+            message: format!("lambda must be in (0, 1], got {}", config.lambda),
+        });
+    }
+    let ncomp = chart.eigenvalues.len().min(config.ncomp);
+    // Guard against non-positive eigenvalues
+    for l in 0..ncomp {
+        if chart.eigenvalues[l] <= 0.0 {
+            return Err(FdarError::InvalidParameter {
+                parameter: "eigenvalues",
+                message: format!(
+                    "eigenvalue[{l}] = {} must be positive for MEWMA covariance",
+                    chart.eigenvalues[l]
+                ),
+            });
+        }
+    }
+    Ok(ncomp)
+}
+
+/// Compute MEWMA T² with exact time-dependent covariance.
+///
+/// Uses `Σ_Z(t) = (λ/(2-λ))[1-(1-λ)^{2t}] · diag(eigenvalues)` (Lowry et al., 1992, Eq. 4).
+fn mewma_compute_exact_t2(
+    smoothed: &FdMatrix,
+    eigenvalues: &[f64],
+    lambda: f64,
+    actual_ncomp: usize,
+) -> Vec<f64> {
+    let n = smoothed.nrows();
+    let one_minus_lambda = 1.0 - lambda;
+    let lambda_factor = lambda / (2.0 - lambda);
+    let mut stats = Vec::with_capacity(n);
+    for i in 0..n {
+        let t = (i + 1) as f64;
+        let time_factor = 1.0 - one_minus_lambda.powf(2.0 * t);
+        let mut t2 = 0.0;
+        for l in 0..actual_ncomp {
+            let sigma_z_inv = 1.0 / (lambda_factor * time_factor * eigenvalues[l]);
+            let z = smoothed[(i, l)];
+            t2 += z * z * sigma_z_inv;
+        }
+        stats.push(t2);
+    }
+    stats
 }

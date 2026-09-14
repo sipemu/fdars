@@ -220,22 +220,9 @@ pub fn spm_ewma_monitor(
     argvals: &[f64],
     config: &EwmaConfig,
 ) -> Result<EwmaMonitorResult, FdarError> {
-    let m = chart.fpca.mean.len();
-    if sequential_data.ncols() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "sequential_data",
-            expected: format!("{m} columns"),
-            actual: format!("{} columns", sequential_data.ncols()),
-        });
-    }
+    ewma_validate(chart, sequential_data, config)?;
 
     let ncomp = chart.eigenvalues.len().min(config.ncomp);
-    if ncomp == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "ncomp",
-            message: "ncomp must be at least 1".to_string(),
-        });
-    }
 
     // Project all observations
     let scores = chart.fpca.project(sequential_data)?;
@@ -244,18 +231,7 @@ pub fn spm_ewma_monitor(
     // NOTE: This pattern is intentionally duplicated across ewma, amewma, and
     // mewma modules for clarity—each monitor owns its projection pipeline and
     // the inline truncation keeps the data flow explicit.
-    let scores = if scores.ncols() > ncomp {
-        let n = scores.nrows();
-        let mut trunc = FdMatrix::zeros(n, ncomp);
-        for i in 0..n {
-            for k in 0..ncomp {
-                trunc[(i, k)] = scores[(i, k)];
-            }
-        }
-        trunc
-    } else {
-        scores
-    };
+    let scores = ewma_truncate_scores(scores, ncomp);
     let actual_ncomp = scores.ncols();
 
     // EWMA smooth
@@ -270,26 +246,10 @@ pub fn spm_ewma_monitor(
         .collect();
 
     // T-squared on smoothed scores
-    let n = smoothed.nrows();
     let t2 = if config.exact_covariance {
         // Exact variance formula: Var(Z_t) = λ/(2-λ) · [1 - (1-λ)^{2(t+1)}] · eigenvalue.
         // See Lowry et al. (1992), Equation (4).
-        let lambda = config.lambda;
-        let one_minus_lambda = 1.0 - lambda;
-        let lambda_factor = lambda / (2.0 - lambda);
-        let mut stats = Vec::with_capacity(n);
-        for i in 0..n {
-            let t = (i + 1) as f64;
-            let time_factor = 1.0 - one_minus_lambda.powf(2.0 * t);
-            let mut t2_val = 0.0;
-            for l in 0..actual_ncomp {
-                let adj_ev = lambda_factor * time_factor * chart.eigenvalues[l];
-                let z = smoothed[(i, l)];
-                t2_val += z * z / adj_ev;
-            }
-            stats.push(t2_val);
-        }
-        stats
+        ewma_compute_t2_exact(&smoothed, &chart.eigenvalues, config.lambda, actual_ncomp)
     } else {
         hotelling_t2(&smoothed, &adj_eigenvalues)?
     };
@@ -299,33 +259,7 @@ pub fn spm_ewma_monitor(
     // spread reconstruction error across time, reducing the diagnostic
     // specificity of SPE alarms. Smoothed T-squared catches persistent mean
     // shifts; raw SPE catches instantaneous model violations.
-    let centered = {
-        let n = sequential_data.nrows();
-        let mut c = FdMatrix::zeros(n, m);
-        for i in 0..n {
-            for j in 0..m {
-                c[(i, j)] = sequential_data[(i, j)] - chart.fpca.mean[j];
-            }
-        }
-        c
-    };
-
-    let recon_centered = {
-        let n = scores.nrows();
-        let mut r = FdMatrix::zeros(n, m);
-        for i in 0..n {
-            for j in 0..m {
-                let mut val = 0.0;
-                for k in 0..actual_ncomp {
-                    val += scores[(i, k)] * chart.fpca.rotation[(j, k)];
-                }
-                r[(i, j)] = val;
-            }
-        }
-        r
-    };
-
-    let spe = spe_univariate(&centered, &recon_centered, argvals)?;
+    let spe = ewma_compute_spe(&scores, sequential_data, chart, argvals, actual_ncomp)?;
 
     // Control limits
     let t2_limit = chi2_quantile(1.0 - config.alpha, actual_ncomp);
@@ -344,4 +278,114 @@ pub fn spm_ewma_monitor(
         t2_alarm,
         spe_alarm,
     })
+}
+
+/// Validate inputs for EWMA monitoring.
+fn ewma_validate(
+    chart: &SpmChart,
+    sequential_data: &FdMatrix,
+    config: &EwmaConfig,
+) -> Result<(), FdarError> {
+    let m = chart.fpca.mean.len();
+    if sequential_data.ncols() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "sequential_data",
+            expected: format!("{m} columns"),
+            actual: format!("{} columns", sequential_data.ncols()),
+        });
+    }
+    let ncomp = chart.eigenvalues.len().min(config.ncomp);
+    if ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "ncomp must be at least 1".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Truncate score matrix to `ncomp` columns if needed.
+fn ewma_truncate_scores(scores: FdMatrix, ncomp: usize) -> FdMatrix {
+    if scores.ncols() > ncomp {
+        let n = scores.nrows();
+        let mut trunc = FdMatrix::zeros(n, ncomp);
+        for i in 0..n {
+            for k in 0..ncomp {
+                trunc[(i, k)] = scores[(i, k)];
+            }
+        }
+        trunc
+    } else {
+        scores
+    }
+}
+
+/// Compute T² with exact time-dependent EWMA covariance.
+///
+/// Exact variance formula: Var(Z_t) = λ/(2-λ) · [1 - (1-λ)^{2(t+1)}] · eigenvalue.
+/// See Lowry et al. (1992), Equation (4).
+fn ewma_compute_t2_exact(
+    smoothed: &FdMatrix,
+    eigenvalues: &[f64],
+    lambda: f64,
+    actual_ncomp: usize,
+) -> Vec<f64> {
+    let n = smoothed.nrows();
+    let one_minus_lambda = 1.0 - lambda;
+    let lambda_factor = lambda / (2.0 - lambda);
+    let mut stats = Vec::with_capacity(n);
+    for i in 0..n {
+        let t = (i + 1) as f64;
+        let time_factor = 1.0 - one_minus_lambda.powf(2.0 * t);
+        let mut t2_val = 0.0;
+        for l in 0..actual_ncomp {
+            let adj_ev = lambda_factor * time_factor * eigenvalues[l];
+            let z = smoothed[(i, l)];
+            t2_val += z * z / adj_ev;
+        }
+        stats.push(t2_val);
+    }
+    stats
+}
+
+/// Compute SPE from reconstruction error using raw (unsmoothed) scores.
+///
+/// Centers the data, reconstructs from raw scores, then integrates the squared
+/// residuals. Uses raw scores (not smoothed) so SPE captures instantaneous
+/// model violations rather than EWMA-spread reconstruction error.
+fn ewma_compute_spe(
+    scores: &FdMatrix,
+    sequential_data: &FdMatrix,
+    chart: &SpmChart,
+    argvals: &[f64],
+    actual_ncomp: usize,
+) -> Result<Vec<f64>, FdarError> {
+    let m = chart.fpca.mean.len();
+    let n = sequential_data.nrows();
+
+    let centered = {
+        let mut c = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            for j in 0..m {
+                c[(i, j)] = sequential_data[(i, j)] - chart.fpca.mean[j];
+            }
+        }
+        c
+    };
+
+    let recon_centered = {
+        let mut r = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            for j in 0..m {
+                let mut val = 0.0;
+                for k in 0..actual_ncomp {
+                    val += scores[(i, k)] * chart.fpca.rotation[(j, k)];
+                }
+                r[(i, j)] = val;
+            }
+        }
+        r
+    };
+
+    spe_univariate(&centered, &recon_centered, argvals)
 }
