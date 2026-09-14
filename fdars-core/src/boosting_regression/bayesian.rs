@@ -38,7 +38,7 @@ use super::{BayesianConfig, BayesianFosrResult};
 use crate::error::FdarError;
 use crate::linalg::{cholesky_factor, cholesky_forward_back, compute_xtx};
 use crate::matrix::FdMatrix;
-use crate::regression::fdata_to_pc;
+use crate::regression::{fdata_to_pc, FpcaResult};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, Gamma, StandardNormal};
@@ -73,6 +73,282 @@ fn quantile_sorted(sorted: &[f64], q: f64) -> f64 {
     sorted[lo] * (1.0 - frac) + sorted[hi] * frac
 }
 
+// ---------------------------------------------------------------------------
+// Private helpers for bayesian_fosr
+// ---------------------------------------------------------------------------
+
+/// Validate dimension arguments; returns `(n, m_t, p)` on success.
+fn bayesian_fosr_validate_dims(
+    data: &FdMatrix,
+    predictors: &FdMatrix,
+    argvals: &[f64],
+) -> Result<(usize, usize, usize), FdarError> {
+    let (n, m_t) = data.shape();
+    let p = predictors.ncols();
+    if n < 2 || m_t == 0 || predictors.nrows() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/predictors",
+            expected: format!("n >= 2, m_t > 0, predictors.nrows() == n (n={n})"),
+            actual: format!(
+                "n={n}, m_t={m_t}, predictors.nrows()={}",
+                predictors.nrows()
+            ),
+        });
+    }
+    if argvals.len() != m_t {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("length == data.ncols() = {m_t}"),
+            actual: format!("length = {}", argvals.len()),
+        });
+    }
+    if p == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "predictors",
+            expected: "at least 1 predictor column".to_string(),
+            actual: "0 columns".to_string(),
+        });
+    }
+    Ok((n, m_t, p))
+}
+
+/// Validate config parameters for `bayesian_fosr`.
+fn bayesian_fosr_validate_config(config: &BayesianConfig) -> Result<(), FdarError> {
+    if config.ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if config.tau2 <= 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "tau2",
+            message: format!("must be > 0, got {}", config.tau2),
+        });
+    }
+    if config.ig_a0 <= 0.0 || config.ig_b0 <= 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ig_a0/ig_b0",
+            message: format!("must be > 0, got a0={}, b0={}", config.ig_a0, config.ig_b0),
+        });
+    }
+    if config.n_iter == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_iter",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if config.thin == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "thin",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// FPCA + predictor centering + X'X + X'ξ_k precompute.
+///
+/// Returns `(fpca, xc, xtx, xt_xi)` where:
+/// - `fpca`: FpcaResult with k retained components
+/// - `xc`: centered design matrix (n × p, column-major)
+/// - `xtx`: X̃'X̃ (p × p, row-major flat) for the Gibbs precision matrix
+/// - `xt_xi[kk][j]` = Σ_i x̃_ij ξ_ik (X̃'ξ_k for each component)
+fn bayesian_fosr_precompute(
+    data: &FdMatrix,
+    predictors: &FdMatrix,
+    argvals: &[f64],
+    config: &BayesianConfig,
+    n: usize,
+    p: usize,
+) -> Result<(FpcaResult, FdMatrix, Vec<f64>, Vec<Vec<f64>>), FdarError> {
+    let fpca = fdata_to_pc(data, config.ncomp, argvals)?;
+    let k = fpca.scores.ncols();
+
+    // Center predictors: β_j(t) is the slope of the centered predictor.
+    let mut xbar = vec![0.0f64; p];
+    for j in 0..p {
+        let col = predictors.column(j);
+        xbar[j] = col.iter().sum::<f64>() / n as f64;
+    }
+    let mut xc = FdMatrix::zeros(n, p);
+    for j in 0..p {
+        let src = predictors.column(j);
+        let dst = xc.column_mut(j);
+        for i in 0..n {
+            dst[i] = src[i] - xbar[j];
+        }
+    }
+
+    // Precompute X̃'X̃ (p × p, row-major) and X̃'ξ_k (p-vector per component).
+    let xtx = compute_xtx(&xc);
+    let mut xt_xi: Vec<Vec<f64>> = vec![vec![0.0f64; p]; k];
+    for kk in 0..k {
+        let score_col = fpca.scores.column(kk);
+        for j in 0..p {
+            let xj = xc.column(j);
+            let mut s = 0.0f64;
+            for i in 0..n {
+                s += xj[i] * score_col[i];
+            }
+            xt_xi[kk][j] = s;
+        }
+    }
+
+    Ok((fpca, xc, xtx, xt_xi))
+}
+
+/// One Gibbs step for FPC component `kk`.
+///
+/// Updates `b_state[kk]` and `sigma2[kk]` in place.
+/// CRITICAL: Called for each kk in 0..k inside the unchanged outer iter loop.
+/// The rng draw sequence (StandardNormal z-draw, Gamma sample) must be in the
+/// same order as the original to preserve numeric identity.
+#[allow(clippy::too_many_arguments)]
+fn bayesian_fosr_gibbs_step(
+    kk: usize,
+    b_state: &mut [Vec<f64>],
+    sigma2: &mut [f64],
+    xtx: &[f64],
+    xt_xi: &[Vec<f64>],
+    fpca: &FpcaResult,
+    xc: &FdMatrix,
+    config: &BayesianConfig,
+    rng: &mut StdRng,
+    n: usize,
+    p: usize,
+    a_post_shape: f64,
+    inv_tau2: f64,
+) -> Result<(), FdarError> {
+    let s2 = sigma2[kk];
+    // Precision A = X̃'X̃ / σ²_k + I_p / τ²  (row-major p×p).
+    let mut a = vec![0.0f64; p * p];
+    for idx in 0..p * p {
+        a[idx] = xtx[idx] / s2;
+    }
+    for d in 0..p {
+        a[d * p + d] += inv_tau2;
+    }
+    let l = cholesky_factor(&a, p)?;
+    // μ_post = A⁻¹ (X̃'ξ_k / σ²_k)
+    let mut rhs = vec![0.0f64; p];
+    for j in 0..p {
+        rhs[j] = xt_xi[kk][j] / s2;
+    }
+    let mu_post = cholesky_forward_back(&l, &rhs, p);
+    // Draw z ~ N(0, I_p) and v = Lᵀ⁻¹ z, then b_k = μ_post + v.
+    let z: Vec<f64> = (0..p)
+        .map(|_| rng.sample::<f64, _>(StandardNormal))
+        .collect();
+    let v = back_solve_lt(&l, &z, p);
+    for j in 0..p {
+        b_state[kk][j] = mu_post[j] + v[j];
+    }
+    // RSS_k = ||ξ_k - X̃ b_k||²
+    let score_col = fpca.scores.column(kk);
+    let mut rss = 0.0f64;
+    for i in 0..n {
+        let mut fit = 0.0f64;
+        for j in 0..p {
+            fit += xc.column(j)[i] * b_state[kk][j];
+        }
+        let r = score_col[i] - fit;
+        rss += r * r;
+    }
+    // σ²_k ~ IG(a_post, b0 + RSS/2)  drawn as 1 / Gamma(shape, scale = 1/rate)
+    let rate = config.ig_b0 + rss / 2.0;
+    let gamma = Gamma::new(a_post_shape, 1.0 / rate).map_err(|e| FdarError::ComputationFailed {
+        operation: "bayesian_fosr Inverse-Gamma draw",
+        detail: format!("Gamma::new failed (shape={a_post_shape}, rate={rate}): {e}"),
+    })?;
+    let g = gamma.sample(rng);
+    sigma2[kk] = 1.0 / g.max(f64::MIN_POSITIVE);
+    Ok(())
+}
+
+/// Record one thinned post-burn-in draw into beta_draws and beta_sum.
+///
+/// Reconstructs β_j(t) = Σ_k b_{kj} · φ_k(t) for each predictor j and time t,
+/// appending to beta_draws and accumulating beta_sum.
+fn bayesian_fosr_record_draw(
+    b_state: &[Vec<f64>],
+    fpca: &FpcaResult,
+    beta_draws: &mut [Vec<f64>],
+    beta_sum: &mut [f64],
+    k: usize,
+    m_t: usize,
+    p: usize,
+) {
+    for j in 0..p {
+        for t in 0..m_t {
+            let mut beta = 0.0f64;
+            for kk in 0..k {
+                beta += b_state[kk][j] * fpca.rotation[(t, kk)];
+            }
+            beta_draws[j * m_t + t].push(beta);
+            beta_sum[j * m_t + t] += beta;
+        }
+    }
+}
+
+/// Compute posterior summaries (beta_mean/lower/upper), fitted values, residuals,
+/// and sigma2_mean from the retained draws.
+///
+/// Takes `beta_draws` by move (for in-place sorting per cell).
+/// Returns `(beta_mean, beta_lower, beta_upper, fitted, residuals, sigma2_mean)`.
+fn bayesian_fosr_summaries(
+    mut beta_draws: Vec<Vec<f64>>,
+    beta_sum: &[f64],
+    n: usize,
+    p: usize,
+    m_t: usize,
+    fpca: &FpcaResult,
+    xc: &FdMatrix,
+    data: &FdMatrix,
+    q: usize,
+) -> Result<(FdMatrix, FdMatrix, FdMatrix, FdMatrix, FdMatrix, Vec<f64>), FdarError> {
+    let mut beta_mean = FdMatrix::zeros(p, m_t);
+    let mut beta_lower = FdMatrix::zeros(p, m_t);
+    let mut beta_upper = FdMatrix::zeros(p, m_t);
+    for j in 0..p {
+        for t in 0..m_t {
+            let cell = &mut beta_draws[j * m_t + t];
+            beta_mean[(j, t)] = beta_sum[j * m_t + t] / q as f64;
+            cell.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            beta_lower[(j, t)] = quantile_sorted(cell, 0.025);
+            beta_upper[(j, t)] = quantile_sorted(cell, 0.975);
+        }
+    }
+
+    // Fitted / residuals / σ²(t)
+    // fitted(i,t) = mean_Y(t) + Σ_j x̃_ij · β̄_j(t)
+    let mut fitted = FdMatrix::zeros(n, m_t);
+    let mut residuals = FdMatrix::zeros(n, m_t);
+    let mut sigma2_mean = vec![0.0f64; m_t];
+    for t in 0..m_t {
+        for i in 0..n {
+            let mut val = fpca.mean[t];
+            for j in 0..p {
+                val += xc.column(j)[i] * beta_mean[(j, t)];
+            }
+            fitted[(i, t)] = val;
+            let r = data[(i, t)] - val;
+            residuals[(i, t)] = r;
+            sigma2_mean[t] += r * r;
+        }
+        sigma2_mean[t] /= n as f64;
+    }
+
+    Ok((
+        beta_mean,
+        beta_lower,
+        beta_upper,
+        fitted,
+        residuals,
+        sigma2_mean,
+    ))
+}
+
 /// Bayesian function-on-scalar regression via conjugate Gibbs sampler.
 ///
 /// Compresses the functional response with FPCA, runs a conjugate Normal /
@@ -104,104 +380,15 @@ pub fn bayesian_fosr(
     argvals: &[f64],
     config: &BayesianConfig,
 ) -> Result<BayesianFosrResult, FdarError> {
-    let (n, m_t) = data.shape();
-    let p = predictors.ncols();
-
     // ---- Validation --------------------------------------------------------
-    if n < 2 || m_t == 0 || predictors.nrows() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data/predictors",
-            expected: format!("n >= 2, m_t > 0, predictors.nrows() == n (n={n})"),
-            actual: format!(
-                "n={n}, m_t={m_t}, predictors.nrows()={}",
-                predictors.nrows()
-            ),
-        });
-    }
-    if argvals.len() != m_t {
-        return Err(FdarError::InvalidDimension {
-            parameter: "argvals",
-            expected: format!("length == data.ncols() = {m_t}"),
-            actual: format!("length = {}", argvals.len()),
-        });
-    }
-    if p == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "predictors",
-            expected: "at least 1 predictor column".to_string(),
-            actual: "0 columns".to_string(),
-        });
-    }
-    if config.ncomp == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "ncomp",
-            message: "must be >= 1".to_string(),
-        });
-    }
-    if config.tau2 <= 0.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "tau2",
-            message: format!("must be > 0, got {}", config.tau2),
-        });
-    }
-    if config.ig_a0 <= 0.0 || config.ig_b0 <= 0.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "ig_a0/ig_b0",
-            message: format!("must be > 0, got a0={}, b0={}", config.ig_a0, config.ig_b0),
-        });
-    }
-    if config.n_iter == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "n_iter",
-            message: "must be >= 1".to_string(),
-        });
-    }
-    if config.thin == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "thin",
-            message: "must be >= 1".to_string(),
-        });
-    }
+    let (n, m_t, p) = bayesian_fosr_validate_dims(data, predictors, argvals)?;
+    bayesian_fosr_validate_config(config)?;
 
-    // ---- FPCA score compression of the response ----------------------------
-    let fpca = fdata_to_pc(data, config.ncomp, argvals)?;
-    let k = fpca.scores.ncols(); // actual components retained (≤ ncomp)
-                                 // rotation: m_t × k loadings φ_k(t); scores: n × k ; mean: m_t response mean.
+    // ---- Precompute: FPCA + centering + X'X + X'ξ_k -----------------------
+    let (fpca, xc, xtx, xt_xi) = bayesian_fosr_precompute(data, predictors, argvals, config, n, p)?;
+    let k = fpca.scores.ncols();
 
-    // ---- Center predictors -------------------------------------------------
-    // β_j(t) is the slope of the centered predictor; the response intercept μ(t)
-    // is carried by the FPCA mean function.
-    let mut xbar = vec![0.0f64; p];
-    for j in 0..p {
-        let col = predictors.column(j);
-        xbar[j] = col.iter().sum::<f64>() / n as f64;
-    }
-    // Centered design X̃ (n × p, column-major).
-    let mut xc = FdMatrix::zeros(n, p);
-    for j in 0..p {
-        let src = predictors.column(j);
-        let dst = xc.column_mut(j);
-        for i in 0..n {
-            dst[i] = src[i] - xbar[j];
-        }
-    }
-
-    // Precompute X̃'X̃ (p × p, row-major) and X̃'ξ_k (p-vector per component).
-    let xtx = compute_xtx(&xc); // p × p row-major
-    let mut xt_xi: Vec<Vec<f64>> = vec![vec![0.0f64; p]; k]; // [k][j] = Σ_i x̃_ij ξ_ik
-    for kk in 0..k {
-        let score_col = fpca.scores.column(kk);
-        for j in 0..p {
-            let xj = xc.column(j);
-            let mut s = 0.0f64;
-            for i in 0..n {
-                s += xj[i] * score_col[i];
-            }
-            xt_xi[kk][j] = s;
-        }
-    }
-
-    // Gibbs state: b[k] ∈ R^p (init 0), sigma2[k] (init 1.0).
+    // ---- Gibbs state init --------------------------------------------------
     let mut b_state: Vec<Vec<f64>> = vec![vec![0.0f64; p]; k];
     let mut sigma2: Vec<f64> = vec![1.0f64; k];
 
@@ -211,111 +398,44 @@ pub fn bayesian_fosr(
     let mut rng = StdRng::seed_from_u64(config.seed);
 
     let total = config.burn_in + config.n_iter * config.thin;
-    let q_retained = config.n_iter; // number of retained draws
+    let q_retained = config.n_iter;
 
     // Per-(j,t) storage of reconstructed β draws for pointwise quantiles.
     let mut beta_draws: Vec<Vec<f64>> = vec![Vec::with_capacity(q_retained); p * m_t];
-    // Accumulator for posterior means.
     let mut beta_sum = vec![0.0f64; p * m_t];
 
+    // ---- Gibbs loop --------------------------------------------------------
+    // CRITICAL: outer `iter` loop, inner `kk` loop — preserves RNG draw order.
     for iter in 0..total {
         for kk in 0..k {
-            let s2 = sigma2[kk];
-            // Precision A = X̃'X̃ / σ²_k + I_p / τ²  (row-major p×p).
-            let mut a = vec![0.0f64; p * p];
-            for idx in 0..p * p {
-                a[idx] = xtx[idx] / s2;
-            }
-            for d in 0..p {
-                a[d * p + d] += inv_tau2;
-            }
-            let l = cholesky_factor(&a, p)?;
-            // μ_post = A⁻¹ (X̃'ξ_k / σ²_k)
-            let mut rhs = vec![0.0f64; p];
-            for j in 0..p {
-                rhs[j] = xt_xi[kk][j] / s2;
-            }
-            let mu_post = cholesky_forward_back(&l, &rhs, p);
-            // Draw z ~ N(0, I_p) and v = Lᵀ⁻¹ z, then b_k = μ_post + v.
-            let z: Vec<f64> = (0..p)
-                .map(|_| rng.sample::<f64, _>(StandardNormal))
-                .collect();
-            let v = back_solve_lt(&l, &z, p);
-            for j in 0..p {
-                b_state[kk][j] = mu_post[j] + v[j];
-            }
-            // RSS_k = ||ξ_k - X̃ b_k||²
-            let score_col = fpca.scores.column(kk);
-            let mut rss = 0.0f64;
-            for i in 0..n {
-                let mut fit = 0.0f64;
-                for j in 0..p {
-                    fit += xc.column(j)[i] * b_state[kk][j];
-                }
-                let r = score_col[i] - fit;
-                rss += r * r;
-            }
-            // σ²_k ~ IG(a_post, b0 + RSS/2)  drawn as 1 / Gamma(shape, scale = 1/rate)
-            let rate = config.ig_b0 + rss / 2.0;
-            let gamma =
-                Gamma::new(a_post_shape, 1.0 / rate).map_err(|e| FdarError::ComputationFailed {
-                    operation: "bayesian_fosr Inverse-Gamma draw",
-                    detail: format!("Gamma::new failed (shape={a_post_shape}, rate={rate}): {e}"),
-                })?;
-            let g = gamma.sample(&mut rng);
-            sigma2[kk] = 1.0 / g.max(f64::MIN_POSITIVE);
+            bayesian_fosr_gibbs_step(
+                kk,
+                &mut b_state,
+                &mut sigma2,
+                &xtx,
+                &xt_xi,
+                &fpca,
+                &xc,
+                config,
+                &mut rng,
+                n,
+                p,
+                a_post_shape,
+                inv_tau2,
+            )?;
         }
 
         // Retain thinned post-burn-in draws.
         if iter >= config.burn_in && (iter - config.burn_in) % config.thin == 0 {
-            // Reconstruct β_j(t) = Σ_k b_{kj} · φ_k(t) and record.
-            for j in 0..p {
-                for t in 0..m_t {
-                    let mut beta = 0.0f64;
-                    for kk in 0..k {
-                        beta += b_state[kk][j] * fpca.rotation[(t, kk)];
-                    }
-                    beta_draws[j * m_t + t].push(beta);
-                    beta_sum[j * m_t + t] += beta;
-                }
-            }
+            bayesian_fosr_record_draw(&b_state, &fpca, &mut beta_draws, &mut beta_sum, k, m_t, p);
         }
     }
 
     let q = beta_draws[0].len().max(1);
 
-    // ---- Posterior summaries ----------------------------------------------
-    let mut beta_mean = FdMatrix::zeros(p, m_t);
-    let mut beta_lower = FdMatrix::zeros(p, m_t);
-    let mut beta_upper = FdMatrix::zeros(p, m_t);
-    for j in 0..p {
-        for t in 0..m_t {
-            let cell = &mut beta_draws[j * m_t + t];
-            beta_mean[(j, t)] = beta_sum[j * m_t + t] / q as f64;
-            cell.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            beta_lower[(j, t)] = quantile_sorted(cell, 0.025);
-            beta_upper[(j, t)] = quantile_sorted(cell, 0.975);
-        }
-    }
-
-    // ---- Fitted / residuals / σ²(t) ---------------------------------------
-    // fitted(i,t) = mean_Y(t) + Σ_j x̃_ij · β̄_j(t)
-    let mut fitted = FdMatrix::zeros(n, m_t);
-    let mut residuals = FdMatrix::zeros(n, m_t);
-    let mut sigma2_mean = vec![0.0f64; m_t];
-    for t in 0..m_t {
-        for i in 0..n {
-            let mut val = fpca.mean[t];
-            for j in 0..p {
-                val += xc.column(j)[i] * beta_mean[(j, t)];
-            }
-            fitted[(i, t)] = val;
-            let r = data[(i, t)] - val;
-            residuals[(i, t)] = r;
-            sigma2_mean[t] += r * r;
-        }
-        sigma2_mean[t] /= n as f64;
-    }
+    // ---- Posterior summaries + fitted/residuals/sigma2_mean ----------------
+    let (beta_mean, beta_lower, beta_upper, fitted, residuals, sigma2_mean) =
+        bayesian_fosr_summaries(beta_draws, &beta_sum, n, p, m_t, &fpca, &xc, data, q)?;
 
     Ok(BayesianFosrResult {
         beta_mean,
