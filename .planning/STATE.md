@@ -6,16 +6,16 @@ current_phase: 108
 current_phase_name: Entropy Extraction & SATD/Unwrap Cleanup
 current_plan: 4
 status: executing
-stopped_at: Phase 108 Plan 02 complete — entropy test-module patterns cleared (E-01..E-12 in 3x pmat runs)
-last_updated: "2026-09-14T10:50:36.841Z"
+stopped_at: Phase 108 Plan 03 complete — production entropy E-04/05/06/07/E-12 cleared (3x pmat runs clean)
+last_updated: "2026-09-14T11:06:02.561Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 108 execution started
-state_head: 0573addb4d41873e842dc4ae9a845611a0673da4
+state_head: dfe9d2e3de7b4478c25722bb284e6336ca2efc9f
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -97,6 +97,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 107 P04 | 1800 | 3 tasks | 3 files |
 | Phase 108 P01 | 15 | 2 tasks | 3 files |
 | Phase 108 P02 | 35 | 3 tasks | 11 files |
+| Phase 108 P03 | 12 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,9 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 108]: depth/rpd.rs unwrap fix: used .expect() not ? to keep build_augmented return type as FdMatrix and avoid cascading signature changes to the public API
 - [Phase 108]: Detrend uses uniform_grid_range_div (div-before-mul); seasonal uses uniform_grid_range (mul-before-div) — FP forms verified non-identical, separate helpers required
 - [Phase 108]: uniform_step_grid(n, step) added for i*step patterns (covariance.rs E-09); not consolidatable with uniform_grid_range (FP-distinct)
+- [Phase 108]: subtract_fitted chosen over compute_residuals in scalar_on_shape.rs — 3-arg version already exists at line 636; naming collision forced distinct name
+- [Phase 108]: pmat entropy counts structurally-identical lines inside a helper: node_bbox needed single-fold accumulation to clear fem_smoothing flag; sin_sin_surface test helper also required
+- [Phase 108]: helpers::extract_curves equivalence verified by source inspection (FdMatrix::rows() == (0..nrows).map(|i| row(i)).collect()): reused in soft_dtw without adding new extract_rows helper
 
 ### Pending Todos
 
@@ -157,8 +161,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T10:50:36.795Z
-Stopped at: Phase 108 Plan 02 complete — entropy test-module patterns cleared (E-01..E-12 in 3x pmat runs)
+Last session: 2026-09-14T11:06:02.500Z
+Stopped at: Phase 108 Plan 03 complete — production entropy E-04/05/06/07/E-12 cleared (3x pmat runs clean)
 Resume file: None
 
 ## Operator Next Steps
