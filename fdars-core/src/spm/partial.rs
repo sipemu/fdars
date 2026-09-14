@@ -312,8 +312,38 @@ fn conditional_expectation(
         .map(|j| partial_values[j] - chart.fpca.mean[j])
         .collect();
 
-    // Estimate sigma^2 from median SPE (robust to outliers, Yao et al. 2005)
-    let sigma2 = if !chart.spe_phase1.is_empty() {
+    let sigma2 = cond_exp_sigma2(chart, m);
+
+    // Compute Phi_obs^T y_obs (ncomp vector)
+    let phi_t_y: Vec<f64> = (0..ncomp)
+        .map(|l| {
+            (0..n_obs)
+                .map(|j| chart.fpca.rotation[(j, l)] * y_obs[j])
+                .sum::<f64>()
+        })
+        .collect();
+
+    // Right-hand side: sigma^{-2} Phi^T y
+    let rhs: Vec<f64> = phi_t_y.iter().map(|&v| v / sigma2).collect();
+
+    let (m_matrix, diag_max) = cond_exp_build_m_matrix(chart, n_obs, ncomp, sigma2, reg_eps);
+    let scores = cond_exp_solve_with_retry(&m_matrix, &rhs, ncomp, diag_max)?;
+
+    // Reconstruct the full curve: mean + Phi * scores
+    let mut completed = chart.fpca.mean.clone();
+    for j in 0..m {
+        for l in 0..ncomp {
+            completed[j] += chart.fpca.rotation[(j, l)] * scores[l];
+        }
+    }
+
+    Ok((scores, Some(completed)))
+}
+
+/// Estimate sigma^2 from median Phase I SPE (robust to outliers, Yao et al. 2005).
+/// Returns per-point variance estimate, floored at 1e-10.
+fn cond_exp_sigma2(chart: &SpmChart, m: usize) -> f64 {
+    if !chart.spe_phase1.is_empty() {
         let mut sorted_spe = chart.spe_phase1.clone();
         sorted_spe.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let mid = sorted_spe.len() / 2;
@@ -326,17 +356,20 @@ fn conditional_expectation(
         (median_spe / m as f64).max(1e-10)
     } else {
         1e-6
-    };
+    }
+}
 
-    // Compute Phi_obs^T y_obs (ncomp vector)
-    let phi_t_y: Vec<f64> = (0..ncomp)
-        .map(|l| {
-            (0..n_obs)
-                .map(|j| chart.fpca.rotation[(j, l)] * y_obs[j])
-                .sum::<f64>()
-        })
-        .collect();
-
+/// Build the Woodbury M matrix (ncomp x ncomp, row-major):
+///   M = Lambda^{-1} + sigma^{-2} Phi_obs^T Phi_obs
+/// Applies Tikhonov regularization if the condition number proxy exceeds 1e12.
+/// Returns (m_matrix, diag_max) where diag_max is from the ORIGINAL (pre-regularization) matrix.
+fn cond_exp_build_m_matrix(
+    chart: &SpmChart,
+    n_obs: usize,
+    ncomp: usize,
+    sigma2: f64,
+    reg_eps: f64,
+) -> (Vec<f64>, f64) {
     // Use the Woodbury identity to work with the small ncomp x ncomp system:
     // M = Lambda^{-1} + sigma^{-2} Phi_obs^T Phi_obs
     // scores = M^{-1} sigma^{-2} Phi_obs^T y_obs
@@ -353,7 +386,7 @@ fn conditional_expectation(
         }
     }
 
-    // Check condition number via diagonal ratio (cheap proxy)
+    // Check condition number via diagonal ratio (cheap proxy) — from the ORIGINAL matrix.
     let mut diag_min = f64::INFINITY;
     let mut diag_max = 0.0_f64;
     for l in 0..ncomp {
@@ -371,23 +404,31 @@ fn conditional_expectation(
         }
     }
 
-    // Right-hand side: sigma^{-2} Phi^T y
-    let rhs: Vec<f64> = phi_t_y.iter().map(|&v| v / sigma2).collect();
+    (m_matrix, diag_max)
+}
 
-    // Solve M * scores = rhs using Cholesky (M is SPD).
-    // If Cholesky fails (near-indefinite), retry with progressively stronger regularization.
-    let scores = match solve_spd(&m_matrix, &rhs, ncomp) {
-        Ok(s) => s,
+/// Solve M * scores = rhs via Cholesky. On failure, retries with progressively
+/// stronger Tikhonov regularization (reg_strength *= 10, up to 5 retries).
+/// `diag_max` MUST come from the ORIGINAL (pre-regularization) M matrix to
+/// preserve the exact retry sequence.
+fn cond_exp_solve_with_retry(
+    m_matrix: &[f64],
+    rhs: &[f64],
+    ncomp: usize,
+    diag_max: f64,
+) -> Result<Vec<f64>, FdarError> {
+    match solve_spd(m_matrix, rhs, ncomp) {
+        Ok(s) => Ok(s),
         Err(_) => {
             // Retry with stronger Tikhonov regularization
-            let mut m_reg = m_matrix.clone();
+            let mut m_reg = m_matrix.to_vec();
             let mut reg_strength = diag_max * 1e-8;
             let mut result = None;
             for _ in 0..5 {
                 for l in 0..ncomp {
                     m_reg[l * ncomp + l] = m_matrix[l * ncomp + l] + reg_strength;
                 }
-                if let Ok(s) = solve_spd(&m_reg, &rhs, ncomp) {
+                if let Ok(s) = solve_spd(&m_reg, rhs, ncomp) {
                     result = Some(s);
                     break;
                 }
@@ -396,19 +437,9 @@ fn conditional_expectation(
             result.ok_or(FdarError::ComputationFailed {
                 operation: "conditional_expectation",
                 detail: "Cholesky failed even with strong regularization".to_string(),
-            })?
-        }
-    };
-
-    // Reconstruct the full curve: mean + Phi * scores
-    let mut completed = chart.fpca.mean.clone();
-    for j in 0..m {
-        for l in 0..ncomp {
-            completed[j] += chart.fpca.rotation[(j, l)] * scores[l];
+            })
         }
     }
-
-    Ok((scores, Some(completed)))
 }
 
 /// Partial projection: scale inner products by domain fraction.
