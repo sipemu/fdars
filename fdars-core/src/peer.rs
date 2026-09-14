@@ -384,108 +384,16 @@ pub fn lpeer(
 ) -> Result<LocalPeerResult, FdarError> {
     let (n, m) = data.shape();
 
-    // --- Entry validation (mirrors peer()) ---
-    if n < 2 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "at least 2 observations".to_string(),
-            actual: format!("{n} rows"),
-        });
-    }
-    if m < 3 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "at least 3 evaluation points (m >= 3)".to_string(),
-            actual: format!("{m} columns"),
-        });
-    }
-    if argvals.len() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "argvals",
-            expected: format!("{m}"),
-            actual: format!("{}", argvals.len()),
-        });
-    }
-    if y.len() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y",
-            expected: format!("{n}"),
-            actual: format!("{}", y.len()),
-        });
-    }
-    if subject_map.len() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "subject_map",
-            expected: format!("{n}"),
-            actual: format!("{}", subject_map.len()),
-        });
-    }
-    if y.iter().any(|v| !v.is_finite()) {
-        return Err(FdarError::InvalidParameter {
-            parameter: "y",
-            message: "response contains non-finite values (NaN/Inf)".to_string(),
-        });
-    }
-    if argvals.iter().any(|v| !v.is_finite()) {
-        return Err(FdarError::InvalidParameter {
-            parameter: "argvals",
-            message: "argvals contains non-finite values (NaN/Inf)".to_string(),
-        });
-    }
-    if argvals.windows(2).any(|w| w[1] <= w[0]) {
-        return Err(FdarError::InvalidParameter {
-            parameter: "argvals",
-            message: "argvals must be strictly increasing".to_string(),
-        });
-    }
+    // --- Entry validation (mirrors peer()) + subject_map check ---
+    peer_validate_dims(n, m, argvals, y)?;
+    let (sm_dense, n_subjects) = lpeer_validate_subject_map(subject_map, n)?;
 
-    // Build dense 0-indexed subject map (handles non-contiguous IDs)
-    let (sm_dense, n_subjects) = crate::famm::build_subject_map(subject_map);
-    if n_subjects < 2 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "subject_map",
-            message: "at least 2 distinct subjects required for lpeer".to_string(),
-        });
-    }
-
-    // 1. Integration weights + weighted design (identical to peer())
-    let w = simpsons_weights(argvals);
-    let mut wmat = FdMatrix::zeros(n, m);
-    for i in 0..n {
-        for j in 0..m {
-            wmat[(i, j)] = data[(i, j)] * w[j];
-        }
-    }
-
-    let y_bar: f64 = y.iter().sum::<f64>() / n as f64;
-    let yc: Vec<f64> = y.iter().map(|&yi| yi - y_bar).collect();
-
-    // w_bar computed identically to peer() so predict formula is identical
-    let w_bar: Vec<f64> = (0..m)
-        .map(|j| (0..n).map(|i| wmat[(i, j)]).sum::<f64>() / n as f64)
-        .collect();
-
-    let mut wc = FdMatrix::zeros(n, m);
-    for i in 0..n {
-        for j in 0..m {
-            wc[(i, j)] = wmat[(i, j)] - w_bar[j];
-        }
-    }
+    // 1. Integration weights + weighted design + centering (identical to peer())
+    let (wc, yc, w_bar, y_bar) = peer_build_centered_design(data, y, argvals, n, m);
 
     // 2. λ selection (identical dispatch to peer())
     let q = build_q(m, &config.penalty)?;
-
-    let mut wtw = vec![0.0_f64; m * m];
-    for j in 0..m {
-        for k in j..m {
-            let s: f64 = (0..n).map(|i| wc[(i, j)] * wc[(i, k)]).sum();
-            wtw[j * m + k] = s;
-            wtw[k * m + j] = s;
-        }
-    }
-    let wty: Vec<f64> = (0..m)
-        .map(|j| (0..n).map(|i| wc[(i, j)] * yc[i]).sum())
-        .collect();
+    let (wtw, wty) = peer_compute_wtw_wty(&wc, &yc, n, m);
 
     let (lambda, gcv_score, lambda_method) = match &config.lambda {
         LambdaChoice::Fixed(lam) => (*lam, None, LambdaMethod::Fixed),
@@ -505,12 +413,9 @@ pub fn lpeer(
     let scores = &fpca.scores; // n×ncomp FdMatrix (raw FPC scores)
 
     // 4. Mixed-model fit over FPC scores (pass yc, not y — intercept = y_bar).
-    //    This estimates the subject-level random effect: σ²_subject (between-subject)
-    //    and σ²_resid, plus a baseline (unpenalized) fixed-effect γ.
     let result =
         crate::famm::fit_scalar_mixed_model(&yc, &sm_dense, n_subjects, Some(scores), ncomp);
 
-    // NaN guard on gamma
     if result.gamma.iter().any(|v| !v.is_finite()) {
         return Err(FdarError::ComputationFailed {
             operation: "lpeer",
@@ -518,96 +423,35 @@ pub fn lpeer(
         });
     }
 
-    // 5. Apply the PEER structured penalty λQ in the FPC-score space via a
-    //    penalized-GLS re-solve, reusing the mixed model's variance components.
-    //    The random-intercept marginal covariance is Σ = σ²_e·I + σ²_u·ZZ'; for a
-    //    subject g of size n_g, (Σ⁻¹v)_i = (v_i − s_g·σ²_u/(σ²_e+n_g·σ²_u))/σ²_e
-    //    with s_g the subject sum of v. In score space the β-penalty λ·β'Qβ becomes
-    //    λ·γ'(Φ'QΦ)γ, so γ solves (SᵀΣ⁻¹S + λ·Φ'QΦ)γ = SᵀΣ⁻¹y_c. λ (Fixed/GCV/REML)
-    //    now genuinely regularizes β(t); it is not a mere label.
-    let su = result.sigma2_u;
-    let se = result.sigma2_eps;
-    // Per-subject observation counts (for the random-intercept shrinkage).
-    let mut gcnt = vec![0usize; n_subjects];
-    for &g in &sm_dense {
-        gcnt[g] += 1;
-    }
-    // Σ⁻¹ applied to a length-n vector.
-    let sigma_inv = |v: &[f64]| -> Vec<f64> {
-        let mut gsum = vec![0.0_f64; n_subjects];
-        for i in 0..n {
-            gsum[sm_dense[i]] += v[i];
-        }
-        (0..n)
-            .map(|i| {
-                let g = sm_dense[i];
-                let shrink = su / (se + gcnt[g] as f64 * su);
-                (v[i] - shrink * gsum[g]) / se
-            })
-            .collect::<Vec<f64>>()
-    };
-    // Σ⁻¹ S  (n×ncomp)
-    let mut sinv_s = vec![0.0_f64; n * ncomp];
-    for k in 0..ncomp {
-        let col: Vec<f64> = (0..n).map(|i| scores[(i, k)]).collect();
-        let sc = sigma_inv(&col);
-        for i in 0..n {
-            sinv_s[i * ncomp + k] = sc[i];
-        }
-    }
-    // A = Sᵀ Σ⁻¹ S  (ncomp×ncomp) and b = Sᵀ Σ⁻¹ y_c  (ncomp)
-    let sinv_yc = sigma_inv(&yc);
-    let mut a_mat = vec![0.0_f64; ncomp * ncomp];
-    let mut b_vec = vec![0.0_f64; ncomp];
-    for k in 0..ncomp {
-        for l in 0..ncomp {
-            a_mat[k * ncomp + l] = (0..n).map(|i| scores[(i, k)] * sinv_s[i * ncomp + l]).sum();
-        }
-        b_vec[k] = (0..n).map(|i| scores[(i, k)] * sinv_yc[i]).sum();
-    }
-    // P = Φ'QΦ  (ncomp×ncomp): penalty λ·β'Qβ expressed on the FPC coefficients.
-    // QΦ  (m×ncomp)
-    let mut q_phi = vec![0.0_f64; m * ncomp];
-    for i in 0..m {
-        for l in 0..ncomp {
-            q_phi[i * ncomp + l] = (0..m)
-                .map(|jj| q[i * m + jj] * fpca.rotation[(jj, l)])
-                .sum();
-        }
-    }
-    // A_pen = A + λ·Φ'QΦ
-    for k in 0..ncomp {
-        for l in 0..ncomp {
-            let p_kl: f64 = (0..m)
-                .map(|i| fpca.rotation[(i, k)] * q_phi[i * ncomp + l])
-                .sum();
-            a_mat[k * ncomp + l] += lambda * p_kl;
-        }
-    }
-    // Penalized-GLS coefficients; fall back to the unpenalized mixed-model γ on failure.
-    let gamma = cholesky_solve(&a_mat, &b_vec, ncomp).unwrap_or_else(|_| result.gamma.clone());
+    // 5. Penalized-GLS re-solve in FPC-score space (applies λQ penalty).
+    let gamma = lpeer_penalized_gls(
+        &yc,
+        scores,
+        &fpca.rotation,
+        &q,
+        &sm_dense,
+        n_subjects,
+        n,
+        ncomp,
+        m,
+        result.sigma2_u,
+        result.sigma2_eps,
+        lambda,
+        &result.gamma,
+    );
 
-    // 6. Back-project γ → β(t): beta[j] = Σ_k gamma[k] * rotation[(j, k)]
-    let beta: Vec<f64> = (0..m)
-        .map(|j| {
-            (0..ncomp.min(gamma.len()))
-                .map(|k| gamma[k] * fpca.rotation[(j, k)])
-                .sum()
-        })
-        .collect();
-
-    if beta.iter().any(|v| !v.is_finite()) {
-        return Err(FdarError::ComputationFailed {
-            operation: "lpeer",
-            detail: "non-finite beta after back-projection".into(),
-        });
-    }
-
-    // 7. Fitted values (same formula as peer())
-    let base = y_bar - w_bar.iter().zip(&beta).map(|(wb, b)| wb * b).sum::<f64>();
-    let fitted_values: Vec<f64> = (0..n)
-        .map(|i| base + (0..m).map(|j| data[(i, j)] * w[j] * beta[j]).sum::<f64>())
-        .collect();
+    // 6. Back-project γ → β(t) and compute fitted values.
+    let (beta, fitted_values) = lpeer_back_project_and_fit(
+        &gamma,
+        &fpca.rotation,
+        data,
+        &w_bar,
+        y_bar,
+        argvals,
+        n,
+        m,
+        ncomp,
+    )?;
 
     Ok(LocalPeerResult {
         beta,
@@ -646,6 +490,160 @@ impl LocalPeerResult {
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/// Validate the `subject_map` for `lpeer()`.
+///
+/// Checks `subject_map.len() == n`, builds the dense 0-indexed map, and
+/// requires at least 2 distinct subjects. Returns `(sm_dense, n_subjects)`.
+fn lpeer_validate_subject_map(
+    subject_map: &[usize],
+    n: usize,
+) -> Result<(Vec<usize>, usize), FdarError> {
+    if subject_map.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "subject_map",
+            expected: format!("{n}"),
+            actual: format!("{}", subject_map.len()),
+        });
+    }
+    let (sm_dense, n_subjects) = crate::famm::build_subject_map(subject_map);
+    if n_subjects < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "subject_map",
+            message: "at least 2 distinct subjects required for lpeer".to_string(),
+        });
+    }
+    Ok((sm_dense, n_subjects))
+}
+
+/// Apply random-intercept Σ⁻¹ to a length-n vector.
+///
+/// Σ = σ²_e·I + σ²_u·ZZ'; for subject g with n_g observations,
+/// `(Σ⁻¹v)_i = (v_i − shrink_g·Σ_j∈g v_j) / σ²_e` where
+/// `shrink_g = σ²_u / (σ²_e + n_g·σ²_u)`.
+fn lpeer_sigma_inv(
+    v: &[f64],
+    sm_dense: &[usize],
+    gcnt: &[usize],
+    n: usize,
+    n_subjects: usize,
+    su: f64,
+    se: f64,
+) -> Vec<f64> {
+    let mut gsum = vec![0.0_f64; n_subjects];
+    for i in 0..n {
+        gsum[sm_dense[i]] += v[i];
+    }
+    (0..n)
+        .map(|i| {
+            let g = sm_dense[i];
+            let shrink = su / (se + gcnt[g] as f64 * su);
+            (v[i] - shrink * gsum[g]) / se
+        })
+        .collect()
+}
+
+/// Build the penalized-GLS system and solve for γ in FPC-score space.
+///
+/// Applies the PEER structured penalty λQ via the random-intercept marginal
+/// covariance Σ. Returns the penalized-GLS coefficient vector γ (length ncomp).
+/// Falls back to `gamma_fallback` on Cholesky failure.
+#[allow(clippy::too_many_arguments)]
+fn lpeer_penalized_gls(
+    yc: &[f64],
+    scores: &FdMatrix,
+    rotation: &FdMatrix,
+    q: &[f64],
+    sm_dense: &[usize],
+    n_subjects: usize,
+    n: usize,
+    ncomp: usize,
+    m: usize,
+    su: f64,
+    se: f64,
+    lambda: f64,
+    gamma_fallback: &[f64],
+) -> Vec<f64> {
+    // Per-subject observation counts (for the random-intercept shrinkage).
+    let mut gcnt = vec![0usize; n_subjects];
+    for &g in sm_dense {
+        gcnt[g] += 1;
+    }
+    // Σ⁻¹ S  (n×ncomp)
+    let mut sinv_s = vec![0.0_f64; n * ncomp];
+    for k in 0..ncomp {
+        let col: Vec<f64> = (0..n).map(|i| scores[(i, k)]).collect();
+        let sc = lpeer_sigma_inv(&col, sm_dense, &gcnt, n, n_subjects, su, se);
+        for i in 0..n {
+            sinv_s[i * ncomp + k] = sc[i];
+        }
+    }
+    // A = Sᵀ Σ⁻¹ S  (ncomp×ncomp) and b = Sᵀ Σ⁻¹ y_c  (ncomp)
+    let sinv_yc = lpeer_sigma_inv(yc, sm_dense, &gcnt, n, n_subjects, su, se);
+    let mut a_mat = vec![0.0_f64; ncomp * ncomp];
+    let mut b_vec = vec![0.0_f64; ncomp];
+    for k in 0..ncomp {
+        for l in 0..ncomp {
+            a_mat[k * ncomp + l] = (0..n).map(|i| scores[(i, k)] * sinv_s[i * ncomp + l]).sum();
+        }
+        b_vec[k] = (0..n).map(|i| scores[(i, k)] * sinv_yc[i]).sum();
+    }
+    // P = Φ'QΦ  (ncomp×ncomp): penalty λ·β'Qβ expressed on FPC coefficients.
+    // QΦ  (m×ncomp)
+    let mut q_phi = vec![0.0_f64; m * ncomp];
+    for i in 0..m {
+        for l in 0..ncomp {
+            q_phi[i * ncomp + l] = (0..m).map(|jj| q[i * m + jj] * rotation[(jj, l)]).sum();
+        }
+    }
+    // A_pen = A + λ·Φ'QΦ
+    for k in 0..ncomp {
+        for l in 0..ncomp {
+            let p_kl: f64 = (0..m)
+                .map(|i| rotation[(i, k)] * q_phi[i * ncomp + l])
+                .sum();
+            a_mat[k * ncomp + l] += lambda * p_kl;
+        }
+    }
+    // Penalized-GLS coefficients; fall back to unpenalized γ on Cholesky failure.
+    cholesky_solve(&a_mat, &b_vec, ncomp).unwrap_or_else(|_| gamma_fallback.to_vec())
+}
+
+/// Back-project γ → β(t) and compute fitted values.
+///
+/// `beta[j] = Σ_k gamma[k] * rotation[(j,k)]`.
+/// `fitted[i] = y_bar + Σ_j (data[i,j]*w[j] - w_bar[j]) * beta[j]`.
+fn lpeer_back_project_and_fit(
+    gamma: &[f64],
+    rotation: &FdMatrix,
+    data: &FdMatrix,
+    w_bar: &[f64],
+    y_bar: f64,
+    argvals: &[f64],
+    n: usize,
+    m: usize,
+    ncomp: usize,
+) -> Result<(Vec<f64>, Vec<f64>), FdarError> {
+    let beta: Vec<f64> = (0..m)
+        .map(|j| {
+            (0..ncomp.min(gamma.len()))
+                .map(|k| gamma[k] * rotation[(j, k)])
+                .sum()
+        })
+        .collect();
+    if beta.iter().any(|v| !v.is_finite()) {
+        return Err(FdarError::ComputationFailed {
+            operation: "lpeer",
+            detail: "non-finite beta after back-projection".into(),
+        });
+    }
+    let w = simpsons_weights(argvals);
+    let base = y_bar - w_bar.iter().zip(&beta).map(|(wb, b)| wb * b).sum::<f64>();
+    let fitted_values: Vec<f64> = (0..n)
+        .map(|i| base + (0..m).map(|j| data[(i, j)] * w[j] * beta[j]).sum::<f64>())
+        .collect();
+    Ok((beta, fitted_values))
+}
 
 /// Validate dimensions and input invariants for `peer()` and `lpeer()`.
 ///
