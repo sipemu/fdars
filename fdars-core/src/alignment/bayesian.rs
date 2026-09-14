@@ -63,6 +63,92 @@ pub struct BayesianAlignmentResult {
     pub f_aligned_mean: Vec<f64>,
 }
 
+// ─── Private helpers ─────────────────────────────────────────────────────────
+
+/// Validate dimension and config constraints for [`bayesian_align_pair`].
+fn validate_bayesian_inputs(
+    m: usize,
+    f2_len: usize,
+    argvals_len: usize,
+    config: &BayesianAlignConfig,
+) -> Result<(), FdarError> {
+    if m != f2_len || m != argvals_len {
+        return Err(FdarError::InvalidDimension {
+            parameter: "f1/f2/argvals",
+            expected: format!("all length {m}"),
+            actual: format!("f1={}, f2={}, argvals={}", m, f2_len, argvals_len),
+        });
+    }
+    if m < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "f1",
+            expected: "length >= 2".to_string(),
+            actual: format!("length {m}"),
+        });
+    }
+    if config.n_samples == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "n_samples",
+            message: "n_samples must be > 0".to_string(),
+        });
+    }
+    if config.step_size <= 0.0 || config.step_size >= 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "step_size",
+            message: format!("step_size must be in (0, 1), got {}", config.step_size),
+        });
+    }
+    Ok(())
+}
+
+/// Compute pointwise posterior mean and credible bands from the stored gamma samples.
+///
+/// Returns `(posterior_gammas, posterior_mean_gamma, credible_lower, credible_upper)`.
+fn compute_posterior_stats(
+    stored_gammas: &[Vec<f64>],
+    argvals: &[f64],
+    m: usize,
+) -> (FdMatrix, Vec<f64>, Vec<f64>, Vec<f64>) {
+    let n_stored = stored_gammas.len();
+
+    // Build posterior gamma matrix
+    let mut posterior_gammas = FdMatrix::zeros(n_stored, m);
+    for (i, gam) in stored_gammas.iter().enumerate() {
+        for j in 0..m {
+            posterior_gammas[(i, j)] = gam[j];
+        }
+    }
+
+    // Pointwise posterior mean
+    let mut posterior_mean_gamma = vec![0.0; m];
+    for j in 0..m {
+        for i in 0..n_stored {
+            posterior_mean_gamma[j] += posterior_gammas[(i, j)];
+        }
+        posterior_mean_gamma[j] /= n_stored as f64;
+    }
+    normalize_warp(&mut posterior_mean_gamma, argvals);
+
+    // Pointwise credible bands (2.5% and 97.5% quantiles)
+    let mut credible_lower = vec![0.0; m];
+    let mut credible_upper = vec![0.0; m];
+    for j in 0..m {
+        let mut col: Vec<f64> = (0..n_stored).map(|i| posterior_gammas[(i, j)]).collect();
+        col.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let idx_lo = ((0.025 * n_stored as f64).floor() as usize).min(n_stored.saturating_sub(1));
+        let idx_hi = ((0.975 * n_stored as f64).ceil() as usize).min(n_stored.saturating_sub(1));
+        credible_lower[j] = col[idx_lo];
+        credible_upper[j] = col[idx_hi];
+    }
+
+    (
+        posterior_gammas,
+        posterior_mean_gamma,
+        credible_lower,
+        credible_upper,
+    )
+}
+
 // ─── Bayesian Alignment ─────────────────────────────────────────────────────
 
 /// Compute the SRSF-based log-likelihood for a warping function.
@@ -125,34 +211,7 @@ pub fn bayesian_align_pair(
     config: &BayesianAlignConfig,
 ) -> Result<BayesianAlignmentResult, FdarError> {
     let m = f1.len();
-
-    // ── Validation ──────────────────────────────────────────────────────
-    if m != f2.len() || m != argvals.len() {
-        return Err(FdarError::InvalidDimension {
-            parameter: "f1/f2/argvals",
-            expected: format!("all length {m}"),
-            actual: format!("f1={}, f2={}, argvals={}", m, f2.len(), argvals.len()),
-        });
-    }
-    if m < 2 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "f1",
-            expected: "length >= 2".to_string(),
-            actual: format!("length {m}"),
-        });
-    }
-    if config.n_samples == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "n_samples",
-            message: "n_samples must be > 0".to_string(),
-        });
-    }
-    if config.step_size <= 0.0 || config.step_size >= 1.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "step_size",
-            message: format!("step_size must be in (0, 1), got {}", config.step_size),
-        });
-    }
+    validate_bayesian_inputs(m, f2.len(), argvals.len(), config)?;
 
     let t0 = argvals[0];
     let t1 = argvals[m - 1];
@@ -247,38 +306,10 @@ pub fn bayesian_align_pair(
         }
     }
 
-    let n_stored = stored_gammas.len();
     let acceptance_rate = n_accepted as f64 / total_iter as f64;
 
-    // Build posterior gamma matrix
-    let mut posterior_gammas = FdMatrix::zeros(n_stored, m);
-    for (i, gam) in stored_gammas.iter().enumerate() {
-        for j in 0..m {
-            posterior_gammas[(i, j)] = gam[j];
-        }
-    }
-
-    // Pointwise posterior mean
-    let mut posterior_mean_gamma = vec![0.0; m];
-    for j in 0..m {
-        for i in 0..n_stored {
-            posterior_mean_gamma[j] += posterior_gammas[(i, j)];
-        }
-        posterior_mean_gamma[j] /= n_stored as f64;
-    }
-    normalize_warp(&mut posterior_mean_gamma, argvals);
-
-    // Pointwise credible bands (2.5% and 97.5% quantiles)
-    let mut credible_lower = vec![0.0; m];
-    let mut credible_upper = vec![0.0; m];
-    for j in 0..m {
-        let mut col: Vec<f64> = (0..n_stored).map(|i| posterior_gammas[(i, j)]).collect();
-        col.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let idx_lo = ((0.025 * n_stored as f64).floor() as usize).min(n_stored.saturating_sub(1));
-        let idx_hi = ((0.975 * n_stored as f64).ceil() as usize).min(n_stored.saturating_sub(1));
-        credible_lower[j] = col[idx_lo];
-        credible_upper[j] = col[idx_hi];
-    }
+    let (posterior_gammas, posterior_mean_gamma, credible_lower, credible_upper) =
+        compute_posterior_stats(&stored_gammas, argvals, m);
 
     // Align f2 using posterior mean gamma
     let f_aligned_mean = reparameterize_curve(f2, argvals, &posterior_mean_gamma);

@@ -161,7 +161,7 @@ fn karcher_iter_step(
 /// Store per-curve gammas and rotations from a completed alignment step.
 fn store_align_results(
     gammas: &mut FdMatrix,
-    rotations: &mut Vec<usize>,
+    rotations: &mut [usize],
     align_results: &[(ClosedAlignmentResult, Vec<f64>)],
     m: usize,
 ) {
