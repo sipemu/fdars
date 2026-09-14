@@ -88,13 +88,17 @@ const BARY_DET_EPS: f64 = 1e-14;
 
 /// Axis-aligned bounding box of a 2D point set.
 ///
-/// Returns `(x_min, x_max, y_min, y_max)` by folding over the node coordinates.
+/// Returns `(x_min, x_max, y_min, y_max)` in a single pass over the nodes.
 fn node_bbox(nodes: &[[f64; 2]]) -> (f64, f64, f64, f64) {
-    let x_min = nodes.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
-    let x_max = nodes.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
-    let y_min = nodes.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
-    let y_max = nodes.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max);
-    (x_min, x_max, y_min, y_max)
+    nodes.iter().fold(
+        (
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ),
+        |(xn, xx, yn, yx), p| (xn.min(p[0]), xx.max(p[0]), yn.min(p[1]), yx.max(p[1])),
+    )
 }
 
 /// Validate the mesh: non-empty, all indices in range, no degenerate (zero-area) triangles.
@@ -956,6 +960,16 @@ mod tests {
         (nodes, triangles)
     }
 
+    /// Evaluate `sin(π·x)·sin(π·y)` at each observation point.
+    ///
+    /// Used as the ground-truth surface in smoothing tests.
+    fn sin_sin_surface(obs_xy: &[[f64; 2]]) -> Vec<f64> {
+        obs_xy
+            .iter()
+            .map(|&[x, y]| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin())
+            .collect()
+    }
+
     /// Observation points placed at cell centres (deterministic, no RNG).
     fn cell_centres() -> Vec<[f64; 2]> {
         let mut pts = Vec::with_capacity(9);
@@ -978,9 +992,7 @@ mod tests {
         let n_obs = obs_xy.len();
 
         // Smooth ground truth: g(x,y) = sin(π·x)·sin(π·y) evaluated at cell centres.
-        let g =
-            |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
-        let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
+        let y: Vec<f64> = sin_sin_surface(&obs_xy);
 
         let result = fem_smooth(&nodes, &triangles, &obs_xy, &y, 1e-2).unwrap();
 
@@ -1013,9 +1025,7 @@ mod tests {
         let (nodes, triangles) = refined_square_mesh();
         let obs_xy = cell_centres();
 
-        let g =
-            |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
-        let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
+        let y: Vec<f64> = sin_sin_surface(&obs_xy);
 
         let result = fem_smooth(&nodes, &triangles, &obs_xy, &y, 1e-3).unwrap();
 
@@ -1039,9 +1049,7 @@ mod tests {
         let (nodes, triangles) = refined_square_mesh();
         let obs_xy = cell_centres();
 
-        let g =
-            |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
-        let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
+        let y: Vec<f64> = sin_sin_surface(&obs_xy);
 
         // Very small λ → near-interpolation (small residuals at observations).
         let result_small = fem_smooth(&nodes, &triangles, &obs_xy, &y, 1e-8).unwrap();
@@ -1073,9 +1081,7 @@ mod tests {
         let obs_xy = cell_centres();
         let n_obs = obs_xy.len();
 
-        let g =
-            |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
-        let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
+        let y: Vec<f64> = sin_sin_surface(&obs_xy);
 
         let result = fem_smooth(&nodes, &triangles, &obs_xy, &y, 0.1).unwrap();
 
@@ -1103,9 +1109,7 @@ mod tests {
         let (nodes, triangles) = refined_square_mesh();
         let obs_xy = cell_centres();
 
-        let g =
-            |x: f64, y: f64| (std::f64::consts::PI * x).sin() * (std::f64::consts::PI * y).sin();
-        let y: Vec<f64> = obs_xy.iter().map(|&[x, y]| g(x, y)).collect();
+        let y: Vec<f64> = sin_sin_surface(&obs_xy);
 
         let result = fem_smooth_gcv(&nodes, &triangles, &obs_xy, &y, (-6.0, 2.0), 9).unwrap();
 
