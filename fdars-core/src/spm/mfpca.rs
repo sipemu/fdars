@@ -249,6 +249,71 @@ impl MfpcaResult {
 /// if the SVD fails.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn mfpca(variables: &[&FdMatrix], config: &MfpcaConfig) -> Result<MfpcaResult, FdarError> {
+    let n = mfpca_validate(variables)?;
+
+    let grid_sizes: Vec<usize> = variables.iter().map(|v| v.ncols()).collect();
+    let total_cols: usize = grid_sizes.iter().sum();
+    let ncomp = config.ncomp.min(n).min(total_cols);
+
+    // Step 1: Center each variable and compute scale
+    let (means, mut scales) = mfpca_compute_means_scales(variables, n);
+
+    // Use relative threshold for scale: 1e-12 * max(scales).
+    // Variables with scale below this threshold contribute negligible variance
+    // and are effectively constant. Treating them as unscaled avoids division
+    // by near-zero values.
+    let max_scale = scales.iter().cloned().fold(0.0_f64, f64::max);
+    let scale_threshold = 1e-12 * max_scale.max(1e-15); // floor to avoid 0
+
+    // Step 2: Build stacked matrix (n x total_cols)
+    // NOTE: mfpca_build_stacked takes &mut scales to propagate the scales[p]=1.0
+    // mutation (when !weighted) back to the caller — preserving MfpcaResult.scales
+    // for use in MfpcaResult::project() and reconstruct().
+    let stacked = mfpca_build_stacked(
+        variables,
+        &means,
+        &mut scales,
+        &grid_sizes,
+        n,
+        total_cols,
+        config.weighted,
+        scale_threshold,
+    );
+
+    // Step 3: SVD on stacked matrix
+    let svd = SVD::new(stacked.to_dmatrix(), true, true);
+
+    let v_t = svd
+        .v_t
+        .as_ref()
+        .ok_or_else(|| FdarError::ComputationFailed {
+            operation: "MFPCA SVD",
+            detail: "SVD failed to produce V_t matrix".to_string(),
+        })?;
+
+    let u = svd.u.as_ref().ok_or_else(|| FdarError::ComputationFailed {
+        operation: "MFPCA SVD",
+        detail: "SVD failed to produce U matrix".to_string(),
+    })?;
+
+    // Step 4: Extract components
+    let (scores, combined_rotation, eigenvalues, eigenfunctions) =
+        mfpca_extract_components(&svd, u, v_t, ncomp, n, total_cols, &grid_sizes)?;
+
+    Ok(MfpcaResult {
+        scores,
+        eigenfunctions,
+        eigenvalues,
+        means,
+        scales,
+        grid_sizes,
+        combined_rotation,
+        scale_threshold,
+    })
+}
+
+/// Validate inputs for `mfpca` and return `n` (number of observations).
+fn mfpca_validate(variables: &[&FdMatrix]) -> Result<usize, FdarError> {
     if variables.is_empty() {
         return Err(FdarError::InvalidDimension {
             parameter: "variables",
@@ -276,11 +341,14 @@ pub fn mfpca(variables: &[&FdMatrix], config: &MfpcaConfig) -> Result<MfpcaResul
         }
     }
 
-    let grid_sizes: Vec<usize> = variables.iter().map(|v| v.ncols()).collect();
-    let total_cols: usize = grid_sizes.iter().sum();
-    let ncomp = config.ncomp.min(n).min(total_cols);
+    Ok(n)
+}
 
-    // Step 1: Center each variable and compute scale
+/// Compute per-variable column means and scales (sqrt of mean column variance).
+///
+/// Returns `(means, scales)` where `means[p]` is the mean function for variable p
+/// and `scales[p]` is the sqrt of its mean column variance.
+fn mfpca_compute_means_scales(variables: &[&FdMatrix], n: usize) -> (Vec<Vec<f64>>, Vec<f64>) {
     let mut means: Vec<Vec<f64>> = Vec::with_capacity(variables.len());
     let mut scales: Vec<f64> = Vec::with_capacity(variables.len());
 
@@ -307,25 +375,37 @@ pub fn mfpca(variables: &[&FdMatrix], config: &MfpcaConfig) -> Result<MfpcaResul
         scales.push(scale);
     }
 
-    // Use relative threshold for scale: 1e-12 * max(scales).
-    // Variables with scale below this threshold contribute negligible variance
-    // and are effectively constant. Treating them as unscaled avoids division
-    // by near-zero values.
-    let max_scale = scales.iter().cloned().fold(0.0_f64, f64::max);
-    let scale_threshold = 1e-12 * max_scale.max(1e-15); // floor to avoid 0
+    (means, scales)
+}
 
-    // Step 2: Build stacked matrix (n x total_cols)
+/// Build the stacked (n x total_cols) centered/scaled matrix.
+///
+/// CRITICAL: `scales` is taken as `&mut` so that the `scales[p] = 1.0` mutation
+/// (applied when `!weighted`) propagates back to the caller. This mutation must
+/// be visible in `MfpcaResult.scales` so that `MfpcaResult::project()` and
+/// `MfpcaResult::reconstruct()` apply the correct un-scaling.
+#[allow(clippy::too_many_arguments)]
+fn mfpca_build_stacked(
+    variables: &[&FdMatrix],
+    means: &[Vec<f64>],
+    scales: &mut Vec<f64>,
+    grid_sizes: &[usize],
+    n: usize,
+    total_cols: usize,
+    weighted: bool,
+    scale_threshold: f64,
+) -> FdMatrix {
     let mut stacked = FdMatrix::zeros(n, total_cols);
     let mut col_offset = 0;
     for (p, var) in variables.iter().enumerate() {
         let m_p = grid_sizes[p];
-        let scale = if config.weighted && scales[p] > scale_threshold {
+        let scale = if weighted && scales[p] > scale_threshold {
             scales[p]
         } else {
             1.0
         };
         // Update scales to reflect actual scaling applied
-        if !config.weighted {
+        if !weighted {
             scales[p] = 1.0;
         }
         for i in 0..n {
@@ -336,25 +416,30 @@ pub fn mfpca(variables: &[&FdMatrix], config: &MfpcaConfig) -> Result<MfpcaResul
         }
         col_offset += m_p;
     }
+    stacked
+}
 
-    // Step 3: SVD on stacked matrix
-    let svd = SVD::new(stacked.to_dmatrix(), true, true);
-
-    let v_t = svd
-        .v_t
-        .as_ref()
-        .ok_or_else(|| FdarError::ComputationFailed {
-            operation: "MFPCA SVD",
-            detail: "SVD failed to produce V_t matrix".to_string(),
-        })?;
-
-    let u = svd.u.as_ref().ok_or_else(|| FdarError::ComputationFailed {
-        operation: "MFPCA SVD",
-        detail: "SVD failed to produce U matrix".to_string(),
-    })?;
-
-    // Step 4: Extract components
-    let singular_values: Vec<f64> = svd.singular_values.iter().take(ncomp).copied().collect();
+/// Extract scores, rotation, eigenvalues, and per-variable eigenfunctions from SVD output.
+fn mfpca_extract_components(
+    _svd: &nalgebra::SVD<f64, nalgebra::Dyn, nalgebra::Dyn>,
+    u: &nalgebra::Matrix<
+        f64,
+        nalgebra::Dyn,
+        nalgebra::Dyn,
+        nalgebra::VecStorage<f64, nalgebra::Dyn, nalgebra::Dyn>,
+    >,
+    v_t: &nalgebra::Matrix<
+        f64,
+        nalgebra::Dyn,
+        nalgebra::Dyn,
+        nalgebra::VecStorage<f64, nalgebra::Dyn, nalgebra::Dyn>,
+    >,
+    ncomp: usize,
+    n: usize,
+    total_cols: usize,
+    grid_sizes: &[usize],
+) -> Result<(FdMatrix, FdMatrix, Vec<f64>, Vec<FdMatrix>), FdarError> {
+    let singular_values: Vec<f64> = _svd.singular_values.iter().take(ncomp).copied().collect();
 
     // Eigenvalues = sv^2 / (n - 1)
     let eigenvalues: Vec<f64> = singular_values
@@ -379,10 +464,10 @@ pub fn mfpca(variables: &[&FdMatrix], config: &MfpcaConfig) -> Result<MfpcaResul
         }
     }
 
-    // Step 5: Split eigenfunctions by variable
-    let mut eigenfunctions = Vec::with_capacity(variables.len());
+    // Split eigenfunctions by variable
+    let mut eigenfunctions = Vec::with_capacity(grid_sizes.len());
     let mut col_off = 0;
-    for m_p in &grid_sizes {
+    for m_p in grid_sizes {
         let mut ef = FdMatrix::zeros(*m_p, ncomp);
         for k in 0..ncomp {
             for j in 0..*m_p {
@@ -393,14 +478,5 @@ pub fn mfpca(variables: &[&FdMatrix], config: &MfpcaConfig) -> Result<MfpcaResul
         eigenfunctions.push(ef);
     }
 
-    Ok(MfpcaResult {
-        scores,
-        eigenfunctions,
-        eigenvalues,
-        means,
-        scales,
-        grid_sizes,
-        combined_rotation,
-        scale_threshold,
-    })
+    Ok((scores, combined_rotation, eigenvalues, eigenfunctions))
 }
