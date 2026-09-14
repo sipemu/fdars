@@ -1001,6 +1001,55 @@ pub struct DenseFlmmResult {
     pub converged: bool,
 }
 
+/// Unpack per-component REML-EM results into aggregate coefficient arrays.
+///
+/// Returns `(gamma, u_hat, sigma2_u, sigma2_eps, all_converged, max_n_iter)`.
+fn dense_flmm_unpack_components(
+    per_comp: &[ScalarMixedResultWithMeta],
+    p: usize,
+    n_subjects: usize,
+    k: usize,
+    score_scale: f64,
+) -> (Vec<Vec<f64>>, Vec<Vec<f64>>, Vec<f64>, f64, bool, usize) {
+    let mut gamma = vec![vec![0.0; k]; p];
+    let mut u_hat = vec![vec![0.0; k]; n_subjects];
+    let mut sigma2_u = vec![0.0; k];
+    let mut sigma2_eps_total = 0.0;
+    let mut all_converged = true;
+    let mut max_n_iter = 0usize;
+
+    for (comp, r) in per_comp.iter().enumerate() {
+        for j in 0..p {
+            gamma[j][comp] = r.result.gamma[j] / score_scale;
+        }
+        for s in 0..n_subjects {
+            u_hat[s][comp] = r.result.u_hat[s] / score_scale;
+        }
+        sigma2_u[comp] = r.result.sigma2_u;
+        sigma2_eps_total += r.result.sigma2_eps;
+        if !r.converged {
+            all_converged = false;
+        }
+        if r.n_iter > max_n_iter {
+            max_n_iter = r.n_iter;
+        }
+    }
+    let sigma2_eps = if k > 0 {
+        sigma2_eps_total / k as f64
+    } else {
+        0.0
+    };
+
+    (
+        gamma,
+        u_hat,
+        sigma2_u,
+        sigma2_eps,
+        all_converged,
+        max_n_iter,
+    )
+}
+
 /// Fit a dense functional linear mixed model via FPC score decomposition.
 ///
 /// Extends [`fmm`] with REML convergence metadata and the `DenseFlmmConfig`
@@ -1110,34 +1159,8 @@ pub fn dense_flmm(
         .collect();
 
     // Unpack per-component results
-    let mut gamma = vec![vec![0.0; k]; p];
-    let mut u_hat = vec![vec![0.0; k]; n_subjects];
-    let mut sigma2_u = vec![0.0; k];
-    let mut sigma2_eps_total = 0.0;
-    let mut all_converged = true;
-    let mut max_n_iter = 0usize;
-
-    for (comp, r) in per_comp.iter().enumerate() {
-        for j in 0..p {
-            gamma[j][comp] = r.result.gamma[j] / score_scale;
-        }
-        for s in 0..n_subjects {
-            u_hat[s][comp] = r.result.u_hat[s] / score_scale;
-        }
-        sigma2_u[comp] = r.result.sigma2_u;
-        sigma2_eps_total += r.result.sigma2_eps;
-        if !r.converged {
-            all_converged = false;
-        }
-        if r.n_iter > max_n_iter {
-            max_n_iter = r.n_iter;
-        }
-    }
-    let sigma2_eps = if k > 0 {
-        sigma2_eps_total / k as f64
-    } else {
-        0.0
-    };
+    let (gamma, u_hat, sigma2_u, sigma2_eps, all_converged, max_n_iter) =
+        dense_flmm_unpack_components(&per_comp, p, n_subjects, k, score_scale);
 
     let beta_functions = recover_beta_functions(&gamma, &fpca.rotation, p, m, k);
     let random_effects = recover_random_effects(&u_hat, &fpca.rotation, n_subjects, m, k);
@@ -1314,6 +1337,44 @@ pub struct MultiFammResult {
     pub n_dims: usize,
 }
 
+/// Stack fitted values and residuals from per-dimension FLMM components row-wise.
+///
+/// Returns `(stacked_fitted, stacked_residuals)` each of shape `(n_total * n_dims) × m`,
+/// stored in column-major order.
+fn multi_famm_stack(
+    components: &[DenseFlmmResult],
+    n_total: usize,
+    n_dims: usize,
+    m: usize,
+) -> Result<(FdMatrix, FdMatrix), FdarError> {
+    let stacked_rows = n_total * n_dims;
+    let mut stacked_fitted_data = vec![0.0; stacked_rows * m];
+    let mut stacked_residuals_data = vec![0.0; stacked_rows * m];
+
+    for (d, comp) in components.iter().enumerate() {
+        for i in 0..n_total {
+            let row = d * n_total + i;
+            for t in 0..m {
+                // column-major: element (row, col) at index row + col * nrows
+                stacked_fitted_data[row + t * stacked_rows] = comp.fitted[(i, t)];
+                stacked_residuals_data[row + t * stacked_rows] = comp.residuals[(i, t)];
+            }
+        }
+    }
+
+    let stacked_fitted = FdMatrix::from_column_major(stacked_fitted_data, stacked_rows, m)
+        .map_err(|_| FdarError::ComputationFailed {
+            operation: "multi_famm stacking",
+            detail: "failed to build stacked_fitted matrix".to_string(),
+        })?;
+    let stacked_residuals = FdMatrix::from_column_major(stacked_residuals_data, stacked_rows, m)
+        .map_err(|_| FdarError::ComputationFailed {
+            operation: "multi_famm stacking",
+            detail: "failed to build stacked_residuals matrix".to_string(),
+        })?;
+    Ok((stacked_fitted, stacked_residuals))
+}
+
 /// Fit a multivariate functional additive mixed model.
 ///
 /// Calls [`dense_flmm`] independently for each response dimension and stacks
@@ -1397,31 +1458,7 @@ pub fn multi_famm(
     }
 
     // Stack fitted and residuals row-wise: (n_total * n_dims) × m
-    let stacked_rows = n_total * n_dims;
-    let mut stacked_fitted_data = vec![0.0; stacked_rows * m];
-    let mut stacked_residuals_data = vec![0.0; stacked_rows * m];
-
-    for (d, comp) in components.iter().enumerate() {
-        for i in 0..n_total {
-            let row = d * n_total + i;
-            for t in 0..m {
-                // column-major: element (row, col) at index row + col * nrows
-                stacked_fitted_data[row + t * stacked_rows] = comp.fitted[(i, t)];
-                stacked_residuals_data[row + t * stacked_rows] = comp.residuals[(i, t)];
-            }
-        }
-    }
-
-    let stacked_fitted = FdMatrix::from_column_major(stacked_fitted_data, stacked_rows, m)
-        .map_err(|_| FdarError::ComputationFailed {
-            operation: "multi_famm stacking",
-            detail: "failed to build stacked_fitted matrix".to_string(),
-        })?;
-    let stacked_residuals = FdMatrix::from_column_major(stacked_residuals_data, stacked_rows, m)
-        .map_err(|_| FdarError::ComputationFailed {
-            operation: "multi_famm stacking",
-            detail: "failed to build stacked_residuals matrix".to_string(),
-        })?;
+    let (stacked_fitted, stacked_residuals) = multi_famm_stack(&components, n_total, n_dims, m)?;
 
     Ok(MultiFammResult {
         components,
@@ -1501,6 +1538,117 @@ pub struct FastFmmResult {
     pub n_grid: usize,
 }
 
+/// Per-gridpoint scalar mixed model result for `fast_fmm`.
+struct FastFmmPointResult {
+    gamma: Vec<f64>, // length p (fixed effects at this grid point)
+    sigma2_u: f64,   // random-intercept variance at this grid point
+    sigma2_eps: f64, // residual variance at this grid point
+}
+
+/// Unpack per-gridpoint results into raw column-major beta matrix and variance vecs.
+///
+/// Returns `(raw_beta_data, sigma2_eps_vec, sigma2_u_vec)`.
+fn fast_fmm_unpack_per_point(
+    per_point: &[FastFmmPointResult],
+    p: usize,
+    m: usize,
+) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let mut raw_beta_data = vec![0.0; p * m];
+    let mut sigma2_eps_vec = vec![0.0; m];
+    let mut sigma2_u_vec = vec![0.0; m];
+    for (t, pt) in per_point.iter().enumerate() {
+        for j in 0..p {
+            raw_beta_data[j + t * p] = pt.gamma.get(j).copied().unwrap_or(0.0);
+        }
+        sigma2_eps_vec[t] = pt.sigma2_eps;
+        sigma2_u_vec[t] = pt.sigma2_u;
+    }
+    (raw_beta_data, sigma2_eps_vec, sigma2_u_vec)
+}
+
+/// Apply running-mean smoothing to the raw beta matrix and build the result FdMatrix.
+///
+/// Forces `smooth_window` to odd. Returns the smoothed `p × m` FdMatrix.
+fn fast_fmm_smooth_beta(
+    raw_beta_data: Vec<f64>,
+    p: usize,
+    m: usize,
+    smooth_window: usize,
+) -> Result<FdMatrix, FdarError> {
+    // Force smooth_window to an odd value so the half-width formula `half = w / 2`
+    // produces a symmetric window of exactly `w` elements.
+    let w = if smooth_window % 2 == 0 {
+        smooth_window + 1
+    } else {
+        smooth_window
+    };
+    let mut smoothed_beta_data = raw_beta_data.clone();
+    if w > 1 && m > 1 {
+        let half = w / 2;
+        for j in 0..p {
+            for t in 0..m {
+                let lo = t.saturating_sub(half);
+                let hi = (t + half + 1).min(m);
+                let count = (hi - lo) as f64;
+                let sum: f64 = (lo..hi).map(|tt| raw_beta_data[j + tt * p]).sum();
+                smoothed_beta_data[j + t * p] = sum / count;
+            }
+        }
+    }
+    if p > 0 {
+        FdMatrix::from_column_major(smoothed_beta_data, p, m).map_err(|_| {
+            FdarError::ComputationFailed {
+                operation: "fast_fmm",
+                detail: "failed to build beta_matrix".to_string(),
+            }
+        })
+    } else {
+        Ok(FdMatrix::zeros(0, m))
+    }
+}
+
+/// Compute Wald t-statistics and p-values for `fast_fmm`.
+///
+/// Returns `(t_stats p×m, p_values p×m)`.
+fn fast_fmm_wald_inference(
+    beta_matrix: &FdMatrix,
+    covariates: Option<&FdMatrix>,
+    sigma2_eps_vec: &[f64],
+    p: usize,
+    m: usize,
+    n_total: usize,
+    compute_inference: bool,
+) -> Result<(FdMatrix, FdMatrix), FdarError> {
+    if !compute_inference || p == 0 {
+        return Ok((FdMatrix::zeros(p, m), ones_fdmatrix(p, m)));
+    }
+    let xtx_inv_diag = compute_xtx_inv_diag(covariates, p, n_total);
+    let mut t_data = vec![0.0f64; p * m];
+    let mut pv_data = vec![1.0f64; p * m];
+    for j in 0..p {
+        for t in 0..m {
+            let beta_jt = beta_matrix[(j, t)];
+            let se_sq = sigma2_eps_vec[t] * xtx_inv_diag.get(j).copied().unwrap_or(1.0);
+            let se = se_sq.sqrt().max(1e-15);
+            let t_stat = beta_jt / se;
+            let pval = 2.0 * normal_sf(t_stat.abs());
+            t_data[j + t * p] = t_stat;
+            pv_data[j + t * p] = pval.clamp(0.0, 1.0);
+        }
+    }
+    let ts =
+        FdMatrix::from_column_major(t_data, p, m).map_err(|_| FdarError::ComputationFailed {
+            operation: "fast_fmm",
+            detail: "failed to build t_stats".to_string(),
+        })?;
+    let pv =
+        FdMatrix::from_column_major(pv_data, p, m).map_err(|_| FdarError::ComputationFailed {
+            operation: "fast_fmm",
+            detail: "failed to build p_values".to_string(),
+        })?;
+    Ok((ts, pv))
+}
+
 /// Fit a fast massively-univariate functional mixed model.
 ///
 /// Fits a scalar mixed model at each grid point independently, then
@@ -1559,16 +1707,9 @@ pub fn fast_fmm(
     let (subject_map, n_subjects) = build_subject_map(subject_ids);
     let p = covariates.map_or(0, super::matrix::FdMatrix::ncols);
 
-    // Per-gridpoint result container (immutable per-item for safe parallel collect)
-    struct PointwiseResult {
-        gamma: Vec<f64>, // length p (fixed effects at this grid point)
-        sigma2_u: f64,   // random-intercept variance at this grid point
-        sigma2_eps: f64, // residual variance at this grid point
-    }
-
     // Step 1: Fit per-gridpoint scalar mixed models
     // Use column-major zero-copy access: data.column(t) is a contiguous &[f64]
-    let per_point: Vec<PointwiseResult> = iter_maybe_parallel!(0..m)
+    let per_point: Vec<FastFmmPointResult> = iter_maybe_parallel!(0..m)
         .map(|t| {
             let y_t: Vec<f64> = data.column(t).to_vec();
             let r = fit_scalar_mixed_model_tracked(
@@ -1580,7 +1721,7 @@ pub fn fast_fmm(
                 config.max_iter,
                 config.tol,
             );
-            PointwiseResult {
+            FastFmmPointResult {
                 gamma: r.result.gamma,
                 sigma2_u: r.result.sigma2_u,
                 sigma2_eps: r.result.sigma2_eps,
@@ -1589,93 +1730,21 @@ pub fn fast_fmm(
         .collect();
 
     // Unpack into raw p × m beta matrix and per-gridpoint variances
-    let mut raw_beta_data = vec![0.0; p * m]; // row-by-row in column-major: row=j, col=t
-    let mut sigma2_eps_vec = vec![0.0; m];
-    let mut sigma2_u_vec = vec![0.0; m];
+    let (raw_beta_data, sigma2_eps_vec, sigma2_u_vec) = fast_fmm_unpack_per_point(&per_point, p, m);
 
-    for (t, pt) in per_point.iter().enumerate() {
-        // Fill column-major beta: element (j, t) at index j + t * p
-        for j in 0..p {
-            raw_beta_data[j + t * p] = pt.gamma.get(j).copied().unwrap_or(0.0);
-        }
-        sigma2_eps_vec[t] = pt.sigma2_eps;
-        sigma2_u_vec[t] = pt.sigma2_u;
-    }
-
-    // Step 2: Running-mean smoothing along the grid axis (per covariate row)
-    // Force smooth_window to an odd value so the half-width formula `half = w / 2`
-    // produces a symmetric window of exactly `w` elements (for even w the range
-    // [t-half, t+half+1) would be w+1 elements wide — one too many).
-    let w = if config.smooth_window % 2 == 0 {
-        config.smooth_window + 1
-    } else {
-        config.smooth_window
-    };
-    let mut smoothed_beta_data = raw_beta_data.clone();
-    if w > 1 && m > 1 {
-        let half = w / 2;
-        for j in 0..p {
-            for t in 0..m {
-                let lo = t.saturating_sub(half);
-                let hi = (t + half + 1).min(m);
-                let count = (hi - lo) as f64;
-                let sum: f64 = (lo..hi).map(|tt| raw_beta_data[j + tt * p]).sum();
-                smoothed_beta_data[j + t * p] = sum / count;
-            }
-        }
-    }
-
-    // Build the smoothed beta FdMatrix (p × m, column-major)
-    let beta_matrix = if p > 0 {
-        FdMatrix::from_column_major(smoothed_beta_data, p, m).map_err(|_| {
-            FdarError::ComputationFailed {
-                operation: "fast_fmm",
-                detail: "failed to build beta_matrix".to_string(),
-            }
-        })?
-    } else {
-        FdMatrix::zeros(0, m)
-    };
+    // Step 2: Running-mean smoothing + build smoothed beta FdMatrix
+    let beta_matrix = fast_fmm_smooth_beta(raw_beta_data, p, m, config.smooth_window)?;
 
     // Step 3: Wald inference
-    let (t_stats, p_values) = if config.compute_inference && p > 0 {
-        // Compute X'X for standard errors using the first non-zero observation
-        // SE²_j(t) = sigma2_eps(t) * (X'X)^{-1}_{jj}
-        // We accumulate X'X once (same design for all t) then invert
-        let xtx_inv_diag = compute_xtx_inv_diag(covariates, p, n_total);
-
-        let mut t_data = vec![0.0f64; p * m];
-        let mut pv_data = vec![1.0f64; p * m];
-
-        for j in 0..p {
-            for t in 0..m {
-                let beta_jt = beta_matrix[(j, t)];
-                let se_sq = sigma2_eps_vec[t] * xtx_inv_diag.get(j).copied().unwrap_or(1.0);
-                let se = se_sq.sqrt().max(1e-15);
-                let t_stat = beta_jt / se;
-                let pval = 2.0 * normal_sf(t_stat.abs());
-                t_data[j + t * p] = t_stat;
-                pv_data[j + t * p] = pval.clamp(0.0, 1.0);
-            }
-        }
-
-        let ts = FdMatrix::from_column_major(t_data, p, m).map_err(|_| {
-            FdarError::ComputationFailed {
-                operation: "fast_fmm",
-                detail: "failed to build t_stats".to_string(),
-            }
-        })?;
-        let pv = FdMatrix::from_column_major(pv_data, p, m).map_err(|_| {
-            FdarError::ComputationFailed {
-                operation: "fast_fmm",
-                detail: "failed to build p_values".to_string(),
-            }
-        })?;
-        (ts, pv)
-    } else {
-        // No inference or no covariates: zeros / ones
-        (FdMatrix::zeros(p, m), ones_fdmatrix(p, m))
-    };
+    let (t_stats, p_values) = fast_fmm_wald_inference(
+        &beta_matrix,
+        covariates,
+        &sigma2_eps_vec,
+        p,
+        m,
+        n_total,
+        config.compute_inference,
+    )?;
 
     Ok(FastFmmResult {
         beta_matrix,
