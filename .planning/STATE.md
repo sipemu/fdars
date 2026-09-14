@@ -6,16 +6,16 @@ current_phase: 109
 current_phase_name: Complexity Tail & Quality-Gate Green
 current_plan: 4
 status: executing
-stopped_at: Completed 109-10-PLAN.md
-last_updated: "2026-09-14T20:20:50.405Z"
+stopped_at: Completed 109-11-PLAN.md
+last_updated: "2026-09-14T20:41:01.608Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 109 execution resumed (wave continue)
-state_head: 90fa5fd5883a57f70f3200fedb0bfee7da204cb4
+state_head: "0be3e88386d127ae3a2c5b5e39050431f78697bf"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 26
-  completed_plans: 22
+  completed_plans: 23
 ---
 
 # Project State
@@ -106,6 +106,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 109 P08 | 30 | 3 tasks | 3 files |
 | Phase 109 P09 | 12 | 3 tasks | 3 files |
 | Phase 109 P10 | 9 | 3 tasks | 3 files |
+| Phase 109 P11 | 40 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,9 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 109]: fof_re_reconstruct required 2 sub-helpers (extra split vs plan) to clear pmat cog 23 threshold — same pattern as 106-03 boost_fofr
 - [Phase 109]: gamlss_validate split into _dims + _config (not single helper) — cog 30 exceeded threshold after first extraction
 - [Phase 109]: 109-10: EM decomposition: init_em_params + m_step_means_weights + m_step_update_subspace lift run_one_em body verbatim; seeded RNG draw order preserved
+- [Phase 109]: smooth_monotone (cog 57->13): four-seam split across validate/accum/penalty/gn_step helpers
+- [Phase 109]: soft_dtw_backward: bug-preserving extraction — endpoint-seed zero-gradient bug preserved verbatim in sdtw_backward_cell
+- [Phase 109]: depth/dispatch.rs: require_n + depth_dispatch_n2 eliminates 7 repeated n-guard arms in functional_depth
 
 ### Pending Todos
 
@@ -183,8 +187,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T20:20:50.292Z
-Stopped at: Completed 109-10-PLAN.md
+Last session: 2026-09-14T20:41:01.560Z
+Stopped at: Completed 109-11-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
