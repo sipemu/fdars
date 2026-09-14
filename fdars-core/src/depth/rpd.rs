@@ -226,5 +226,6 @@ fn build_augmented(data: &FdMatrix, argvals: &[f64], nderiv: usize, aug_dim: usi
     // Suppress unused variable warning
     let _ = prev_len;
 
-    FdMatrix::from_column_major(aug_data, n, aug_dim).unwrap()
+    FdMatrix::from_column_major(aug_data, n, aug_dim)
+        .expect("aug_data length == n * aug_dim by construction")
 }
