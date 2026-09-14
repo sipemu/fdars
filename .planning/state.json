@@ -16,7 +16,7 @@
     {
       "number": "108",
       "name": "Entropy Extraction & SATD/Unwrap Cleanup",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "109",
@@ -36,8 +36,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step",
-    "reason": "Phase 108 of 6 · executing"
+    "label": "Advance to the next step (plan phase 109)",
+    "reason": "Phase 109 of 6 — needs a plan"
   },
-  "updated_at": "2026-09-14T10:18:27.836Z"
+  "updated_at": "2026-09-14T11:55:23.011Z"
 }

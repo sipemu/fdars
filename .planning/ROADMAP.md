@@ -26,7 +26,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 
 - [x] **Phase 106: Top-Level Complexity Hotspots** - Decompose the 8 worst-ranked functions under pmat thresholds (QUAL-01) (completed 2026-09-14)
 - [x] **Phase 107: SPM Complexity Cluster** - Decompose the dense `src/spm/` cluster under pmat thresholds (QUAL-02) (completed 2026-09-14)
-- [ ] **Phase 108: Entropy Extraction & SATD/Unwrap Cleanup** - Extract repeated patterns; reword SATD false-positives; fix the critical unwrap (QUAL-04 + QUAL-05)
+- [x] **Phase 108: Entropy Extraction & SATD/Unwrap Cleanup** - Extract repeated patterns; reword SATD false-positives; fix the critical unwrap (QUAL-04 + QUAL-05) (completed 2026-09-14)
 - [ ] **Phase 109: Complexity Tail & Quality-Gate Green** - Clear all remaining complexity violations so `pmat quality-gate` reports 0 findings (QUAL-03)
 - [ ] **Phase 110: pmat CI Guardrail** - Add a GitHub Actions pmat quality-gate job that fails the build if violations return (CI-01)
 - [ ] **Phase 111: Release Preparation & Verification** - Bump 0.45.0 → 0.46.0, CHANGELOG, all gates green incl. `pmat quality-gate` + `cargo package` (REL-01)
@@ -88,7 +88,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 - [x] 108-01-PLAN.md — TRACER: reword 2 SATD doc-comment false-positives + fix the critical `.unwrap()` at rpd.rs:229 (satd→0, defects→0)
 - [x] 108-02-PLAN.md — entropy in `#[cfg(test)]` modules: shared `#[cfg(test)]` helpers in test_helpers.rs + call-site substitutions
 - [x] 108-03-PLAN.md — entropy in production files: private per-file helpers (fem_smoothing, friedman, soft_dtw, scalar_on_shape, classification/fit)
-- [ ] 108-04-PLAN.md — entropy in `///` doc-comment examples + STABLE 3× entropy 0 confirmation / escalation
+- [x] 108-04-PLAN.md — entropy in `///` doc-comment examples + STABLE 3× entropy 0 confirmation / escalation
 
 ### Phase 109: Complexity Tail & Quality-Gate Green
 
@@ -140,7 +140,7 @@ Phases 106, 107, and 108 are independent and may run in parallel (or in any orde
 |-------|----------------|--------|-----------|
 | 106. Top-Level Complexity Hotspots | 4/4 | Complete    | 2026-09-14 |
 | 107. SPM Complexity Cluster | 4/4 | Complete    | 2026-09-14 |
-| 108. Entropy Extraction & SATD/Unwrap Cleanup | 0/4 | Planned | - |
+| 108. Entropy Extraction & SATD/Unwrap Cleanup | 4/4 | Complete    | 2026-09-14 |
 | 109. Complexity Tail & Quality-Gate Green | 0/TBD | Not started | - |
 | 110. pmat CI Guardrail | 0/TBD | Not started | - |
 | 111. Release Preparation & Verification | 0/TBD | Not started | - |
