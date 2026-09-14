@@ -87,31 +87,11 @@ pub fn select_ncomp(eigenvalues: &[f64], method: &NcompMethod) -> Result<usize, 
         });
     }
 
-    // Validate eigenvalues: NaN or negative values indicate upstream issues
-    // (e.g., numerical instability in FPCA or corrupted data).
-    for (i, &ev) in eigenvalues.iter().enumerate() {
-        if ev.is_nan() {
-            return Err(FdarError::InvalidParameter {
-                parameter: "eigenvalues",
-                message: format!("eigenvalue[{i}] is NaN"),
-            });
-        }
-        if ev < 0.0 {
-            return Err(FdarError::InvalidParameter {
-                parameter: "eigenvalues",
-                message: format!("eigenvalue[{i}] = {ev} is negative"),
-            });
-        }
-    }
+    ncomp_validate_eigenvalues(eigenvalues)?;
 
     match method {
         NcompMethod::CumulativeVariance(threshold) => {
-            if *threshold <= 0.0 || *threshold > 1.0 {
-                return Err(FdarError::InvalidParameter {
-                    parameter: "threshold",
-                    message: format!("threshold must be in (0, 1], got {threshold}"),
-                });
-            }
+            ncomp_validate_threshold(*threshold)?;
             cumulative_variance_ncomp(eigenvalues, *threshold)
         }
         NcompMethod::Elbow => {
@@ -129,6 +109,39 @@ pub fn select_ncomp(eigenvalues: &[f64], method: &NcompMethod) -> Result<usize, 
             Ok(kaiser_ncomp(eigenvalues))
         }
     }
+}
+
+/// Validate that all eigenvalues are finite and non-negative.
+///
+/// NaN or negative values indicate upstream issues such as numerical instability
+/// in FPCA or corrupted data.
+fn ncomp_validate_eigenvalues(eigenvalues: &[f64]) -> Result<(), FdarError> {
+    for (i, &ev) in eigenvalues.iter().enumerate() {
+        if ev.is_nan() {
+            return Err(FdarError::InvalidParameter {
+                parameter: "eigenvalues",
+                message: format!("eigenvalue[{i}] is NaN"),
+            });
+        }
+        if ev < 0.0 {
+            return Err(FdarError::InvalidParameter {
+                parameter: "eigenvalues",
+                message: format!("eigenvalue[{i}] = {ev} is negative"),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Validate that the cumulative-variance threshold is in (0, 1].
+fn ncomp_validate_threshold(threshold: f64) -> Result<(), FdarError> {
+    if threshold <= 0.0 || threshold > 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "threshold",
+            message: format!("threshold must be in (0, 1], got {threshold}"),
+        });
+    }
+    Ok(())
 }
 
 /// Cumulative variance method: first k where cumsum/total >= threshold.
