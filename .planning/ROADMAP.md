@@ -106,8 +106,8 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 
 - [x] 109-01-PLAN.md — TRACER: alignment fpns/closed/bayesian (4 fns) — prove extract→pmat→commit loop
 - [x] 109-02-PLAN.md — alignment clustering/nd/generative (8 fns)
-- [ ] 109-03-PLAN.md — peer.rs (3 fns, heaviest cognitive scores)
-- [ ] 109-04-PLAN.md — clustering_advanced.rs (5 fns, incl. funfem_cluster residual)
+- [x] 109-03-PLAN.md — peer.rs (3 fns, heaviest cognitive scores)
+- [x] 109-04-PLAN.md — clustering_advanced.rs (5 fns, incl. funfem_cluster residual)
 - [ ] 109-05-PLAN.md — coclustering/kernel_kmeans/kshape (6 fns)
 - [ ] 109-06-PLAN.md — helpers.rs shared infra (4 fns)
 - [ ] 109-07-PLAN.md — scalar_on_function multi/additive/fregre_lm (7 fns)
