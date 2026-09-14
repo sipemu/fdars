@@ -24,32 +24,52 @@ pub struct GenerativeModelResult {
     pub scores: FdMatrix,
 }
 
+// ─── Shared helpers ─────────────────────────────────────────────────────────
+
+/// Reconstruct a curve value vector from an augmented SRSF coefficient vector.
+///
+/// The augmented coordinate `q_new[m]` encodes the curve level at the domain
+/// midpoint. Reconstruct from zero start and shift so the midpoint matches
+/// (passing it as `srsf_inverse`'s `f0` would offset the whole curve — GH #34).
+fn reconstruct_curve_from_aug_srsf(q_new: &[f64], argvals: &[f64], m: usize) -> Vec<f64> {
+    let aug_val = q_new[m];
+    let f_mid = aug_val.signum() * aug_val * aug_val;
+    let mut f_new = srsf_inverse(&q_new[..m], argvals, 0.0);
+    let shift = f_mid - f_new[m / 2];
+    for val in f_new.iter_mut() {
+        *val += shift;
+    }
+    f_new
+}
+
+/// Map a phase shooting vector to a warping function on the original domain.
+///
+/// Applies exp-map from `mu_psi`, converts psi -> gamma on [0,1], then rescales
+/// to [t0, t1] and normalises boundary conditions.
+fn phase_shooting_to_warp(
+    v: &[f64],
+    mu_psi: &[f64],
+    time: &[f64],
+    argvals: &[f64],
+    t0: f64,
+    domain: f64,
+) -> Vec<f64> {
+    let psi_new = exp_map_sphere(mu_psi, v, time);
+    let gam_01 = psi_to_gam(&psi_new, time);
+    let mut gamma: Vec<f64> = gam_01.iter().map(|&g| t0 + g * domain).collect();
+    normalize_warp(&mut gamma, argvals);
+    gamma
+}
+
 // ─── Gaussian Generative Model ──────────────────────────────────────────────
 
-/// Generate random curves from a fitted Gaussian model on aligned data.
-///
-/// Samples amplitude and phase components independently from their
-/// respective FPCA score distributions (Gaussian with covariance = diag(eigenvalues)),
-/// then combines them to produce synthetic functional data.
-///
-/// # Arguments
-/// * `karcher` — Pre-computed Karcher mean result (with aligned data and gammas)
-/// * `argvals` — Evaluation points (length m)
-/// * `ncomp` — Number of principal components for both amplitude and phase
-/// * `n_samples` — Number of curves to generate
-/// * `seed` — RNG seed for reproducibility
-///
-/// # Errors
-/// Returns `FdarError::InvalidDimension` if dimensions are inconsistent or
-/// `FdarError::ComputationFailed` if FPCA fails.
-#[must_use = "expensive computation whose result should not be discarded"]
-pub fn gauss_model(
+/// Validate common inputs for gauss_model and return (n, m).
+fn gauss_validate(
     karcher: &KarcherMeanResult,
     argvals: &[f64],
     ncomp: usize,
     n_samples: usize,
-    seed: u64,
-) -> Result<GenerativeModelResult, FdarError> {
+) -> Result<(usize, usize), FdarError> {
     let (n, m) = karcher.aligned_data.shape();
     if argvals.len() != m {
         return Err(FdarError::InvalidDimension {
@@ -77,6 +97,34 @@ pub fn gauss_model(
             message: "n_samples must be >= 1".to_string(),
         });
     }
+    Ok((n, m))
+}
+
+/// Generate random curves from a fitted Gaussian model on aligned data.
+///
+/// Samples amplitude and phase components independently from their
+/// respective FPCA score distributions (Gaussian with covariance = diag(eigenvalues)),
+/// then combines them to produce synthetic functional data.
+///
+/// # Arguments
+/// * `karcher` — Pre-computed Karcher mean result (with aligned data and gammas)
+/// * `argvals` — Evaluation points (length m)
+/// * `ncomp` — Number of principal components for both amplitude and phase
+/// * `n_samples` — Number of curves to generate
+/// * `seed` — RNG seed for reproducibility
+///
+/// # Errors
+/// Returns `FdarError::InvalidDimension` if dimensions are inconsistent or
+/// `FdarError::ComputationFailed` if FPCA fails.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn gauss_model(
+    karcher: &KarcherMeanResult,
+    argvals: &[f64],
+    ncomp: usize,
+    n_samples: usize,
+    seed: u64,
+) -> Result<GenerativeModelResult, FdarError> {
+    let (_n, m) = gauss_validate(karcher, argvals, ncomp, n_samples)?;
 
     // Amplitude FPCA
     let vert = vert_fpca(karcher, argvals, ncomp)?;
@@ -120,18 +168,7 @@ pub fn gauss_model(
             }
         }
 
-        // Reconstruct curve from SRSF. The augmented coordinate encodes the
-        // curve level at the domain MIDPOINT (see `build_augmented_srsfs`), not
-        // at `argvals[0]`. Reconstruct from a zero start and shift so the
-        // midpoint matches; passing the level as `srsf_inverse`'s `f0` (the
-        // value at the start) offsets the whole curve by a constant (GH #34).
-        let aug_val = q_new[m];
-        let f_mid = aug_val.signum() * aug_val * aug_val;
-        let mut f_new = srsf_inverse(&q_new[..m], argvals, 0.0);
-        let shift = f_mid - f_new[m / 2];
-        for val in f_new.iter_mut() {
-            *val += shift;
-        }
+        let f_new = reconstruct_curve_from_aug_srsf(&q_new, argvals, m);
 
         // Generate phase scores and reconstruct warping function
         let mut v = vec![0.0; m];
@@ -145,13 +182,7 @@ pub fn gauss_model(
             }
         }
 
-        // Map shooting vector to sphere via exp map at mean psi
-        let psi_new = exp_map_sphere(&mu_psi, &v, &time);
-        let gam_01 = psi_to_gam(&psi_new, &time);
-
-        // Rescale gamma to original domain
-        let mut gamma: Vec<f64> = gam_01.iter().map(|&g| t0 + g * domain).collect();
-        normalize_warp(&mut gamma, argvals);
+        let gamma = phase_shooting_to_warp(&v, &mu_psi, &time, argvals, t0, domain);
 
         // Apply warp to generate final sample
         let sample = reparameterize_curve(&f_new, argvals, &gamma);
@@ -167,6 +198,118 @@ pub fn gauss_model(
         warps,
         scores,
     })
+}
+
+// ─── Joint Gaussian Generative Model ────────────────────────────────────────
+
+/// Build the joint score matrix [vert_scores | balance_c * horiz_scores].
+fn build_joint_scores(
+    vert_scores: &FdMatrix,
+    horiz_scores: &FdMatrix,
+    n: usize,
+    vert_ncomp: usize,
+    horiz_ncomp: usize,
+    balance_c: f64,
+) -> FdMatrix {
+    let total_ncomp = vert_ncomp + horiz_ncomp;
+    let mut joint = FdMatrix::zeros(n, total_ncomp);
+    for i in 0..n {
+        for k in 0..vert_ncomp {
+            joint[(i, k)] = vert_scores[(i, k)];
+        }
+        for k in 0..horiz_ncomp {
+            joint[(i, vert_ncomp + k)] = balance_c * horiz_scores[(i, k)];
+        }
+    }
+    joint
+}
+
+/// Estimate column means and variances of a joint score matrix.
+fn joint_score_mean_var(
+    joint_scores: &FdMatrix,
+    n: usize,
+    total_ncomp: usize,
+) -> (Vec<f64>, Vec<f64>) {
+    let mut joint_mean = vec![0.0; total_ncomp];
+    for k in 0..total_ncomp {
+        for i in 0..n {
+            joint_mean[k] += joint_scores[(i, k)];
+        }
+        joint_mean[k] /= n as f64;
+    }
+    let mut joint_var = vec![0.0; total_ncomp];
+    for k in 0..total_ncomp {
+        for i in 0..n {
+            let diff = joint_scores[(i, k)] - joint_mean[k];
+            joint_var[k] += diff * diff;
+        }
+        joint_var[k] /= (n - 1).max(1) as f64;
+    }
+    (joint_mean, joint_var)
+}
+
+/// Sample one joint score vector from a diagonal Gaussian.
+///
+/// Consumes one `rng.sample(StandardNormal)` per component.
+fn sample_joint_z(
+    rng: &mut impl Rng,
+    joint_mean: &[f64],
+    joint_var: &[f64],
+    total_ncomp: usize,
+    scores_out: &mut FdMatrix,
+    i: usize,
+) -> Vec<f64> {
+    let mut joint_z = vec![0.0; total_ncomp];
+    for k in 0..total_ncomp {
+        let z: f64 = rng.sample(StandardNormal);
+        joint_z[k] = joint_mean[k] + z * joint_var[k].max(0.0).sqrt();
+        scores_out[(i, k)] = joint_z[k];
+    }
+    joint_z
+}
+
+/// Reconstruct amplitude curve from joint_z scores and mean SRSF.
+fn reconstruct_amplitude(
+    joint_z: &[f64],
+    mean_q: &[f64],
+    vert_eigenfunctions_q: &FdMatrix,
+    vert_ncomp: usize,
+    m_aug: usize,
+    argvals: &[f64],
+    m: usize,
+) -> Vec<f64> {
+    let mut q_new = vec![0.0; m_aug];
+    q_new[..m_aug].copy_from_slice(&mean_q[..m_aug]);
+    for k in 0..vert_ncomp {
+        let score_k = joint_z[k];
+        for j in 0..m_aug {
+            q_new[j] += score_k * vert_eigenfunctions_q[(k, j)];
+        }
+    }
+    reconstruct_curve_from_aug_srsf(&q_new, argvals, m)
+}
+
+/// Reconstruct phase shooting vector from joint_z, undoing balance_c scaling.
+fn reconstruct_phase_shooting(
+    joint_z: &[f64],
+    horiz_eigenfunctions_psi: &FdMatrix,
+    vert_ncomp: usize,
+    horiz_ncomp: usize,
+    m: usize,
+    balance_c: f64,
+) -> Vec<f64> {
+    let mut v = vec![0.0; m];
+    for k in 0..horiz_ncomp {
+        let score_k = if balance_c.abs() > 1e-15 {
+            joint_z[vert_ncomp + k] / balance_c
+        } else {
+            0.0
+        };
+        for j in 0..m {
+            v[j] += score_k * horiz_eigenfunctions_psi[(k, j)];
+        }
+    }
+    v
 }
 
 /// Generate random curves from a joint Gaussian model preserving amplitude-phase
@@ -196,26 +339,7 @@ pub fn joint_gauss_model(
     balance_c: f64,
     seed: u64,
 ) -> Result<GenerativeModelResult, FdarError> {
-    let (_n, m) = karcher.aligned_data.shape();
-    if argvals.len() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "argvals",
-            expected: format!("length {m}"),
-            actual: format!("length {}", argvals.len()),
-        });
-    }
-    if ncomp < 1 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "ncomp",
-            message: "ncomp must be >= 1".to_string(),
-        });
-    }
-    if n_samples < 1 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "n_samples",
-            message: "n_samples must be >= 1".to_string(),
-        });
-    }
+    let (_n_ignored, m) = gauss_validate(karcher, argvals, ncomp, n_samples)?;
 
     // Amplitude FPCA
     let vert = vert_fpca(karcher, argvals, ncomp)?;
@@ -229,34 +353,15 @@ pub fn joint_gauss_model(
     let total_ncomp = vert_ncomp + horiz_ncomp;
     let n = karcher.aligned_data.nrows();
 
-    // Build joint score matrix: [vert_scores | balance_c * horiz_scores]
-    let mut joint_scores = FdMatrix::zeros(n, total_ncomp);
-    for i in 0..n {
-        for k in 0..vert_ncomp {
-            joint_scores[(i, k)] = vert.scores[(i, k)];
-        }
-        for k in 0..horiz_ncomp {
-            joint_scores[(i, vert_ncomp + k)] = balance_c * horiz.scores[(i, k)];
-        }
-    }
-
-    // Estimate joint covariance (diagonal for sampling)
-    let mut joint_mean = vec![0.0; total_ncomp];
-    for k in 0..total_ncomp {
-        for i in 0..n {
-            joint_mean[k] += joint_scores[(i, k)];
-        }
-        joint_mean[k] /= n as f64;
-    }
-
-    let mut joint_var = vec![0.0; total_ncomp];
-    for k in 0..total_ncomp {
-        for i in 0..n {
-            let diff = joint_scores[(i, k)] - joint_mean[k];
-            joint_var[k] += diff * diff;
-        }
-        joint_var[k] /= (n - 1).max(1) as f64;
-    }
+    let joint_scores = build_joint_scores(
+        &vert.scores,
+        &horiz.scores,
+        n,
+        vert_ncomp,
+        horiz_ncomp,
+        balance_c,
+    );
+    let (joint_mean, joint_var) = joint_score_mean_var(&joint_scores, n, total_ncomp);
 
     // Sphere/warping setup
     let t0 = argvals[0];
@@ -275,52 +380,35 @@ pub fn joint_gauss_model(
     for i in 0..n_samples {
         let mut rng = crate::helpers::seed_for_thread(seed, i);
 
-        // Sample from joint distribution
-        let mut joint_z = vec![0.0; total_ncomp];
-        for k in 0..total_ncomp {
-            let z: f64 = rng.sample(StandardNormal);
-            joint_z[k] = joint_mean[k] + z * joint_var[k].max(0.0).sqrt();
-            scores_out[(i, k)] = joint_z[k];
-        }
+        let joint_z = sample_joint_z(
+            &mut rng,
+            &joint_mean,
+            &joint_var,
+            total_ncomp,
+            &mut scores_out,
+            i,
+        );
 
-        // Reconstruct amplitude from SRSF
-        let mut q_new = vec![0.0; m_aug];
-        q_new[..m_aug].copy_from_slice(&mean_q[..m_aug]);
-        for k in 0..vert_ncomp {
-            let score_k = joint_z[k];
-            for j in 0..m_aug {
-                q_new[j] += score_k * vert.eigenfunctions_q[(k, j)];
-            }
-        }
-        // Anchor the reconstruction at the midpoint level (see `gauss_model`
-        // and GH #34): the augmented coordinate is the curve value at m/2, not
-        // at argvals[0], so shift rather than pass it as srsf_inverse's f0.
-        let aug_val = q_new[m];
-        let f_mid = aug_val.signum() * aug_val * aug_val;
-        let mut f_new = srsf_inverse(&q_new[..m], argvals, 0.0);
-        let shift = f_mid - f_new[m / 2];
-        for val in f_new.iter_mut() {
-            *val += shift;
-        }
+        let f_new = reconstruct_amplitude(
+            &joint_z,
+            mean_q,
+            &vert.eigenfunctions_q,
+            vert_ncomp,
+            m_aug,
+            argvals,
+            m,
+        );
 
-        // Reconstruct phase from shooting vector
-        let mut v = vec![0.0; m];
-        for k in 0..horiz_ncomp {
-            // Undo balance_c scaling
-            let score_k = if balance_c.abs() > 1e-15 {
-                joint_z[vert_ncomp + k] / balance_c
-            } else {
-                0.0
-            };
-            for j in 0..m {
-                v[j] += score_k * horiz.eigenfunctions_psi[(k, j)];
-            }
-        }
+        let v = reconstruct_phase_shooting(
+            &joint_z,
+            &horiz.eigenfunctions_psi,
+            vert_ncomp,
+            horiz_ncomp,
+            m,
+            balance_c,
+        );
 
-        let psi_new = exp_map_sphere(&mu_psi, &v, &time);
-        let gam_01 = psi_to_gam(&psi_new, &time);
-        let mut gamma: Vec<f64> = gam_01.iter().map(|&g| t0 + g * domain).collect();
-        normalize_warp(&mut gamma, argvals);
+        let gamma = phase_shooting_to_warp(&v, &mu_psi, &time, argvals, t0, domain);
 
         let sample = reparameterize_curve(&f_new, argvals, &gamma);
         for j in 0..m {

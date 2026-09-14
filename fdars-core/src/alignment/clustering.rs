@@ -174,7 +174,7 @@ fn kmeans_pp_init(dist_mat: &FdMatrix, k: usize, rng: &mut StdRng) -> Vec<usize>
 fn update_medoids(
     dist_mat: &FdMatrix,
     labels: &[usize],
-    medoids: &mut Vec<usize>,
+    medoids: &mut [usize],
     k: usize,
     n: usize,
 ) {
