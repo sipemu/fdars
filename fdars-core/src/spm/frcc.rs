@@ -202,39 +202,8 @@ pub fn frcc_phase1(
     argvals: &[f64],
     config: &FrccConfig,
 ) -> Result<FrccChart, FdarError> {
-    let (n, m) = y_curves.shape();
+    let (n, m) = frcc_validate(y_curves, predictors, argvals, config)?;
     let p = predictors.ncols();
-
-    if n < 6 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y_curves",
-            expected: "at least 6 observations".to_string(),
-            actual: format!("{n} observations"),
-        });
-    }
-    if predictors.nrows() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "predictors",
-            expected: format!("{n} rows"),
-            actual: format!("{} rows", predictors.nrows()),
-        });
-    }
-    if argvals.len() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "argvals",
-            expected: format!("{m}"),
-            actual: format!("{}", argvals.len()),
-        });
-    }
-    if config.tuning_fraction <= 0.0 || config.tuning_fraction >= 1.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "tuning_fraction",
-            message: format!(
-                "tuning_fraction must be in (0, 1), got {}",
-                config.tuning_fraction
-            ),
-        });
-    }
 
     // Split
     let (tune_idx, cal_idx) = split_indices(n, config.tuning_fraction, config.seed);
@@ -247,35 +216,9 @@ pub fn frcc_phase1(
     let n_tune = tune_y.nrows();
     let n_cal = cal_y.nrows();
 
-    if n_cal < 2 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y_curves",
-            expected: "calibration set with at least 2 observations".to_string(),
-            actual: format!("{n_cal} observations in calibration set"),
-        });
-    }
+    frcc_validate_split(n_cal, n_tune, p)?;
 
-    // Ensure enough observations for FOSR (needs n >= p + 2)
-    if n_tune < p + 2 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y_curves",
-            expected: format!("tuning set with at least {} observations", p + 2),
-            actual: format!("{n_tune} observations in tuning set"),
-        });
-    }
-
-    // FOSR on tuning set
-    if config.fosr_lambda < 0.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "fosr_lambda",
-            message: format!(
-                "fosr_lambda must be non-negative, got {}",
-                config.fosr_lambda
-            ),
-        });
-    }
-    let fosr_lambda = config.fosr_lambda;
-    let fosr_result = fosr(&tune_y, &tune_x, fosr_lambda)?;
+    let fosr_result = fosr(&tune_y, &tune_x, config.fosr_lambda)?;
 
     // Compute R² on tuning set.
     // R² is computed pointwise across all grid points, implicitly assuming a
@@ -291,24 +234,7 @@ pub fn frcc_phase1(
     // appropriate but is not currently implemented. In practice, the
     // difference is small when the grid has < 3x variation in spacing.
     let tune_predicted = predict_fosr(&fosr_result, &tune_x);
-    let fosr_r_squared = {
-        let (n_t, m_t) = tune_y.shape();
-        let mut ss_res = 0.0;
-        let mut ss_tot = 0.0;
-        // Per-point mean for total SS
-        for j in 0..m_t {
-            let col_mean: f64 = (0..n_t).map(|i| tune_y[(i, j)]).sum::<f64>() / n_t as f64;
-            for i in 0..n_t {
-                ss_res += (tune_y[(i, j)] - tune_predicted[(i, j)]).powi(2);
-                ss_tot += (tune_y[(i, j)] - col_mean).powi(2);
-            }
-        }
-        if ss_tot > 0.0 {
-            1.0 - ss_res / ss_tot
-        } else {
-            0.0
-        }
-    };
+    let fosr_r_squared = frcc_compute_r_squared(&tune_y, &tune_predicted);
 
     if fosr_r_squared < config.min_r_squared {
         return Err(FdarError::ComputationFailed {
@@ -364,6 +290,99 @@ pub fn frcc_phase1(
         fosr_r_squared,
         config: config.clone(),
     })
+}
+
+/// Validate frcc_phase1 inputs. Returns `(n, m)` on success.
+fn frcc_validate(
+    y_curves: &FdMatrix,
+    predictors: &FdMatrix,
+    argvals: &[f64],
+    config: &FrccConfig,
+) -> Result<(usize, usize), FdarError> {
+    let (n, m) = y_curves.shape();
+    if n < 6 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_curves",
+            expected: "at least 6 observations".to_string(),
+            actual: format!("{n} observations"),
+        });
+    }
+    if predictors.nrows() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "predictors",
+            expected: format!("{n} rows"),
+            actual: format!("{} rows", predictors.nrows()),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    if config.tuning_fraction <= 0.0 || config.tuning_fraction >= 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "tuning_fraction",
+            message: format!(
+                "tuning_fraction must be in (0, 1), got {}",
+                config.tuning_fraction
+            ),
+        });
+    }
+    if config.fosr_lambda < 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "fosr_lambda",
+            message: format!(
+                "fosr_lambda must be non-negative, got {}",
+                config.fosr_lambda
+            ),
+        });
+    }
+    Ok((n, m))
+}
+
+/// Validate post-split sizes: calibration set ≥ 2, tuning set ≥ p + 2.
+fn frcc_validate_split(n_cal: usize, n_tune: usize, p: usize) -> Result<(), FdarError> {
+    if n_cal < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_curves",
+            expected: "calibration set with at least 2 observations".to_string(),
+            actual: format!("{n_cal} observations in calibration set"),
+        });
+    }
+    // Ensure enough observations for FOSR (needs n >= p + 2)
+    if n_tune < p + 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_curves",
+            expected: format!("tuning set with at least {} observations", p + 2),
+            actual: format!("{n_tune} observations in tuning set"),
+        });
+    }
+    Ok(())
+}
+
+/// Compute pointwise R² between observed and predicted tuning-set curves.
+///
+/// R² is computed pointwise across all grid points, implicitly assuming a
+/// uniform grid. Returns 0.0 when the total sum of squares is zero.
+fn frcc_compute_r_squared(tune_y: &FdMatrix, tune_predicted: &FdMatrix) -> f64 {
+    let (n_t, m_t) = tune_y.shape();
+    let mut ss_res = 0.0;
+    let mut ss_tot = 0.0;
+    // Per-point mean for total SS
+    for j in 0..m_t {
+        let col_mean: f64 = (0..n_t).map(|i| tune_y[(i, j)]).sum::<f64>() / n_t as f64;
+        for i in 0..n_t {
+            ss_res += (tune_y[(i, j)] - tune_predicted[(i, j)]).powi(2);
+            ss_tot += (tune_y[(i, j)] - col_mean).powi(2);
+        }
+    }
+    if ss_tot > 0.0 {
+        1.0 - ss_res / ss_tot
+    } else {
+        0.0
+    }
 }
 
 /// Monitor new data against a Functional Regression Control Chart.
