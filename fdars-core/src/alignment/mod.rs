@@ -513,22 +513,51 @@ where
         parent.resize(size, u32::MAX);
         e[0] = 0.0;
 
-        for tr in 0..nrows {
-            for tc in 0..ncols {
-                if tr == 0 && tc == 0 {
-                    continue;
-                }
-                if let Some(r) = band {
-                    if tr.abs_diff(tc) > r {
-                        continue;
-                    }
-                }
-                dp_relax_cell(e, parent, ncols, tr, tc, &edge_cost);
-            }
-        }
+        dp_fill_grid(e, parent, nrows, ncols, band, &edge_cost);
 
         dp_traceback(parent, nrows, ncols)
     })
+}
+
+/// Fill the DP cost grid and parent pointers.
+///
+/// Visits every cell in row-major order, skipping the origin and any cells
+/// outside the optional Sakoe–Chiba band, then relaxes via the coprime neighborhood.
+fn dp_fill_grid<F>(
+    e: &mut [f64],
+    parent: &mut [u32],
+    nrows: usize,
+    ncols: usize,
+    band: Option<usize>,
+    edge_cost: &F,
+) where
+    F: Fn(usize, usize, usize, usize) -> f64,
+{
+    for tr in 0..nrows {
+        for tc in 0..ncols {
+            if dp_skip_cell(tr, tc, band) {
+                continue;
+            }
+            dp_relax_cell(e, parent, ncols, tr, tc, edge_cost);
+        }
+    }
+}
+
+/// Return `true` if the cell `(tr, tc)` should be skipped during grid fill.
+///
+/// Skips the origin `(0, 0)` (pre-initialized to 0) and any cell outside the
+/// optional Sakoe–Chiba band `|tr − tc| > r`.
+#[inline]
+fn dp_skip_cell(tr: usize, tc: usize, band: Option<usize>) -> bool {
+    if tr == 0 && tc == 0 {
+        return true;
+    }
+    if let Some(r) = band {
+        if tr.abs_diff(tc) > r {
+            return true;
+        }
+    }
+    false
 }
 
 /// Convert a band width expressed as a fraction of the domain into an index

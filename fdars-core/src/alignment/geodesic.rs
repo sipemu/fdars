@@ -270,37 +270,28 @@ pub fn curve_geodesic_nd(
     let mut distances = Vec::with_capacity(n_points);
 
     for (k, &t_k) in parameter_values.iter().enumerate() {
-        // Phase: geodesic on the Hilbert sphere
-        let scaled_v: Vec<f64> = v.iter().map(|&vi| t_k * vi).collect();
-        let psi_k = exp_map_sphere(&psi_id, &scaled_v, &time_01);
-        let mut gamma_k_01 = psi_to_gam(&psi_k, &time_01);
-        for j in 0..m {
-            gamma_k_01[j] = t0 + gamma_k_01[j] * domain;
-        }
-        normalize_warp(&mut gamma_k_01, argvals);
-
+        let (gamma_k_01, dist_k) = geodesic_nd_step(
+            t_k,
+            m,
+            d,
+            &v,
+            &psi_id,
+            &time_01,
+            t0,
+            domain,
+            argvals,
+            &q1,
+            &q2a,
+            f1,
+            &result.f_aligned,
+            &weights,
+            &mut dim_curves,
+            k,
+        );
         for j in 0..m {
             warps_mat[(k, j)] = gamma_k_01[j];
         }
-
-        // Per-dimension amplitude interpolation + reconstruction
-        let mut dist_sq = 0.0;
-        for dd in 0..d {
-            let q_k: Vec<f64> = (0..m)
-                .map(|j| (1.0 - t_k) * q1[dd][j] + t_k * q2a[dd][j])
-                .collect();
-
-            let f0_k = (1.0 - t_k) * f1.dims[dd][(0, 0)] + t_k * result.f_aligned[dd][0];
-            let f_k = srsf_inverse(&q_k, argvals, f0_k);
-
-            let d_k = l2_distance(&q1[dd], &q_k, &weights);
-            dist_sq += d_k * d_k;
-
-            for j in 0..m {
-                dim_curves[dd][(k, j)] = f_k[j];
-            }
-        }
-        distances.push(dist_sq.sqrt());
+        distances.push(dist_k);
     }
 
     Ok(GeodesicPathNd {
@@ -309,6 +300,55 @@ pub fn curve_geodesic_nd(
         distances,
         parameter_values,
     })
+}
+
+/// Compute one interpolation step of the N-D geodesic.
+///
+/// Returns the rescaled warp `gamma_k` (length m) and the geodesic distance at `t_k`.
+/// Writes the per-dimension amplitude-interpolated curve into `dim_curves[dd][k, ..]`.
+#[allow(clippy::too_many_arguments)]
+fn geodesic_nd_step(
+    t_k: f64,
+    m: usize,
+    d: usize,
+    v: &[f64],
+    psi_id: &[f64],
+    time_01: &[f64],
+    t0: f64,
+    domain: f64,
+    argvals: &[f64],
+    q1: &[Vec<f64>],
+    q2a: &[Vec<f64>],
+    f1: &FdCurveSet,
+    f_aligned: &[Vec<f64>],
+    weights: &[f64],
+    dim_curves: &mut [FdMatrix],
+    k: usize,
+) -> (Vec<f64>, f64) {
+    // Phase: geodesic on the Hilbert sphere
+    let scaled_v: Vec<f64> = v.iter().map(|&vi| t_k * vi).collect();
+    let psi_k = exp_map_sphere(psi_id, &scaled_v, time_01);
+    let mut gamma_k_01 = psi_to_gam(&psi_k, time_01);
+    for j in 0..m {
+        gamma_k_01[j] = t0 + gamma_k_01[j] * domain;
+    }
+    normalize_warp(&mut gamma_k_01, argvals);
+
+    // Per-dimension amplitude interpolation + reconstruction
+    let mut dist_sq = 0.0;
+    for dd in 0..d {
+        let q_k: Vec<f64> = (0..m)
+            .map(|j| (1.0 - t_k) * q1[dd][j] + t_k * q2a[dd][j])
+            .collect();
+        let f0_k = (1.0 - t_k) * f1.dims[dd][(0, 0)] + t_k * f_aligned[dd][0];
+        let f_k = srsf_inverse(&q_k, argvals, f0_k);
+        let d_k = l2_distance(&q1[dd], &q_k, weights);
+        dist_sq += d_k * d_k;
+        for j in 0..m {
+            dim_curves[dd][(k, j)] = f_k[j];
+        }
+    }
+    (gamma_k_01, dist_sq.sqrt())
 }
 
 #[cfg(test)]

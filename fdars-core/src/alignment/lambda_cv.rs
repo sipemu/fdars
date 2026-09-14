@@ -121,34 +121,7 @@ pub fn lambda_cv(
     let mut cv_scores = Vec::with_capacity(config.lambdas.len());
 
     for &lambda in &config.lambdas {
-        let mut fold_scores = Vec::with_capacity(k_max);
-
-        for k in 0..k_max {
-            let (train_idx, test_idx) = fold_indices(&folds, k);
-            if train_idx.is_empty() || test_idx.is_empty() {
-                continue;
-            }
-
-            let train_data = subset_rows(data, &train_idx);
-            let km = karcher_mean(&train_data, argvals, config.max_iter, config.tol, lambda);
-
-            let fold_dist: f64 = test_idx
-                .iter()
-                .map(|&idx| {
-                    let test_curve = data.row(idx);
-                    elastic_distance(&test_curve, &km.mean, argvals, lambda)
-                })
-                .sum::<f64>()
-                / test_idx.len() as f64;
-
-            fold_scores.push(fold_dist);
-        }
-
-        let mean_score = if fold_scores.is_empty() {
-            f64::INFINITY
-        } else {
-            fold_scores.iter().sum::<f64>() / fold_scores.len() as f64
-        };
+        let mean_score = lambda_cv_score(data, argvals, &folds, k_max, config, lambda);
         cv_scores.push(mean_score);
     }
 
@@ -165,6 +138,45 @@ pub fn lambda_cv(
         cv_scores,
         lambdas: config.lambdas.clone(),
     })
+}
+
+/// Compute the mean CV score for a single lambda across all folds.
+fn lambda_cv_score(
+    data: &FdMatrix,
+    argvals: &[f64],
+    folds: &[usize],
+    k_max: usize,
+    config: &LambdaCvConfig,
+    lambda: f64,
+) -> f64 {
+    let mut fold_scores = Vec::with_capacity(k_max);
+
+    for k in 0..k_max {
+        let (train_idx, test_idx) = fold_indices(folds, k);
+        if train_idx.is_empty() || test_idx.is_empty() {
+            continue;
+        }
+
+        let train_data = subset_rows(data, &train_idx);
+        let km = karcher_mean(&train_data, argvals, config.max_iter, config.tol, lambda);
+
+        let fold_dist: f64 = test_idx
+            .iter()
+            .map(|&idx| {
+                let test_curve = data.row(idx);
+                elastic_distance(&test_curve, &km.mean, argvals, lambda)
+            })
+            .sum::<f64>()
+            / test_idx.len() as f64;
+
+        fold_scores.push(fold_dist);
+    }
+
+    if fold_scores.is_empty() {
+        f64::INFINITY
+    } else {
+        fold_scores.iter().sum::<f64>() / fold_scores.len() as f64
+    }
 }
 
 #[cfg(test)]
