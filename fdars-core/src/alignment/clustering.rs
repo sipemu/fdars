@@ -102,6 +102,35 @@ pub struct Dendrogram {
 
 // ─── K-Means++ Initialization ───────────────────────────────────────────────
 
+/// Select the next center when all current min-dist-sq are zero (fallback).
+///
+/// Picks the first point not already in `centers`.
+fn kmeans_pp_fallback_center(centers: &[usize], n: usize) -> usize {
+    for i in 0..n {
+        if !centers.contains(&i) {
+            return i;
+        }
+    }
+    n - 1
+}
+
+/// Draw the next center index via weighted sampling on min_dist_sq.
+///
+/// Consumes exactly one `rng.gen::<f64>()` draw. Returns the chosen index.
+fn kmeans_pp_weighted_draw(min_dist_sq: &[f64], total: f64, rng: &mut StdRng) -> usize {
+    let threshold = rng.gen::<f64>() * total;
+    let mut cum = 0.0;
+    let mut chosen = min_dist_sq.len() - 1;
+    for (i, &d2) in min_dist_sq.iter().enumerate() {
+        cum += d2;
+        if cum >= threshold {
+            chosen = i;
+            break;
+        }
+    }
+    chosen
+}
+
 /// Select k initial center indices using k-means++ on a precomputed distance matrix.
 fn kmeans_pp_init(dist_mat: &FdMatrix, k: usize, rng: &mut StdRng) -> Vec<usize> {
     let n = dist_mat.nrows();
@@ -119,23 +148,9 @@ fn kmeans_pp_init(dist_mat: &FdMatrix, k: usize, rng: &mut StdRng) -> Vec<usize>
     for _ in 1..k {
         let total: f64 = min_dist_sq.iter().sum();
         if total <= 0.0 {
-            for i in 0..n {
-                if !centers.contains(&i) {
-                    centers.push(i);
-                    break;
-                }
-            }
+            centers.push(kmeans_pp_fallback_center(&centers, n));
         } else {
-            let threshold = rng.gen::<f64>() * total;
-            let mut cum = 0.0;
-            let mut chosen = n - 1;
-            for i in 0..n {
-                cum += min_dist_sq[i];
-                if cum >= threshold {
-                    chosen = i;
-                    break;
-                }
-            }
+            let chosen = kmeans_pp_weighted_draw(&min_dist_sq, total, rng);
             centers.push(chosen);
         }
 
@@ -153,6 +168,33 @@ fn kmeans_pp_init(dist_mat: &FdMatrix, k: usize, rng: &mut StdRng) -> Vec<usize>
 }
 
 // ─── K-Medoids ─────────────────────────────────────────────────────────────
+
+/// Update medoids for all clusters: for each cluster, pick the member that
+/// minimises total within-cluster distance.
+fn update_medoids(
+    dist_mat: &FdMatrix,
+    labels: &[usize],
+    medoids: &mut Vec<usize>,
+    k: usize,
+    n: usize,
+) {
+    for c in 0..k {
+        let members: Vec<usize> = (0..n).filter(|&i| labels[i] == c).collect();
+        if members.is_empty() {
+            continue;
+        }
+        let mut best_cost = f64::INFINITY;
+        let mut best_m = medoids[c];
+        for &candidate in &members {
+            let cost: f64 = members.iter().map(|&j| dist_mat[(candidate, j)]).sum();
+            if cost < best_cost {
+                best_cost = cost;
+                best_m = candidate;
+            }
+        }
+        medoids[c] = best_m;
+    }
+}
 
 /// K-medoids (PAM-style) clustering from a precomputed distance matrix.
 ///
@@ -208,23 +250,7 @@ pub fn kmedoids_from_distances(
     for iter in 0..config.max_iter {
         n_iter = iter + 1;
 
-        // Update medoids: for each cluster, pick the member minimizing total distance.
-        for c in 0..k {
-            let members: Vec<usize> = (0..n).filter(|&i| labels[i] == c).collect();
-            if members.is_empty() {
-                continue;
-            }
-            let mut best_cost = f64::INFINITY;
-            let mut best_m = medoids[c];
-            for &candidate in &members {
-                let cost: f64 = members.iter().map(|&j| dist_mat[(candidate, j)]).sum();
-                if cost < best_cost {
-                    best_cost = cost;
-                    best_m = candidate;
-                }
-            }
-            medoids[c] = best_m;
-        }
+        update_medoids(dist_mat, &labels, &mut medoids, k, n);
 
         // Reassign.
         let new_labels = assign_to_medoids(dist_mat, &medoids, n);
@@ -272,6 +298,85 @@ fn assign_to_medoids(dist_mat: &FdMatrix, medoids: &[usize], n: usize) -> Vec<us
 
 // ─── Hierarchical Clustering ───────────────────────────────────────────────
 
+/// Validate inputs for hierarchical clustering.
+fn hierarchical_validate(dist_mat: &FdMatrix) -> Result<usize, FdarError> {
+    let n = dist_mat.nrows();
+    if dist_mat.ncols() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "dist_mat",
+            expected: format!("{n} x {n} (square)"),
+            actual: format!("{} x {}", n, dist_mat.ncols()),
+        });
+    }
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "dist_mat",
+            expected: "at least 2 rows".to_string(),
+            actual: format!("{n} rows"),
+        });
+    }
+    Ok(n)
+}
+
+/// Find the active pair with minimum inter-cluster distance.
+///
+/// Returns `(min_i, min_j, min_d)`.
+fn hierarchical_find_min_pair(
+    cluster_dist: &FdMatrix,
+    active: &[bool],
+    n: usize,
+) -> (usize, usize, f64) {
+    let mut min_d = f64::INFINITY;
+    let mut min_i = 0;
+    let mut min_j = 1;
+    for i in 0..n {
+        if !active[i] {
+            continue;
+        }
+        for j in (i + 1)..n {
+            if !active[j] {
+                continue;
+            }
+            if cluster_dist[(i, j)] < min_d {
+                min_d = cluster_dist[(i, j)];
+                min_i = i;
+                min_j = j;
+            }
+        }
+    }
+    (min_i, min_j, min_d)
+}
+
+/// Update inter-cluster distances after merging `min_i` and `min_j` into `min_i`.
+fn hierarchical_update_distances(
+    cluster_dist: &mut FdMatrix,
+    active: &[bool],
+    min_i: usize,
+    min_j: usize,
+    size_i: usize,
+    size_j: usize,
+    linkage: Linkage,
+    n: usize,
+) {
+    for k in 0..n {
+        if !active[k] || k == min_i || k == min_j {
+            continue;
+        }
+        let d_ik = cluster_dist[(min_i.min(k), min_i.max(k))];
+        let d_jk = cluster_dist[(min_j.min(k), min_j.max(k))];
+        let new_d = match linkage {
+            Linkage::Single => d_ik.min(d_jk),
+            Linkage::Complete => d_ik.max(d_jk),
+            Linkage::Average => {
+                (d_ik * size_i as f64 + d_jk * size_j as f64) / (size_i + size_j) as f64
+            }
+        };
+        let (lo, hi) = (min_i.min(k), min_i.max(k));
+        cluster_dist[(lo, hi)] = new_d;
+        cluster_dist[(hi, lo)] = new_d;
+    }
+}
+
 /// Hierarchical agglomerative clustering from a precomputed distance matrix.
 ///
 /// Builds a [`Dendrogram`] by iteratively merging the closest pair of clusters.
@@ -288,21 +393,7 @@ pub fn hierarchical_from_distances(
     dist_mat: &FdMatrix,
     linkage: Linkage,
 ) -> Result<Dendrogram, FdarError> {
-    let n = dist_mat.nrows();
-    if dist_mat.ncols() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "dist_mat",
-            expected: format!("{n} x {n} (square)"),
-            actual: format!("{} x {}", n, dist_mat.ncols()),
-        });
-    }
-    if n < 2 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "dist_mat",
-            expected: "at least 2 rows".to_string(),
-            actual: format!("{n} rows"),
-        });
-    }
+    let n = hierarchical_validate(dist_mat)?;
 
     let mut active = vec![true; n];
     let mut cluster_sizes = vec![1usize; n];
@@ -316,46 +407,22 @@ pub fn hierarchical_from_distances(
     let mut merges: Vec<(usize, usize, f64)> = Vec::with_capacity(n - 1);
 
     for _ in 0..(n - 1) {
-        let mut min_d = f64::INFINITY;
-        let mut min_i = 0;
-        let mut min_j = 1;
-        for i in 0..n {
-            if !active[i] {
-                continue;
-            }
-            for j in (i + 1)..n {
-                if !active[j] {
-                    continue;
-                }
-                if cluster_dist[(i, j)] < min_d {
-                    min_d = cluster_dist[(i, j)];
-                    min_i = i;
-                    min_j = j;
-                }
-            }
-        }
+        let (min_i, min_j, min_d) = hierarchical_find_min_pair(&cluster_dist, &active, n);
 
         merges.push((min_i, min_j, min_d));
 
         let size_i = cluster_sizes[min_i];
         let size_j = cluster_sizes[min_j];
-        for k in 0..n {
-            if !active[k] || k == min_i || k == min_j {
-                continue;
-            }
-            let d_ik = cluster_dist[(min_i.min(k), min_i.max(k))];
-            let d_jk = cluster_dist[(min_j.min(k), min_j.max(k))];
-            let new_d = match linkage {
-                Linkage::Single => d_ik.min(d_jk),
-                Linkage::Complete => d_ik.max(d_jk),
-                Linkage::Average => {
-                    (d_ik * size_i as f64 + d_jk * size_j as f64) / (size_i + size_j) as f64
-                }
-            };
-            let (lo, hi) = (min_i.min(k), min_i.max(k));
-            cluster_dist[(lo, hi)] = new_d;
-            cluster_dist[(hi, lo)] = new_d;
-        }
+        hierarchical_update_distances(
+            &mut cluster_dist,
+            &active,
+            min_i,
+            min_j,
+            size_i,
+            size_j,
+            linkage,
+            n,
+        );
 
         cluster_sizes[min_i] = size_i + size_j;
         active[min_j] = false;
