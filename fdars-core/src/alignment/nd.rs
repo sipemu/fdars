@@ -353,6 +353,142 @@ fn select_template_nd(data: &[FdCurveSet], srsfs: &[Vec<Vec<f64>>]) -> usize {
     min_idx
 }
 
+/// Validate inputs for `karcher_mean_nd` and return (n, d, m).
+fn karcher_mean_nd_validate(
+    data: &[FdCurveSet],
+    argvals: &[f64],
+) -> Result<(usize, usize, usize), FdarError> {
+    let n = data.len();
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 2 curves".to_string(),
+            actual: format!("{n}"),
+        });
+    }
+    let d = data[0].ndim();
+    let m = data[0].npoints();
+    if d == 0 || m < 2 || argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/argvals",
+            expected: format!("d > 0, m >= 2, argvals.len() == m (m={m})"),
+            actual: format!("d={d}, m={m}, argvals.len()={}", argvals.len()),
+        });
+    }
+    for (i, cs) in data.iter().enumerate() {
+        if cs.ndim() != d || cs.npoints() != m {
+            return Err(FdarError::InvalidDimension {
+                parameter: "data",
+                expected: format!("all curves d={d}, m={m}"),
+                actual: format!("curve {i}: d={}, m={}", cs.ndim(), cs.npoints()),
+            });
+        }
+    }
+    Ok((n, d, m))
+}
+
+/// Align all curves to current mean and accumulate mean SRSF.
+///
+/// Returns per-curve (gamma, f_aligned) pairs and the accumulated new mean SRSF.
+fn karcher_mean_nd_align_step(
+    curves: &[Vec<Vec<f64>>],
+    mu_f: &[Vec<f64>],
+    argvals: &[f64],
+    lambda: f64,
+    n: usize,
+    d: usize,
+    m: usize,
+) -> (Vec<(Vec<f64>, Vec<Vec<f64>>)>, Vec<Vec<f64>>) {
+    let align_results: Vec<(Vec<f64>, Vec<Vec<f64>>)> = iter_maybe_parallel!(0..n)
+        .map(|i| {
+            let mean_cs = {
+                let dims: Vec<FdMatrix> = mu_f
+                    .iter()
+                    .map(|v| {
+                        FdMatrix::from_slice(v, 1, m)
+                            .expect("dimension invariant: data.len() == n * m")
+                    })
+                    .collect();
+                FdCurveSet { dims }
+            };
+            let curve_cs = {
+                let dims: Vec<FdMatrix> = curves[i]
+                    .iter()
+                    .map(|v| {
+                        FdMatrix::from_slice(v, 1, m)
+                            .expect("dimension invariant: data.len() == n * m")
+                    })
+                    .collect();
+                FdCurveSet { dims }
+            };
+            let result = elastic_align_pair_nd(&mean_cs, &curve_cs, argvals, lambda);
+            (result.gamma, result.f_aligned)
+        })
+        .collect();
+
+    // Accumulate mean SRSF
+    let mut new_mu_q: Vec<Vec<f64>> = vec![vec![0.0; m]; d];
+    for (_gamma, f_aligned) in &align_results {
+        let q_aligned = srsf_single_nd(f_aligned, argvals);
+        for k in 0..d {
+            for j in 0..m {
+                new_mu_q[k][j] += q_aligned[k][j];
+            }
+        }
+    }
+    for k in 0..d {
+        for j in 0..m {
+            new_mu_q[k][j] /= n as f64;
+        }
+    }
+
+    (align_results, new_mu_q)
+}
+
+/// Store gammas from align_results into the gammas matrix.
+fn karcher_mean_nd_store_gammas(
+    gammas: &mut FdMatrix,
+    align_results: &[(Vec<f64>, Vec<Vec<f64>>)],
+    m: usize,
+) {
+    for (i, (gamma, _)) in align_results.iter().enumerate() {
+        for j in 0..m {
+            gammas[(i, j)] = gamma[j];
+        }
+    }
+}
+
+/// Recompute aligned data and mean after post-centering warps.
+fn karcher_mean_nd_recompute_aligned(
+    curves: &[Vec<Vec<f64>>],
+    gammas: &FdMatrix,
+    argvals: &[f64],
+    n: usize,
+    d: usize,
+    m: usize,
+) -> (Vec<FdMatrix>, Vec<Vec<f64>>) {
+    let mut aligned_data: Vec<FdMatrix> = (0..d).map(|_| FdMatrix::zeros(n, m)).collect();
+    for i in 0..n {
+        let gamma_i: Vec<f64> = (0..m).map(|j| gammas[(i, j)]).collect();
+        for k in 0..d {
+            let f_aligned = reparameterize_curve(&curves[i][k], argvals, &gamma_i);
+            for j in 0..m {
+                aligned_data[k][(i, j)] = f_aligned[j];
+            }
+        }
+    }
+    let mut mean: Vec<Vec<f64>> = vec![vec![0.0; m]; d];
+    for k in 0..d {
+        for j in 0..m {
+            for i in 0..n {
+                mean[k][j] += aligned_data[k][(i, j)];
+            }
+            mean[k][j] /= n as f64;
+        }
+    }
+    (aligned_data, mean)
+}
+
 /// Compute the Karcher (Frechet) mean for multidimensional (R^d) curves.
 ///
 /// Iteratively aligns all N-d curves to the current mean estimate in SRSF space,
@@ -376,35 +512,7 @@ pub fn karcher_mean_nd(
     tol: f64,
     lambda: f64,
 ) -> Result<KarcherMeanResultNd, FdarError> {
-    let n = data.len();
-    if n < 2 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "at least 2 curves".to_string(),
-            actual: format!("{n}"),
-        });
-    }
-
-    let d = data[0].ndim();
-    let m = data[0].npoints();
-    if d == 0 || m < 2 || argvals.len() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data/argvals",
-            expected: format!("d > 0, m >= 2, argvals.len() == m (m={m})"),
-            actual: format!("d={d}, m={m}, argvals.len()={}", argvals.len()),
-        });
-    }
-
-    // Verify all curves have the same dimensions
-    for (i, cs) in data.iter().enumerate() {
-        if cs.ndim() != d || cs.npoints() != m {
-            return Err(FdarError::InvalidDimension {
-                parameter: "data",
-                expected: format!("all curves d={d}, m={m}"),
-                actual: format!("curve {i}: d={}, m={}", cs.ndim(), cs.npoints()),
-            });
-        }
-    }
+    let (n, d, m) = karcher_mean_nd_validate(data, argvals)?;
 
     // Extract curves as Vec<Vec<f64>> (d vectors) per observation
     let curves: Vec<Vec<Vec<f64>>> = (0..n)
@@ -427,56 +535,10 @@ pub fn karcher_mean_nd(
     for iter in 0..max_iter {
         n_iter = iter + 1;
 
-        // Align all curves to current mean (parallel)
-        let align_results: Vec<(Vec<f64>, Vec<Vec<f64>>)> = iter_maybe_parallel!(0..n)
-            .map(|i| {
-                // Build single-curve FdCurveSet for mean and curve i
-                let mean_cs = {
-                    let dims: Vec<FdMatrix> = mu_f
-                        .iter()
-                        .map(|v| {
-                            FdMatrix::from_slice(v, 1, m)
-                                .expect("dimension invariant: data.len() == n * m")
-                        })
-                        .collect();
-                    FdCurveSet { dims }
-                };
-                let curve_cs = {
-                    let dims: Vec<FdMatrix> = curves[i]
-                        .iter()
-                        .map(|v| {
-                            FdMatrix::from_slice(v, 1, m)
-                                .expect("dimension invariant: data.len() == n * m")
-                        })
-                        .collect();
-                    FdCurveSet { dims }
-                };
+        let (align_results, new_mu_q) =
+            karcher_mean_nd_align_step(&curves, &mu_f, argvals, lambda, n, d, m);
 
-                let result = elastic_align_pair_nd(&mean_cs, &curve_cs, argvals, lambda);
-                (result.gamma, result.f_aligned)
-            })
-            .collect();
-
-        // Store gammas and compute aligned SRSFs
-        let mut new_mu_q: Vec<Vec<f64>> = vec![vec![0.0; m]; d];
-        for (i, (gamma, f_aligned)) in align_results.iter().enumerate() {
-            for j in 0..m {
-                gammas[(i, j)] = gamma[j];
-            }
-
-            // Compute SRSF of aligned curve
-            let q_aligned = srsf_single_nd(f_aligned, argvals);
-            for k in 0..d {
-                for j in 0..m {
-                    new_mu_q[k][j] += q_aligned[k][j];
-                }
-            }
-        }
-        for k in 0..d {
-            for j in 0..m {
-                new_mu_q[k][j] /= n as f64;
-            }
-        }
+        karcher_mean_nd_store_gammas(&mut gammas, &align_results, m);
 
         // Check convergence
         let rel = relative_change_nd(&mu_q, &new_mu_q);
@@ -502,28 +564,8 @@ pub fn karcher_mean_nd(
         }
     }
 
-    // Recompute aligned data using final centered warps
-    let mut aligned_data: Vec<FdMatrix> = (0..d).map(|_| FdMatrix::zeros(n, m)).collect();
-    for i in 0..n {
-        let gamma_i: Vec<f64> = (0..m).map(|j| gammas[(i, j)]).collect();
-        for k in 0..d {
-            let f_aligned = reparameterize_curve(&curves[i][k], argvals, &gamma_i);
-            for j in 0..m {
-                aligned_data[k][(i, j)] = f_aligned[j];
-            }
-        }
-    }
-
-    // Recompute mean from final aligned data
-    let mut mean: Vec<Vec<f64>> = vec![vec![0.0; m]; d];
-    for k in 0..d {
-        for j in 0..m {
-            for i in 0..n {
-                mean[k][j] += aligned_data[k][(i, j)];
-            }
-            mean[k][j] /= n as f64;
-        }
-    }
+    let (aligned_data, mean) =
+        karcher_mean_nd_recompute_aligned(&curves, &gammas, argvals, n, d, m);
 
     // Recompute mean SRSF
     let mean_srsf = srsf_single_nd(&mean, argvals);
@@ -536,6 +578,33 @@ pub fn karcher_mean_nd(
         n_iter,
         converged,
     })
+}
+
+/// Build and center the stacked (n x d*m) matrix from aligned data.
+fn build_centered_stacked(result: &KarcherMeanResultNd, n: usize, d: usize, m: usize) -> FdMatrix {
+    let dm = d * m;
+    let mut stacked = FdMatrix::zeros(n, dm);
+    for k in 0..d {
+        for i in 0..n {
+            for j in 0..m {
+                stacked[(i, k * m + j)] = result.aligned_data[k][(i, j)];
+            }
+        }
+    }
+    // Center columns
+    let mut col_mean = vec![0.0; dm];
+    for j in 0..dm {
+        for i in 0..n {
+            col_mean[j] += stacked[(i, j)];
+        }
+        col_mean[j] /= n as f64;
+    }
+    for i in 0..n {
+        for j in 0..dm {
+            stacked[(i, j)] -= col_mean[j];
+        }
+    }
+    stacked
 }
 
 /// Compute the cross-dimensional covariance matrix of aligned N-d curves.
@@ -586,29 +655,7 @@ pub fn karcher_covariance_nd(
         });
     }
 
-    // Build (n x dm) stacked matrix
-    let mut stacked = FdMatrix::zeros(n, dm);
-    for k in 0..d {
-        for i in 0..n {
-            for j in 0..m {
-                stacked[(i, k * m + j)] = result.aligned_data[k][(i, j)];
-            }
-        }
-    }
-
-    // Center columns
-    let mut col_mean = vec![0.0; dm];
-    for j in 0..dm {
-        for i in 0..n {
-            col_mean[j] += stacked[(i, j)];
-        }
-        col_mean[j] /= n as f64;
-    }
-    for i in 0..n {
-        for j in 0..dm {
-            stacked[(i, j)] -= col_mean[j];
-        }
-    }
+    let stacked = build_centered_stacked(result, n, d, m);
 
     // Compute covariance: X^T X / (n-1)
     let nf = (n - 1) as f64;
@@ -626,6 +673,74 @@ pub fn karcher_covariance_nd(
     }
 
     Ok(cov)
+}
+
+/// Compute the Gram matrix G = X X^T / (n-1) from a centered stacked matrix.
+fn compute_gram(stacked: &FdMatrix, n: usize, dm: usize) -> FdMatrix {
+    let nf = (n - 1) as f64;
+    let mut gram = FdMatrix::zeros(n, n);
+    for i in 0..n {
+        for j in i..n {
+            let mut s = 0.0;
+            for p in 0..dm {
+                s += stacked[(i, p)] * stacked[(j, p)];
+            }
+            s /= nf;
+            gram[(i, j)] = s;
+            gram[(j, i)] = s;
+        }
+    }
+    gram
+}
+
+/// Compute PC scores from SVD U matrix and eigenvalues.
+fn compute_pca_scores(
+    u: &nalgebra::DMatrix<f64>,
+    eigenvalues: &[f64],
+    n: usize,
+    ncomp: usize,
+    nf: f64,
+) -> FdMatrix {
+    let mut scores = FdMatrix::zeros(n, ncomp);
+    for k in 0..ncomp {
+        let scale = (eigenvalues[k] * nf).sqrt();
+        for i in 0..n {
+            scores[(i, k)] = u[(i, k)] * scale;
+        }
+    }
+    scores
+}
+
+/// Compute per-dimension PC loadings from SVD U matrix, eigenvalues, and stacked data.
+fn compute_pca_loadings(
+    u: &nalgebra::DMatrix<f64>,
+    eigenvalues: &[f64],
+    stacked: &FdMatrix,
+    n: usize,
+    d: usize,
+    m: usize,
+    dm: usize,
+    ncomp: usize,
+    nf: f64,
+) -> Vec<FdMatrix> {
+    let mut components: Vec<FdMatrix> = (0..d).map(|_| FdMatrix::zeros(ncomp, m)).collect();
+    for k in 0..ncomp {
+        let scale = (eigenvalues[k] * nf).sqrt().max(1e-15);
+        let mut loading = vec![0.0; dm];
+        for p in 0..dm {
+            let mut s = 0.0;
+            for i in 0..n {
+                s += stacked[(i, p)] * u[(i, k)];
+            }
+            loading[p] = s / scale;
+        }
+        for dim in 0..d {
+            for j in 0..m {
+                components[dim][(k, j)] = loading[dim * m + j];
+            }
+        }
+    }
+    components
 }
 
 /// Perform PCA on aligned multidimensional (R^d) curves.
@@ -667,46 +782,10 @@ pub fn pca_nd(
     }
     let ncomp = ncomp.min(n - 1);
     let dm = d * m;
-
-    // Build (n x dm) stacked matrix and center
-    let mut stacked = FdMatrix::zeros(n, dm);
-    for k in 0..d {
-        for i in 0..n {
-            for j in 0..m {
-                stacked[(i, k * m + j)] = result.aligned_data[k][(i, j)];
-            }
-        }
-    }
-
-    // Center columns
-    let mut col_mean = vec![0.0; dm];
-    for j in 0..dm {
-        for i in 0..n {
-            col_mean[j] += stacked[(i, j)];
-        }
-        col_mean[j] /= n as f64;
-    }
-    for i in 0..n {
-        for j in 0..dm {
-            stacked[(i, j)] -= col_mean[j];
-        }
-    }
-
-    // Economy SVD: compute Gram matrix G = X X^T / (n-1), size n x n
-    // (much smaller than dm x dm when dm >> n)
     let nf = (n - 1) as f64;
-    let mut gram = FdMatrix::zeros(n, n);
-    for i in 0..n {
-        for j in i..n {
-            let mut s = 0.0;
-            for p in 0..dm {
-                s += stacked[(i, p)] * stacked[(j, p)];
-            }
-            s /= nf;
-            gram[(i, j)] = s;
-            gram[(j, i)] = s;
-        }
-    }
+
+    let stacked = build_centered_stacked(result, n, d, m);
+    let gram = compute_gram(&stacked, n, dm);
 
     // Eigen-decompose Gram matrix via nalgebra SVD (symmetric, so SVD = eigendecomposition)
     use nalgebra::SVD;
@@ -716,42 +795,10 @@ pub fn pca_nd(
         detail: "SVD failed to compute U matrix for Gram matrix".to_string(),
     })?;
 
-    // Eigenvalues of Gram = singular values of Gram = eigenvalues of X X^T / (n-1)
-    // These are also the eigenvalues of the covariance matrix (for the top n components)
     let eigenvalues: Vec<f64> = svd.singular_values.iter().take(ncomp).copied().collect();
 
-    // Scores: score_ik = u_ik * sqrt(lambda_k * (n-1))
-    // Since Gram = X X^T / (n-1), and SVD(Gram) = U S U^T,
-    // the scores of the data are: X V = U * sqrt(S * (n-1))
-    let mut scores = FdMatrix::zeros(n, ncomp);
-    for k in 0..ncomp {
-        let scale = (eigenvalues[k] * nf).sqrt();
-        for i in 0..n {
-            scores[(i, k)] = u[(i, k)] * scale;
-        }
-    }
-
-    // Loadings: V_k = X^T U_k / sqrt(lambda_k * (n-1))
-    // Reshape back into d matrices of (ncomp x m)
-    let mut components: Vec<FdMatrix> = (0..d).map(|_| FdMatrix::zeros(ncomp, m)).collect();
-    for k in 0..ncomp {
-        let scale = (eigenvalues[k] * nf).sqrt().max(1e-15);
-        let mut loading = vec![0.0; dm];
-        for p in 0..dm {
-            let mut s = 0.0;
-            for i in 0..n {
-                s += stacked[(i, p)] * u[(i, k)];
-            }
-            loading[p] = s / scale;
-        }
-
-        // Distribute into per-dimension matrices
-        for dim in 0..d {
-            for j in 0..m {
-                components[dim][(k, j)] = loading[dim * m + j];
-            }
-        }
-    }
+    let scores = compute_pca_scores(u, &eigenvalues, n, ncomp, nf);
+    let components = compute_pca_loadings(u, &eigenvalues, &stacked, n, d, m, dm, ncomp, nf);
 
     // Cumulative variance
     let total_var: f64 = svd.singular_values.iter().sum();
@@ -766,7 +813,6 @@ pub fn pca_nd(
         });
     }
 
-    // Explained variance = eigenvalues
     let explained_variance = eigenvalues.clone();
     let covariance_eigenvalues = eigenvalues;
 
