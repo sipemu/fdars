@@ -116,6 +116,273 @@ struct ScoreLearner {
 }
 
 // ---------------------------------------------------------------------------
+// Private helpers for boost_fofr
+// ---------------------------------------------------------------------------
+
+/// Check that each predictor's row count matches n and its argvals length matches its columns.
+fn boost_fofr_validate_predictors(
+    x_data: &[&FdMatrix],
+    x_argvals: &[&[f64]],
+    n: usize,
+) -> Result<(), FdarError> {
+    let p = x_data.len();
+    for j in 0..p {
+        if x_data[j].nrows() != n {
+            return Err(FdarError::InvalidDimension {
+                parameter: "x_data[j].nrows()",
+                expected: format!("== n = {n} (matching y_data)"),
+                actual: format!("x_data[{j}].nrows() = {}", x_data[j].nrows()),
+            });
+        }
+        if x_argvals[j].len() != x_data[j].ncols() {
+            return Err(FdarError::InvalidDimension {
+                parameter: "x_argvals[j]",
+                expected: format!("length == x_data[{j}].ncols() = {}", x_data[j].ncols()),
+                actual: format!("length = {}", x_argvals[j].len()),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Validate dimension inputs for `boost_fofr`; returns `(n, m_y, p)` on success.
+fn boost_fofr_validate_dims(
+    x_data: &[&FdMatrix],
+    x_argvals: &[&[f64]],
+    y_data: &FdMatrix,
+    y_argvals: &[f64],
+) -> Result<(usize, usize, usize), FdarError> {
+    let p = x_data.len();
+    if p == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x_data",
+            expected: "at least 1 functional predictor".to_string(),
+            actual: "0 predictors".to_string(),
+        });
+    }
+    if x_argvals.len() != p {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x_argvals",
+            expected: format!("length == x_data.len() = {p}"),
+            actual: format!("length = {}", x_argvals.len()),
+        });
+    }
+
+    let (n, m_y) = y_data.shape();
+
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_data",
+            expected: "at least 3 observations (n >= 3)".to_string(),
+            actual: format!("n = {n}"),
+        });
+    }
+    if m_y == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_data",
+            expected: "at least 1 response grid point (m_y > 0)".to_string(),
+            actual: "m_y = 0".to_string(),
+        });
+    }
+    if y_argvals.len() != m_y {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_argvals",
+            expected: format!("length == y_data.ncols() = {m_y}"),
+            actual: format!("length = {}", y_argvals.len()),
+        });
+    }
+
+    boost_fofr_validate_predictors(x_data, x_argvals, n)?;
+
+    Ok((n, m_y, p))
+}
+
+/// Validate config parameters for `boost_fofr`.
+fn boost_fofr_validate_config(config: &BoostingConfig) -> Result<(), FdarError> {
+    if config.mstop == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "mstop",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if config.nu <= 0.0 || config.nu > 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "nu",
+            message: format!("must be in (0, 1], got {}", config.nu),
+        });
+    }
+    if config.ncomp_x == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp_x",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Build pre-factored score-space learners (one per predictor).
+///
+/// For each predictor j computes S_j = fpca_x[j].scores (n × K_j),
+/// builds A_j = S_j'S_j + ε·I (K_j × K_j, row-major), and Cholesky-factors it.
+fn boost_fofr_build_learners(
+    fpca_x: &[FpcaResult],
+    n: usize,
+) -> Result<Vec<ScoreLearner>, FdarError> {
+    let mut learners: Vec<ScoreLearner> = Vec::with_capacity(fpca_x.len());
+    for (j, fpca_j) in fpca_x.iter().enumerate() {
+        let scores = fpca_j.scores.clone(); // n × K_j
+        let (n_s, k) = scores.shape();
+        debug_assert_eq!(n_s, n, "scores.nrows() must equal n");
+
+        // Build S'S (K × K row-major)
+        let mut sts = vec![0.0f64; k * k];
+        for row in 0..k {
+            for col in row..k {
+                let mut s = 0.0;
+                // scores is column-major: element (i, col) at i + col*n
+                let s_col_r = scores.column(row);
+                let s_col_c = scores.column(col);
+                for i in 0..n {
+                    s += s_col_r[i] * s_col_c[i];
+                }
+                sts[row * k + col] = s;
+                sts[col * k + row] = s;
+            }
+        }
+
+        // Ridge jitter ε·I for numerical stability (T-43-02a)
+        for i in 0..k {
+            sts[i * k + i] += 1e-10;
+        }
+
+        let l = cholesky_factor(&sts, k).map_err(|e| FdarError::ComputationFailed {
+            operation: "boost_fofr score-space Cholesky",
+            detail: format!("predictor j={j}: {e:?} — try reducing ncomp_x"),
+        })?;
+
+        learners.push(ScoreLearner { scores, l, k });
+    }
+    Ok(learners)
+}
+
+/// Inner learner-selection loop for one boosting iteration.
+///
+/// Evaluates all base-learners against the current residuals and returns the
+/// index of the best learner plus its fitted values and score coefficients.
+/// Returns `(best_j, fitted_star, coefs_star)` — all owned, so the caller
+/// can accumulate into score_coefs without a double-borrow.
+fn boost_fofr_best_learner(
+    learners: &[ScoreLearner],
+    residuals: &FdMatrix,
+    n: usize,
+    m_y: usize,
+) -> (usize, FdMatrix, FdMatrix) {
+    let mut best_rss = f64::INFINITY;
+    let mut best_j = 0usize;
+    let mut best_fitted: Option<FdMatrix> = None;
+    let mut best_coefs: Option<FdMatrix> = None;
+
+    for (j, learner) in learners.iter().enumerate() {
+        let k = learner.k;
+        let scores = &learner.scores; // n × K (column-major FdMatrix)
+
+        let mut fitted_j = FdMatrix::zeros(n, m_y);
+        let mut coefs_j = FdMatrix::zeros(k, m_y);
+
+        // Solve per response time point t
+        for t in 0..m_y {
+            let u_col = residuals.column(t); // contiguous, length n
+            let rhs = st_times_vec(scores, u_col); // S'·u[:,t], K-vector
+            let c_t = cholesky_forward_back(&learner.l, &rhs, k); // K-vector
+
+            // Fitted: Ĥ_j[:,t] = S_j · c_t
+            // S_j is column-major: element (i, kk) at scores[(i, kk)]
+            let f_col_j = fitted_j.column_mut(t);
+            for i in 0..n {
+                let mut val = 0.0;
+                for kk in 0..k {
+                    val += scores[(i, kk)] * c_t[kk];
+                }
+                f_col_j[i] = val;
+            }
+
+            // Store coefficients
+            for kk in 0..k {
+                coefs_j[(kk, t)] = c_t[kk];
+            }
+        }
+
+        // RSS of (U − Ĥ_j)
+        let rss: f64 = (0..m_y)
+            .flat_map(|t| {
+                let u_col = residuals.column(t);
+                let h_col = fitted_j.column(t);
+                (0..n).map(move |i| {
+                    let d = u_col[i] - h_col[i];
+                    d * d
+                })
+            })
+            .sum();
+
+        if rss < best_rss {
+            best_rss = rss;
+            best_j = j;
+            best_fitted = Some(fitted_j);
+            best_coefs = Some(coefs_j);
+        }
+    }
+
+    // best_fitted / best_coefs are always Some (caller validates p >= 1)
+    let fitted_star = best_fitted.expect("at least one learner must exist");
+    let coefs_star = best_coefs.expect("at least one learner must exist");
+    (best_j, fitted_star, coefs_star)
+}
+
+/// Compute the residual matrix U = Y − F̂ for one boosting iteration.
+fn boost_fofr_residuals(y_data: &FdMatrix, f_current: &FdMatrix, n: usize, m_y: usize) -> FdMatrix {
+    let mut residuals = FdMatrix::zeros(n, m_y);
+    for t in 0..m_y {
+        let y_col = y_data.column(t);
+        let f_col = f_current.column(t);
+        let r_col = residuals.column_mut(t);
+        for i in 0..n {
+            r_col[i] = y_col[i] - f_col[i];
+        }
+    }
+    residuals
+}
+
+/// Reconstruct the coefficient surface β_j(s,t) for each predictor.
+///
+/// β_j(s,t) = rotation_j (m_x × K_j) · score_coefs_j (K_j × m_y)
+/// Result is a (m_x × m_y) FdMatrix per predictor.
+fn boost_fofr_build_beta_surfaces(
+    fpca_x: &[FpcaResult],
+    score_coefs: &[FdMatrix],
+    m_y: usize,
+) -> Vec<FdMatrix> {
+    fpca_x
+        .iter()
+        .zip(score_coefs.iter())
+        .map(|(fpca_j, coef_j)| {
+            let m_x = fpca_j.rotation.nrows(); // m_x
+            let k = fpca_j.rotation.ncols(); // K_j
+            let mut beta = FdMatrix::zeros(m_x, m_y);
+            for s in 0..m_x {
+                for t in 0..m_y {
+                    let mut val = 0.0;
+                    for kk in 0..k {
+                        val += fpca_j.rotation[(s, kk)] * coef_j[(kk, t)];
+                    }
+                    beta[(s, t)] = val;
+                }
+            }
+            beta
+        })
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
 // Public: boost_fofr
 // ---------------------------------------------------------------------------
 
@@ -202,82 +469,8 @@ pub fn boost_fofr(
     config: &BoostingConfig,
 ) -> Result<BoostFofrResult, FdarError> {
     // ---- Input validation ---------------------------------------------------
-    let p = x_data.len();
-    if p == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "x_data",
-            expected: "at least 1 functional predictor".to_string(),
-            actual: "0 predictors".to_string(),
-        });
-    }
-    if x_argvals.len() != p {
-        return Err(FdarError::InvalidDimension {
-            parameter: "x_argvals",
-            expected: format!("length == x_data.len() = {p}"),
-            actual: format!("length = {}", x_argvals.len()),
-        });
-    }
-
-    let (n, m_y) = y_data.shape();
-
-    if n < 3 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y_data",
-            expected: "at least 3 observations (n >= 3)".to_string(),
-            actual: format!("n = {n}"),
-        });
-    }
-    if m_y == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y_data",
-            expected: "at least 1 response grid point (m_y > 0)".to_string(),
-            actual: "m_y = 0".to_string(),
-        });
-    }
-    if y_argvals.len() != m_y {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y_argvals",
-            expected: format!("length == y_data.ncols() = {m_y}"),
-            actual: format!("length = {}", y_argvals.len()),
-        });
-    }
-
-    // Check each predictor's dimensions
-    for j in 0..p {
-        if x_data[j].nrows() != n {
-            return Err(FdarError::InvalidDimension {
-                parameter: "x_data[j].nrows()",
-                expected: format!("== n = {n} (matching y_data)"),
-                actual: format!("x_data[{j}].nrows() = {}", x_data[j].nrows()),
-            });
-        }
-        if x_argvals[j].len() != x_data[j].ncols() {
-            return Err(FdarError::InvalidDimension {
-                parameter: "x_argvals[j]",
-                expected: format!("length == x_data[{j}].ncols() = {}", x_data[j].ncols()),
-                actual: format!("length = {}", x_argvals[j].len()),
-            });
-        }
-    }
-
-    if config.mstop == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "mstop",
-            message: "must be >= 1".to_string(),
-        });
-    }
-    if config.nu <= 0.0 || config.nu > 1.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "nu",
-            message: format!("must be in (0, 1], got {}", config.nu),
-        });
-    }
-    if config.ncomp_x == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "ncomp_x",
-            message: "must be >= 1".to_string(),
-        });
-    }
+    let (n, m_y, p) = boost_fofr_validate_dims(x_data, x_argvals, y_data, y_argvals)?;
+    boost_fofr_validate_config(config)?;
 
     let nu = config.nu;
 
@@ -297,46 +490,7 @@ pub fn boost_fofr(
     }
 
     // ---- Build pre-factored score-space base-learners ----------------------
-    // For each predictor j:
-    //   S_j = fpca_x[j].scores (n × K_j)
-    //   A_j = S_j'S_j + ε·I (K_j × K_j, row-major)
-    //   L_j = cholesky_factor(A_j, K_j)
-    //
-    // The factorization is cached; only back-solve runs per iteration per t.
-    let mut learners: Vec<ScoreLearner> = Vec::with_capacity(p);
-    for j in 0..p {
-        let scores = fpca_x[j].scores.clone(); // n × K_j
-        let (n_s, k) = scores.shape();
-        debug_assert_eq!(n_s, n, "scores.nrows() must equal n");
-
-        // Build S'S (K × K row-major)
-        let mut sts = vec![0.0f64; k * k];
-        for row in 0..k {
-            for col in row..k {
-                let mut s = 0.0;
-                // scores is column-major: element (i, col) at i + col*n
-                let s_col_r = scores.column(row);
-                let s_col_c = scores.column(col);
-                for i in 0..n {
-                    s += s_col_r[i] * s_col_c[i];
-                }
-                sts[row * k + col] = s;
-                sts[col * k + row] = s;
-            }
-        }
-
-        // Ridge jitter ε·I for numerical stability (T-43-02a)
-        for i in 0..k {
-            sts[i * k + i] += 1e-10;
-        }
-
-        let l = cholesky_factor(&sts, k).map_err(|e| FdarError::ComputationFailed {
-            operation: "boost_fofr score-space Cholesky",
-            detail: format!("predictor j={j}: {e:?} — try reducing ncomp_x"),
-        })?;
-
-        learners.push(ScoreLearner { scores, l, k });
-    }
+    let learners = boost_fofr_build_learners(&fpca_x, n)?;
 
     // ---- Initialization: F₀(t) = Ȳ(t) ------------------------------------
     let intercept: Vec<f64> = (0..m_y)
@@ -362,20 +516,9 @@ pub fn boost_fofr(
     let mut selected_learners: Vec<usize> = Vec::with_capacity(config.mstop);
     let mut gcv_path: Vec<f64> = Vec::with_capacity(config.mstop);
 
-    // Scratch buffers: reused each iteration to avoid repeated allocation
-    // (fitted_j, coefs_j allocated once per iteration per learner below)
-
     for _iter in 0..config.mstop {
         // Compute residual U = Y − F̂ (n × m_y)
-        let mut residuals = FdMatrix::zeros(n, m_y);
-        for t in 0..m_y {
-            let y_col = y_data.column(t);
-            let f_col = f_current.column(t);
-            let r_col = residuals.column_mut(t);
-            for i in 0..n {
-                r_col[i] = y_col[i] - f_col[i];
-            }
-        }
+        let residuals = boost_fofr_residuals(y_data, &f_current, n, m_y);
 
         // Track ‖U‖_F² before update (GCV proxy)
         let rss_before: f64 = (0..m_y)
@@ -384,64 +527,8 @@ pub fn boost_fofr(
         gcv_path.push(rss_before);
 
         // Find best base-learner
-        let mut best_rss = f64::INFINITY;
-        let mut best_j = 0usize;
-        let mut best_fitted: Option<FdMatrix> = None;
-        let mut best_coefs: Option<FdMatrix> = None;
-
-        for (j, learner) in learners.iter().enumerate() {
-            let k = learner.k;
-            let scores = &learner.scores; // n × K (column-major FdMatrix)
-
-            let mut fitted_j = FdMatrix::zeros(n, m_y);
-            let mut coefs_j = FdMatrix::zeros(k, m_y);
-
-            // Solve per response time point t
-            for t in 0..m_y {
-                let u_col = residuals.column(t); // contiguous, length n
-                let rhs = st_times_vec(scores, u_col); // S'·u[:,t], K-vector
-                let c_t = cholesky_forward_back(&learner.l, &rhs, k); // K-vector
-
-                // Fitted: Ĥ_j[:,t] = S_j · c_t
-                // S_j is column-major: element (i, kk) at scores[(i, kk)]
-                let f_col_j = fitted_j.column_mut(t);
-                for i in 0..n {
-                    let mut val = 0.0;
-                    for kk in 0..k {
-                        val += scores[(i, kk)] * c_t[kk];
-                    }
-                    f_col_j[i] = val;
-                }
-
-                // Store coefficients
-                for kk in 0..k {
-                    coefs_j[(kk, t)] = c_t[kk];
-                }
-            }
-
-            // RSS of (U − Ĥ_j)
-            let rss: f64 = (0..m_y)
-                .flat_map(|t| {
-                    let u_col = residuals.column(t);
-                    let h_col = fitted_j.column(t);
-                    (0..n).map(move |i| {
-                        let d = u_col[i] - h_col[i];
-                        d * d
-                    })
-                })
-                .sum();
-
-            if rss < best_rss {
-                best_rss = rss;
-                best_j = j;
-                best_fitted = Some(fitted_j);
-                best_coefs = Some(coefs_j);
-            }
-        }
-
-        // best_fitted / best_coefs are always Some (we validated p >= 1 above)
-        let fitted_star = best_fitted.expect("at least one learner must exist");
-        let coefs_star = best_coefs.expect("at least one learner must exist");
+        let (best_j, fitted_star, coefs_star) =
+            boost_fofr_best_learner(&learners, &residuals, n, m_y);
 
         selected_learners.push(best_j);
 
@@ -464,45 +551,10 @@ pub fn boost_fofr(
     }
 
     // ---- Coefficient-surface reconstruction --------------------------------
-    // For each predictor j:
-    //   β_j(s, t) = rotation_j (m_x × K_j)  ·  score_coefs_j (K_j × m_y)
-    //             = (m_x × m_y) matrix
-    //
-    // rotation_j is stored as FdMatrix (m_x × K_j, column-major):
-    //   element (s, k) at rotation[(s, k)]
-    // score_coefs_j is (K_j × m_y, column-major):
-    //   element (k, t) at score_coefs[j][(k, t)]
-    let beta_surfaces: Vec<FdMatrix> = fpca_x
-        .iter()
-        .zip(score_coefs.iter())
-        .map(|(fpca_j, coef_j)| {
-            let m_x = fpca_j.rotation.nrows(); // m_x
-            let k = fpca_j.rotation.ncols(); // K_j
-            let mut beta = FdMatrix::zeros(m_x, m_y);
-            for s in 0..m_x {
-                for t in 0..m_y {
-                    let mut val = 0.0;
-                    for kk in 0..k {
-                        val += fpca_j.rotation[(s, kk)] * coef_j[(kk, t)];
-                    }
-                    beta[(s, t)] = val;
-                }
-            }
-            beta
-        })
-        .collect();
+    let beta_surfaces = boost_fofr_build_beta_surfaces(&fpca_x, &score_coefs, m_y);
 
     // ---- Final residuals and R² -------------------------------------------
-    let mut final_residuals = FdMatrix::zeros(n, m_y);
-    for t in 0..m_y {
-        let y_col = y_data.column(t);
-        let f_col = f_current.column(t);
-        let r_col = final_residuals.column_mut(t);
-        for i in 0..n {
-            r_col[i] = y_col[i] - f_col[i];
-        }
-    }
-
+    let final_residuals = boost_fofr_residuals(y_data, &f_current, n, m_y);
     let r_squared_t = pointwise_r_squared(y_data, &f_current);
     let r_squared = r_squared_t.iter().sum::<f64>() / m_y as f64;
 
