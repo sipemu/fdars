@@ -571,7 +571,7 @@ mod tests {
         let m = 200;
         let t = uniform_grid(m);
         // sin(2πt) has peak at t≈0.25
-        let curve: Vec<f64> = t.iter().map(|&ti| (2.0 * PI * ti).sin()).collect();
+        let curve = crate::test_helpers::sine_curve(&t);
         let lms = detect_landmarks(&curve, &t, LandmarkKind::Peak, 0.1);
         assert!(
             !lms.is_empty(),
@@ -589,7 +589,7 @@ mod tests {
         let m = 200;
         let t = uniform_grid(m);
         // sin(2πt) has valley at t≈0.75
-        let curve: Vec<f64> = t.iter().map(|&ti| (2.0 * PI * ti).sin()).collect();
+        let curve = crate::test_helpers::sine_curve(&t);
         let lms = detect_landmarks(&curve, &t, LandmarkKind::Valley, 0.1);
         assert!(
             !lms.is_empty(),
@@ -607,7 +607,7 @@ mod tests {
         let m = 200;
         let t = uniform_grid(m);
         // sin(2πt) crosses zero at t=0, 0.5, 1.0
-        let curve: Vec<f64> = t.iter().map(|&ti| (2.0 * PI * ti).sin()).collect();
+        let curve = crate::test_helpers::sine_curve(&t);
         let lms = detect_landmarks(&curve, &t, LandmarkKind::ZeroCrossing, 0.0);
         assert!(!lms.is_empty(), "Should detect zero crossings in sin(2πt)");
         // The crossing near 0.5 should be found
@@ -662,7 +662,7 @@ mod tests {
     fn test_single_curve_identity() {
         let m = 50;
         let t = uniform_grid(m);
-        let curve: Vec<f64> = t.iter().map(|&ti| (2.0 * PI * ti).sin()).collect();
+        let curve = crate::test_helpers::sine_curve(&t);
         let data = FdMatrix::from_column_major(curve.clone(), 1, m).unwrap();
         let result = detect_and_register(&data, &t, LandmarkKind::Peak, 0.1, 1);
         // Single curve registration should be close to identity
@@ -736,7 +736,7 @@ mod tests {
     #[test]
     fn test_detect_landmarks_custom_kind() {
         let t = uniform_grid(50);
-        let curve: Vec<f64> = t.iter().map(|&ti| (2.0 * PI * ti).sin()).collect();
+        let curve = crate::test_helpers::sine_curve(&t);
         // Custom kind always returns empty
         assert!(detect_landmarks(&curve, &t, LandmarkKind::Custom, 0.0).is_empty());
     }
@@ -746,7 +746,7 @@ mod tests {
         let m = 200;
         let t = uniform_grid(m);
         // sin(2πt) has inflections at t≈0 and t≈0.5
-        let curve: Vec<f64> = t.iter().map(|&ti| (2.0 * PI * ti).sin()).collect();
+        let curve = crate::test_helpers::sine_curve(&t);
         let lms = detect_landmarks(&curve, &t, LandmarkKind::Inflection, 0.0);
         assert!(!lms.is_empty(), "Should detect inflection points");
         // Check kind

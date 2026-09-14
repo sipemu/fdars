@@ -4,7 +4,7 @@ use std::f64::consts::PI;
 #[test]
 fn test_detrend_linear_removes_linear_trend() {
     let m = 100;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let data_vec: Vec<f64> = argvals
         .iter()
         .map(|&t| 2.0 + 0.5 * t + (2.0 * PI * t / 2.0).sin())
@@ -26,7 +26,7 @@ fn test_detrend_linear_removes_linear_trend() {
 #[test]
 fn test_detrend_polynomial_removes_quadratic_trend() {
     let m = 100;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let data_vec: Vec<f64> = argvals
         .iter()
         .map(|&t| 1.0 + 0.5 * t - 0.1 * t * t + (2.0 * PI * t / 2.0).sin())
@@ -94,7 +94,7 @@ fn test_auto_detrend_selects_linear_for_linear_data() {
 #[test]
 fn test_detrend_loess_removes_linear_trend() {
     let m = 100;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let data_vec: Vec<f64> = argvals
         .iter()
         .map(|&t| 2.0 + 0.5 * t + (2.0 * PI * t / 2.0).sin())
@@ -124,7 +124,7 @@ fn test_detrend_loess_removes_linear_trend() {
 #[test]
 fn test_detrend_loess_removes_quadratic_trend() {
     let m = 100;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let data_vec: Vec<f64> = argvals
         .iter()
         .map(|&t| 1.0 + 0.3 * t - 0.05 * t * t + (2.0 * PI * t / 2.0).sin())
@@ -139,7 +139,7 @@ fn test_detrend_loess_removes_quadratic_trend() {
 #[test]
 fn test_detrend_loess_different_bandwidths() {
     let m = 100;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let data_vec: Vec<f64> = argvals
         .iter()
         .enumerate()
@@ -168,7 +168,7 @@ fn test_detrend_loess_short_series() {
 fn test_decompose_additive_separates_components() {
     let m = 200;
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let data_vec: Vec<f64> = argvals
         .iter()
         .map(|&t| 2.0 + 0.5 * t + (2.0 * PI * t / period).sin())
@@ -197,7 +197,7 @@ fn test_decompose_additive_separates_components() {
 fn test_decompose_additive_different_harmonics() {
     let m = 200;
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let data_vec: Vec<f64> = argvals
         .iter()
         .map(|&t| 1.0 + (2.0 * PI * t / period).sin())
@@ -213,7 +213,7 @@ fn test_decompose_additive_different_harmonics() {
 fn test_decompose_additive_residual_properties() {
     let m = 200;
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let data_vec: Vec<f64> = argvals
         .iter()
         .map(|&t| 2.0 + 0.3 * t + (2.0 * PI * t / period).sin())
@@ -247,7 +247,7 @@ fn test_decompose_additive_multi_sample() {
     let n = 3;
     let m = 100;
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let mut data = FdMatrix::zeros(n, m);
     for i in 0..n {
         let amp = (i + 1) as f64;
@@ -265,7 +265,7 @@ fn test_decompose_additive_multi_sample() {
 fn test_decompose_multiplicative_basic() {
     let m = 200;
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let data_vec: Vec<f64> = argvals
         .iter()
         .map(|&t| (2.0 + 0.1 * t) * (1.0 + 0.3 * (2.0 * PI * t / period).sin()))
@@ -289,7 +289,7 @@ fn test_decompose_multiplicative_basic() {
 fn test_decompose_multiplicative_non_positive_data() {
     let m = 100;
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let data_vec: Vec<f64> = argvals
         .iter()
         .map(|&t| -1.0 + (2.0 * PI * t / period).sin())
@@ -308,7 +308,7 @@ fn test_decompose_multiplicative_non_positive_data() {
 fn test_decompose_multiplicative_vs_additive() {
     let m = 200;
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64 * 10.0).collect();
+    let argvals = crate::test_helpers::uniform_grid_range_div(m, 10.0);
     let data_vec: Vec<f64> = argvals
         .iter()
         .map(|&t| 5.0 + (2.0 * PI * t / period).sin())

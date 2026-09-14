@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn lfd_empty_coefs_returns_err() {
         let n_pts = 10;
-        let argvals: Vec<f64> = (0..n_pts).map(|i| i as f64 / (n_pts - 1) as f64).collect();
+        let argvals = crate::test_helpers::uniform_grid(n_pts);
         let data = FdMatrix::zeros(2, n_pts);
         let lfd = Lfd { coefs: vec![] };
         let result = lfd.apply(&data, &argvals);
@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn lfd_constant_operator_on_constant_curve() {
         let n_pts = 11;
-        let argvals: Vec<f64> = (0..n_pts).map(|i| i as f64 / (n_pts - 1) as f64).collect();
+        let argvals = crate::test_helpers::uniform_grid(n_pts);
         let curve_val = 3.0_f64;
         let c = 2.0_f64;
 
@@ -471,7 +471,7 @@ mod tests {
     fn lfd_apply_shape_preserved() {
         let n_pts = 20;
         let n_curves = 4;
-        let argvals: Vec<f64> = (0..n_pts).map(|i| i as f64 / (n_pts - 1) as f64).collect();
+        let argvals = crate::test_helpers::uniform_grid(n_pts);
         let mut data = FdMatrix::zeros(n_curves, n_pts);
         for i in 0..n_curves {
             for j in 0..n_pts {
@@ -495,7 +495,7 @@ mod tests {
     fn pda_recovers_harmonic_oscillator() {
         let omega = 2.0 * PI;
         let n_pts = 101;
-        let argvals: Vec<f64> = (0..n_pts).map(|i| i as f64 / (n_pts - 1) as f64).collect();
+        let argvals = crate::test_helpers::uniform_grid(n_pts);
         let n_curves = 20;
 
         // x_i(t) = A_i · cos(ω t) + B_i · sin(ω t), with varied A_i, B_i.
@@ -535,7 +535,7 @@ mod tests {
     fn pda_too_few_curves_returns_err() {
         // order=2 requires n >= 3; supply only 2 curves.
         let n_pts = 51;
-        let argvals: Vec<f64> = (0..n_pts).map(|i| i as f64 / (n_pts - 1) as f64).collect();
+        let argvals = crate::test_helpers::uniform_grid(n_pts);
         let data = FdMatrix::zeros(2, n_pts); // 2 curves, order=2 needs ≥3
 
         let result = principal_differential_analysis(&data, &argvals, 2);
@@ -550,7 +550,7 @@ mod tests {
     #[test]
     fn pda_mismatched_argvals_returns_err() {
         let n_pts = 51;
-        let _argvals: Vec<f64> = (0..n_pts).map(|i| i as f64 / (n_pts - 1) as f64).collect();
+        let _argvals = crate::test_helpers::uniform_grid(n_pts);
         let data = FdMatrix::zeros(5, n_pts);
 
         // Supply argvals of wrong length.
@@ -601,7 +601,7 @@ mod tests {
     #[test]
     fn pda_zero_order_returns_err() {
         let n_pts = 51;
-        let argvals: Vec<f64> = (0..n_pts).map(|i| i as f64 / (n_pts - 1) as f64).collect();
+        let argvals = crate::test_helpers::uniform_grid(n_pts);
         let data = FdMatrix::zeros(5, n_pts);
 
         let result = principal_differential_analysis(&data, &argvals, 0);
@@ -617,7 +617,7 @@ mod tests {
     fn pda_result_shape_invariants() {
         let omega = 2.0 * PI;
         let n_pts = 51;
-        let argvals: Vec<f64> = (0..n_pts).map(|i| i as f64 / (n_pts - 1) as f64).collect();
+        let argvals = crate::test_helpers::uniform_grid(n_pts);
         let n_curves = 10;
         let order = 2;
 

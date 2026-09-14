@@ -25,6 +25,15 @@ pub fn uniform_grid_range_div(n: usize, end: f64) -> Vec<f64> {
     (0..n).map(|i| i as f64 / (n - 1) as f64 * end).collect()
 }
 
+/// Generate a uniform grid with `n` points spaced by `step` starting at 0.
+///
+/// Uses the form `i * step`, producing `[0.0, step, 2*step, ..., (n-1)*step]`.
+/// This differs from [`uniform_grid_range`] (which uses `i * end / (n-1)`);
+/// use this form at call sites that compute `i as f64 * step` directly.
+pub fn uniform_step_grid(n: usize, step: f64) -> Vec<f64> {
+    (0..n).map(|i| i as f64 * step).collect()
+}
+
 /// Binarize a continuous response at a threshold: values `>= threshold` → 1.0, else 0.0.
 ///
 /// Used in tests to convert a continuous `y` into a binary response at its median.

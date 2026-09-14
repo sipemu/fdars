@@ -820,7 +820,7 @@ mod tests {
             length_scale: 1.0,
             variance: 1.0,
         };
-        let argvals: Vec<f64> = (0..20).map(|i| i as f64 * 0.1).collect();
+        let argvals = crate::test_helpers::uniform_step_grid(20, 0.1);
         let cov = covariance_matrix(&k, &argvals).unwrap();
         let m = argvals.len();
         assert_eq!(cov.nrows(), m);
@@ -843,7 +843,7 @@ mod tests {
             length_scale: 0.5,
             variance: 1.0,
         };
-        let argvals: Vec<f64> = (0..10).map(|i| i as f64 * 0.1).collect();
+        let argvals = crate::test_helpers::uniform_step_grid(10, 0.1);
         let cov = covariance_matrix(&k, &argvals).unwrap();
         let m = argvals.len();
 
@@ -887,7 +887,7 @@ mod tests {
             length_scale: 0.5,
             variance: 1.0,
         };
-        let argvals: Vec<f64> = (0..20).map(|i| i as f64 * 0.05).collect();
+        let argvals = crate::test_helpers::uniform_step_grid(20, 0.05);
 
         let r1 = generate_gaussian_process(5, &k, &argvals, None, Some(42)).unwrap();
         let r2 = generate_gaussian_process(5, &k, &argvals, None, Some(42)).unwrap();
@@ -912,7 +912,7 @@ mod tests {
             length_scale: 0.5,
             variance: 1.0,
         };
-        let argvals: Vec<f64> = (0..10).map(|i| i as f64 * 0.1).collect();
+        let argvals = crate::test_helpers::uniform_step_grid(10, 0.1);
 
         let r1 = generate_gaussian_process(3, &k, &argvals, None, Some(1)).unwrap();
         let r2 = generate_gaussian_process(3, &k, &argvals, None, Some(2)).unwrap();
@@ -936,7 +936,7 @@ mod tests {
             length_scale: 0.3,
             variance,
         };
-        let argvals: Vec<f64> = (0..5).map(|i| i as f64 * 0.25).collect();
+        let argvals = crate::test_helpers::uniform_step_grid(5, 0.25);
         let n = 10_000;
 
         let result = generate_gaussian_process(n, &k, &argvals, None, Some(123)).unwrap();
@@ -1181,7 +1181,7 @@ mod tests {
             }),
             Box::new(CovKernel::WhiteNoise { variance: 0.1 }),
         );
-        let argvals: Vec<f64> = (0..10).map(|i| i as f64 * 0.1).collect();
+        let argvals = crate::test_helpers::uniform_step_grid(10, 0.1);
         let result = generate_gaussian_process(3, &k, &argvals, None, Some(55)).unwrap();
         assert_eq!(result.samples.nrows(), 3);
         assert_eq!(result.samples.ncols(), 10);

@@ -885,7 +885,7 @@ mod tests {
 
     #[test]
     fn test_fourier_eigenfunctions_dimensions() {
-        let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
+        let t = uniform_grid(100);
         let phi = fourier_eigenfunctions(&t, 5);
         assert_eq!(phi.nrows(), 100);
         assert_eq!(phi.ncols(), 5);
@@ -894,7 +894,7 @@ mod tests {
 
     #[test]
     fn test_fourier_eigenfunctions_first_is_constant() {
-        let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
+        let t = uniform_grid(100);
         let phi = fourier_eigenfunctions(&t, 3);
 
         // First eigenfunction should be constant 1
@@ -934,7 +934,7 @@ mod tests {
 
     #[test]
     fn test_sim_fundata_dimensions() {
-        let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
+        let t = uniform_grid(100);
         let data = sim_fundata(20, &t, 5, EFunType::Fourier, EValType::Linear, Some(42));
         assert_eq!(data.nrows(), 20);
         assert_eq!(data.ncols(), 100);
@@ -989,7 +989,7 @@ mod tests {
 
     #[test]
     fn test_wiener_eigenfunctions_dimensions() {
-        let t: Vec<f64> = (0..100).map(|i| i as f64 / 99.0).collect();
+        let t = uniform_grid(100);
         let phi = wiener_eigenfunctions(&t, 7);
         assert_eq!(phi.nrows(), 100);
         assert_eq!(phi.ncols(), 7);
