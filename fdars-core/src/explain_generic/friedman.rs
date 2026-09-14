@@ -4,6 +4,15 @@ use crate::matrix::FdMatrix;
 
 use super::FpcPredictor;
 
+/// Extract row `i` of the optional scalar-covariate matrix as an owned Vec.
+fn extract_scalar_row(
+    scalar_covariates: Option<&FdMatrix>,
+    i: usize,
+    p_scalar: usize,
+) -> Option<Vec<f64>> {
+    scalar_covariates.map(|sc| (0..p_scalar).map(|j| sc[(i, j)]).collect())
+}
+
 /// Compute the 2D partial dependence surface over a grid of two components.
 ///
 /// For each pair `(grid_j[gj], grid_k[gk])`, fixes components `component_j`
@@ -31,7 +40,7 @@ fn compute_pdp_grid_2d(
                 s[component_j] = gj;
                 s[component_k] = gk;
                 let obs_z: Option<Vec<f64>> = if p_scalar > 0 {
-                    scalar_covariates.map(|sc| (0..p_scalar).map(|j| sc[(i, j)]).collect())
+                    extract_scalar_row(scalar_covariates, i, p_scalar)
                 } else {
                     None
                 };
@@ -143,7 +152,7 @@ pub fn generic_friedman_h(
                 let mut s: Vec<f64> = (0..ncomp).map(|c| scores[(i, c)]).collect();
                 s[component_j] = gval;
                 let obs_z: Option<Vec<f64>> = if p_scalar > 0 {
-                    scalar_covariates.map(|sc| (0..p_scalar).map(|j| sc[(i, j)]).collect())
+                    extract_scalar_row(scalar_covariates, i, p_scalar)
                 } else {
                     None
                 };
@@ -161,7 +170,7 @@ pub fn generic_friedman_h(
                 let mut s: Vec<f64> = (0..ncomp).map(|c| scores[(i, c)]).collect();
                 s[component_k] = gval;
                 let obs_z: Option<Vec<f64>> = if p_scalar > 0 {
-                    scalar_covariates.map(|sc| (0..p_scalar).map(|j| sc[(i, j)]).collect())
+                    extract_scalar_row(scalar_covariates, i, p_scalar)
                 } else {
                     None
                 };

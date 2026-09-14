@@ -86,6 +86,17 @@ const BARY_DET_EPS: f64 = 1e-14;
 // Mesh validation
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// Axis-aligned bounding box of a 2D point set.
+///
+/// Returns `(x_min, x_max, y_min, y_max)` by folding over the node coordinates.
+fn node_bbox(nodes: &[[f64; 2]]) -> (f64, f64, f64, f64) {
+    let x_min = nodes.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
+    let x_max = nodes.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
+    let y_min = nodes.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
+    let y_max = nodes.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max);
+    (x_min, x_max, y_min, y_max)
+}
+
 /// Validate the mesh: non-empty, all indices in range, no degenerate (zero-area) triangles.
 ///
 /// Called once at entry by every public function before any computation.
@@ -108,10 +119,7 @@ fn mesh_validate(nodes: &[[f64; 2]], triangles: &[[usize; 3]]) -> Result<(), Fda
     let n = nodes.len();
 
     // Compute bounding-box area for the degenerate-triangle tolerance.
-    let x_min = nodes.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min);
-    let x_max = nodes.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
-    let y_min = nodes.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min);
-    let y_max = nodes.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max);
+    let (x_min, x_max, y_min, y_max) = node_bbox(nodes);
     let bbox_area = (x_max - x_min) * (y_max - y_min);
     let area_tol = 1e-12 * bbox_area.max(1.0);
 

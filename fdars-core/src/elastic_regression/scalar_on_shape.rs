@@ -59,6 +59,16 @@ pub struct ScalarOnShapeResult {
     pub index_method: IndexMethod,
 }
 
+// ─── Private helpers ────────────────────────────────────────────────────────
+
+/// Subtract `fitted[i]` from `y[i]` element-wise: `y[i] - fitted[i]` for each `i`.
+fn subtract_fitted(y: &[f64], fitted: &[f64]) -> Vec<f64> {
+    y.iter()
+        .zip(fitted.iter())
+        .map(|(&yi, &gi)| yi - gi)
+        .collect()
+}
+
 // ─── Main API ───────────────────────────────────────────────────────────────
 
 /// Scalar-on-shape regression with elastic alignment.
@@ -137,11 +147,7 @@ pub fn scalar_on_shape(
         let g_vals = eval_polynomial_no_intercept(&f0, &g_coefs);
 
         // Compute adjusted_y = y - g(f0).
-        let adjusted_y: Vec<f64> = y
-            .iter()
-            .zip(g_vals.iter())
-            .map(|(&yi, &gi)| yi - gi)
-            .collect();
+        let adjusted_y: Vec<f64> = subtract_fitted(y, &g_vals);
 
         // ── Inner loop: estimate beta with alignment ────────────────────
         let inner_result = inner_loop(
@@ -169,40 +175,24 @@ pub fn scalar_on_shape(
             IndexMethod::Identity => {
                 h_coefs = vec![1.0];
                 // g: regress (y - shape_scores) on f0 powers (no intercept).
-                let g_response: Vec<f64> = y
-                    .iter()
-                    .zip(shape_scores.iter())
-                    .map(|(&yi, &si)| yi - si)
-                    .collect();
+                let g_response: Vec<f64> = subtract_fitted(y, &shape_scores);
                 g_coefs = fit_polynomial_no_intercept(&f0, &g_response, config.g_degree);
             }
             IndexMethod::Polynomial(deg) => {
                 // h: regress (y - g(f0)) on polynomial of shape_scores.
                 let g_vals_current = eval_polynomial_no_intercept(&f0, &g_coefs);
-                let h_response: Vec<f64> = y
-                    .iter()
-                    .zip(g_vals_current.iter())
-                    .map(|(&yi, &gi)| yi - gi)
-                    .collect();
+                let h_response: Vec<f64> = subtract_fitted(y, &g_vals_current);
                 h_coefs = fit_polynomial_with_intercept(&shape_scores, &h_response, *deg);
 
                 // g: regress (y - h(shape_scores)) on f0 powers (no intercept).
                 let h_vals = eval_polynomial_with_intercept(&shape_scores, &h_coefs);
-                let g_response: Vec<f64> = y
-                    .iter()
-                    .zip(h_vals.iter())
-                    .map(|(&yi, &hi)| yi - hi)
-                    .collect();
+                let g_response: Vec<f64> = subtract_fitted(y, &h_vals);
                 g_coefs = fit_polynomial_no_intercept(&f0, &g_response, config.g_degree);
             }
             IndexMethod::NadarayaWatson(bw) => {
                 // h: nonparametric estimate via Nadaraya-Watson.
                 let g_vals_current = eval_polynomial_no_intercept(&f0, &g_coefs);
-                let h_response: Vec<f64> = y
-                    .iter()
-                    .zip(g_vals_current.iter())
-                    .map(|(&yi, &gi)| yi - gi)
-                    .collect();
+                let h_response: Vec<f64> = subtract_fitted(y, &g_vals_current);
                 let h_vals = crate::smoothing::nadaraya_watson(
                     &shape_scores,
                     &h_response,
@@ -215,11 +205,7 @@ pub fn scalar_on_shape(
                 h_coefs = h_vals;
 
                 // g: regress (y - h_vals) on f0 powers (no intercept).
-                let g_response: Vec<f64> = y
-                    .iter()
-                    .zip(h_coefs.iter())
-                    .map(|(&yi, &hi)| yi - hi)
-                    .collect();
+                let g_response: Vec<f64> = subtract_fitted(y, &h_coefs);
                 g_coefs = fit_polynomial_no_intercept(&f0, &g_response, config.g_degree);
             }
         }
