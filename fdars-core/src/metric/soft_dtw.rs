@@ -362,6 +362,69 @@ fn soft_dtw_forward(x: &[f64], y: &[f64], gamma: f64) -> Vec<Vec<f64>> {
     r
 }
 
+/// Compute one backward-pass contribution term for cell (i, j).
+///
+/// `r_ij` is R[i][j]; `r_nb` is R[i_nb][j_nb] (the neighbour cell);
+/// `e_nb` is E[i_nb][j_nb]. Returns `e_nb * exp(-(r_ij - softmin3_val(r, i_nb, j_nb)) / gamma)`.
+/// This is the exact recurrence used by `soft_dtw_backward` — lifted verbatim to reduce
+/// its cognitive complexity without altering any computation.
+#[inline]
+fn sdtw_backward_contrib(
+    r_ij: f64,
+    r_nb: f64,
+    e_nb: f64,
+    r: &[Vec<f64>],
+    i_nb: usize,
+    j_nb: usize,
+    gamma: f64,
+) -> f64 {
+    e_nb * (-(r_ij - r_nb + r_nb - softmin3_val(r, i_nb, j_nb, gamma)) / gamma).exp()
+}
+
+/// Compute E[i][j] = a + b + c for the backward DP at cell (i, j).
+///
+/// The three contributions correspond to the "up", "right", and "diagonal"
+/// predecessor moves.  Exactly matches the original unconditional-branch
+/// recurrence in `soft_dtw_backward` (FP order preserved; lifted verbatim).
+#[inline]
+fn sdtw_backward_cell(
+    e: &[Vec<f64>],
+    r: &[Vec<f64>],
+    i: usize,
+    j: usize,
+    n: usize,
+    m: usize,
+    gamma: f64,
+) -> f64 {
+    // Contribution from (i+1, j): "up" move
+    let a = if i < n {
+        sdtw_backward_contrib(r[i][j], r[i + 1][j], e[i + 1][j], r, i + 1, j, gamma)
+    } else {
+        0.0
+    };
+    // Contribution from (i, j+1): "right" move
+    let b = if j < m {
+        sdtw_backward_contrib(r[i][j], r[i][j + 1], e[i][j + 1], r, i, j + 1, gamma)
+    } else {
+        0.0
+    };
+    // Contribution from (i+1, j+1): "diagonal" move
+    let c = if i < n && j < m {
+        sdtw_backward_contrib(
+            r[i][j],
+            r[i + 1][j + 1],
+            e[i + 1][j + 1],
+            r,
+            i + 1,
+            j + 1,
+            gamma,
+        )
+    } else {
+        0.0
+    };
+    a + b + c
+}
+
 /// Backward pass: compute E matrix (soft alignment weights) from the R table.
 ///
 /// E[i][j] represents the contribution of alignment (i,j) to the gradient.
@@ -372,47 +435,14 @@ fn soft_dtw_backward(x: &[f64], y: &[f64], r: &[Vec<f64>], gamma: f64) -> Vec<Ve
     // Boundary: E[n][m] = 1 (the endpoint contributes fully)
     e[n][m] = 1.0;
 
-    // Also set up sentinel R values: R[n+1][*] = R[*][m+1] = INF
-    // We'll handle this via bounds checking
-
     for i in (1..=n).rev() {
         for j in (1..=m).rev() {
-            // Preserve the E[n][m] = 1.0 endpoint seed: at (n, m) all three
-            // neighbour contributions (a, b, c) are gated off, so the
-            // unconditional write `e[i][j] = a + b + c` would overwrite the
-            // seed with 0.0 and zero the entire backward pass.
+            // Preserve the E[n][m] = 1.0 endpoint seed: at (n, m) the unconditional
+            // write `e[i][j] = a + b + c` would overwrite the seed with 0.0.
             if i == n && j == m {
                 continue;
             }
-            // Contribution from (i+1, j): R[i+1][j] used R[i][j] via the "up" move
-            let a = if i < n {
-                e[i + 1][j]
-                    * (-(r[i][j] - r[i + 1][j] + r[i + 1][j] - softmin3_val(r, i + 1, j, gamma))
-                        / gamma)
-                        .exp()
-            } else {
-                0.0
-            };
-            // Contribution from (i, j+1): R[i][j+1] used R[i][j] via the "right" move
-            let b = if j < m {
-                e[i][j + 1]
-                    * (-(r[i][j] - r[i][j + 1] + r[i][j + 1] - softmin3_val(r, i, j + 1, gamma))
-                        / gamma)
-                        .exp()
-            } else {
-                0.0
-            };
-            // Contribution from (i+1, j+1): R[i+1][j+1] used R[i][j] via the "diagonal" move
-            let c = if i < n && j < m {
-                e[i + 1][j + 1]
-                    * (-(r[i][j] - r[i + 1][j + 1] + r[i + 1][j + 1]
-                        - softmin3_val(r, i + 1, j + 1, gamma))
-                        / gamma)
-                        .exp()
-            } else {
-                0.0
-            };
-            e[i][j] = a + b + c;
+            e[i][j] = sdtw_backward_cell(&e, r, i, j, n, m, gamma);
         }
     }
     e
@@ -627,6 +657,45 @@ fn init_barycenter_mean(rows: &[Vec<f64>]) -> Vec<f64> {
     bary
 }
 
+/// Compute the initial Hessian scale γ_k = (sᵀy)/(yᵀy) from L-BFGS history.
+///
+/// Returns 1.0 when the history is empty or the denominator (yᵀy) is near-zero.
+#[inline]
+fn lbfgs_hessian_scale(s_hist: &VecDeque<Vec<f64>>, y_hist: &VecDeque<Vec<f64>>) -> f64 {
+    if s_hist.is_empty() {
+        return 1.0;
+    }
+    let s_last = s_hist.back().unwrap();
+    let y_last = y_hist.back().unwrap();
+    let yy = lbfgs_dot(y_last, y_last);
+    if yy < 1e-20 {
+        1.0
+    } else {
+        lbfgs_dot(s_last, y_last) / yy
+    }
+}
+
+/// Apply the curvature-safeguarded L-BFGS history update.
+///
+/// Only pushes `(s_vec, y_vec)` when `sᵀy > 1e-20` (Pitfall 1). Evicts the
+/// oldest entry when the history is full (`m_lbfgs`).
+fn lbfgs_update_history(
+    s_vec: Vec<f64>,
+    y_vec: Vec<f64>,
+    s_hist: &mut VecDeque<Vec<f64>>,
+    y_hist: &mut VecDeque<Vec<f64>>,
+    m_lbfgs: usize,
+) {
+    if lbfgs_dot(&s_vec, &y_vec) > 1e-20 {
+        if s_hist.len() == m_lbfgs {
+            s_hist.pop_front();
+            y_hist.pop_front();
+        }
+        s_hist.push_back(s_vec);
+        y_hist.push_back(y_vec);
+    }
+}
+
 /// Run one L-BFGS descent from a given initial barycenter.
 ///
 /// Private helper shared by `soft_dtw_barycenter` (single-init path) and
@@ -677,18 +746,7 @@ fn lbfgs_refine_from_init(
         }
 
         // Initial Hessian scale γ_k = (sᵀy)/(yᵀy); fallback to 1.0 when empty or near-zero
-        let gamma_k = if s_hist.is_empty() {
-            1.0
-        } else {
-            let s_last = s_hist.back().unwrap();
-            let y_last = y_hist.back().unwrap();
-            let yy = lbfgs_dot(y_last, y_last);
-            if yy < 1e-20 {
-                1.0
-            } else {
-                lbfgs_dot(s_last, y_last) / yy
-            }
-        };
+        let gamma_k = lbfgs_hessian_scale(&s_hist, &y_hist);
 
         // Compute descent direction d = -H_k * g via two-loop recursion
         two_loop_lbfgs(&g, &s_hist, &y_hist, gamma_k, &mut q_buf, &mut d);
@@ -724,15 +782,7 @@ fn lbfgs_refine_from_init(
         // Compute y = g_new - g_old
         let y_vec: Vec<f64> = g.iter().zip(g_old.iter()).map(|(gn, go)| gn - go).collect();
 
-        // Curvature safeguard (Pitfall 1): only push when sᵀy > 1e-20
-        if lbfgs_dot(&s_vec, &y_vec) > 1e-20 {
-            if s_hist.len() == m_lbfgs {
-                s_hist.pop_front();
-                y_hist.pop_front();
-            }
-            s_hist.push_back(s_vec);
-            y_hist.push_back(y_vec);
-        }
+        lbfgs_update_history(s_vec, y_vec, &mut s_hist, &mut y_hist, m_lbfgs);
 
         if converged {
             break;

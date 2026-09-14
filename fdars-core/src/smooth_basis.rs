@@ -601,6 +601,153 @@ pub struct SmoothMonotoneResult {
     pub converged: bool,
 }
 
+/// Validate `smooth_monotone` inputs; returns `m` on success.
+fn smooth_monotone_validate(
+    data: &[f64],
+    argvals: &[f64],
+    nbasis: usize,
+    order: usize,
+    lambda: f64,
+    max_iter: usize,
+) -> Result<usize, crate::FdarError> {
+    let m = data.len();
+    if m < 3 || argvals.len() != m {
+        return Err(crate::FdarError::InvalidDimension {
+            parameter: "data/argvals",
+            expected: "data.len() >= 3, argvals.len() == data.len()".to_string(),
+            actual: format!("data.len()={}, argvals.len()={}", m, argvals.len()),
+        });
+    }
+    if nbasis < 2 {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: format!("smooth_monotone requires nbasis >= 2, got {}", nbasis),
+        });
+    }
+    if order < 1 {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "order",
+            message: format!("smooth_monotone requires order >= 1, got {}", order),
+        });
+    }
+    if lambda < 0.0 {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "lambda",
+            message: format!("smooth_monotone requires lambda >= 0, got {}", lambda),
+        });
+    }
+    if max_iter < 1 {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "max_iter",
+            message: format!("smooth_monotone requires max_iter >= 1, got {}", max_iter),
+        });
+    }
+    Ok(m)
+}
+
+/// Accumulate the Gauss-Newton normal equations for one observation `i`.
+///
+/// Adds the outer-product Jᵢᵀ Jᵢ into `a_mat` and Jᵢᵀ rᵢ into `g_vec`
+/// (both row-major, dimension `big_p`). The Jacobian row at observation `i` is
+/// `[1, W[i], β₁·Iexp_psi[i,0], …, β₁·Iexp_psi[i,k-1]]`.
+fn smooth_monotone_accum_obs(
+    i: usize,
+    w_int: &[f64],
+    iexp_psi: &[f64],
+    resid: &[f64],
+    beta1: f64,
+    k: usize,
+    big_p: usize,
+    a_mat: &mut [f64],
+    g_vec: &mut [f64],
+) {
+    let j0 = 1.0_f64;
+    let j1 = w_int[i];
+    a_mat[0] += j0 * j0;
+    a_mat[1] += j0 * j1;
+    a_mat[big_p] += j1 * j0;
+    a_mat[big_p + 1] += j1 * j1;
+    g_vec[0] += j0 * resid[i];
+    g_vec[1] += j1 * resid[i];
+    for aj in 0..k {
+        let jc = beta1 * iexp_psi[i * k + aj];
+        a_mat[2 + aj] += j0 * jc;
+        a_mat[(2 + aj) * big_p] += jc * j0;
+        a_mat[big_p + (2 + aj)] += j1 * jc;
+        a_mat[(2 + aj) * big_p + 1] += jc * j1;
+        for bj in 0..k {
+            let jd = beta1 * iexp_psi[i * k + bj];
+            a_mat[(2 + aj) * big_p + (2 + bj)] += jc * jd;
+        }
+        g_vec[2 + aj] += jc * resid[i];
+    }
+}
+
+/// Add the roughness penalty λ·R into the α–α sub-block of `a_mat`.
+fn smooth_monotone_add_penalty(
+    a_mat: &mut [f64],
+    penalty_col: &[f64],
+    k: usize,
+    actual_k_pm: usize,
+    big_p: usize,
+    lambda: f64,
+) {
+    for a in 0..k {
+        for b in 0..k {
+            let r_ab = if a < actual_k_pm && b < actual_k_pm {
+                penalty_col[a + b * actual_k_pm]
+            } else {
+                0.0
+            };
+            a_mat[(2 + a) * big_p + (2 + b)] += lambda * r_ab;
+        }
+    }
+}
+
+/// One Gauss-Newton iteration for `smooth_monotone`.
+///
+/// Builds normal equations, adds ridge + penalty, solves via Cholesky, applies
+/// update in-place, returns `(delta_norm, delta)`.
+fn smooth_monotone_gn_step(
+    data: &[f64],
+    w_int: &[f64],
+    iexp_psi: &[f64],
+    beta0: &mut f64,
+    beta1: &mut f64,
+    alpha: &mut [f64],
+    k: usize,
+    big_p: usize,
+    m: usize,
+    penalty_col: &[f64],
+    actual_k_pm: usize,
+    lambda: f64,
+) -> Result<f64, crate::FdarError> {
+    let mut resid = vec![0.0_f64; m];
+    for i in 0..m {
+        resid[i] = data[i] - (*beta0 + *beta1 * w_int[i]);
+    }
+    let mut a_mat = vec![0.0_f64; big_p * big_p];
+    let mut g_vec = vec![0.0_f64; big_p];
+    for i in 0..m {
+        smooth_monotone_accum_obs(
+            i, w_int, iexp_psi, &resid, *beta1, k, big_p, &mut a_mat, &mut g_vec,
+        );
+    }
+    // Levenberg ridge on diagonal.
+    for d in 0..big_p {
+        a_mat[d * big_p + d] += 1e-6 * (1.0 + a_mat[d * big_p + d].abs());
+    }
+    smooth_monotone_add_penalty(&mut a_mat, penalty_col, k, actual_k_pm, big_p, lambda);
+    let delta = crate::linalg::cholesky_solve(&a_mat, &g_vec, big_p)?;
+    *beta0 += delta[0];
+    *beta1 += delta[1];
+    for j in 0..k {
+        alpha[j] += delta[2 + j];
+    }
+    let delta_norm = delta.iter().map(|d| d * d).sum::<f64>().sqrt();
+    Ok(delta_norm)
+}
+
 /// Monotone smoothing via Ramsay's integral-of-exponential representation.
 ///
 /// Fits `f(t) = β₀ + β₁ ∫₀ᵗ exp(w(u)) du` where `w(u) = Σⱼ αⱼ Ψⱼ(u)` is a
@@ -654,58 +801,17 @@ pub fn smooth_monotone(
     lambda: f64,
     max_iter: usize,
 ) -> Result<SmoothMonotoneResult, crate::FdarError> {
-    // ── Validation ────────────────────────────────────────────────────────────
-    let m = data.len();
-    if m < 3 || argvals.len() != m {
-        return Err(crate::FdarError::InvalidDimension {
-            parameter: "data/argvals",
-            expected: "data.len() >= 3, argvals.len() == data.len()".to_string(),
-            actual: format!("data.len()={}, argvals.len()={}", m, argvals.len()),
-        });
-    }
-    if nbasis < 2 {
-        return Err(crate::FdarError::InvalidParameter {
-            parameter: "nbasis",
-            message: format!("smooth_monotone requires nbasis >= 2, got {}", nbasis),
-        });
-    }
-    if order < 1 {
-        return Err(crate::FdarError::InvalidParameter {
-            parameter: "order",
-            message: format!("smooth_monotone requires order >= 1, got {}", order),
-        });
-    }
-    if lambda < 0.0 {
-        return Err(crate::FdarError::InvalidParameter {
-            parameter: "lambda",
-            message: format!("smooth_monotone requires lambda >= 0, got {}", lambda),
-        });
-    }
-    if max_iter < 1 {
-        return Err(crate::FdarError::InvalidParameter {
-            parameter: "max_iter",
-            message: format!("smooth_monotone requires max_iter >= 1, got {}", max_iter),
-        });
-    }
+    let m = smooth_monotone_validate(data, argvals, nbasis, order, lambda, max_iter)?;
 
     // ── B-spline basis setup ──────────────────────────────────────────────────
-    // Use the same nknots convention as bspline_penalty_matrix so that
-    // actual_k == penalty matrix dimension.
     let nknots = nbasis.saturating_sub(order).max(2);
-    // basis is n*actual_k column-major: basis[ti + j*m] = Ψ_j(t_i)
     let basis_flat = crate::basis::bspline_basis(argvals, nknots, order);
     let actual_k = basis_flat.len() / m;
-
-    // Precompute roughness penalty R (actual_k × actual_k, COLUMN-MAJOR).
-    // We will need it in ROW-MAJOR for the normal equations; R is symmetric so
-    // penalty_col[a + b*k] == penalty_col[b + a*k] — no explicit transpose needed.
     let penalty_col = bspline_penalty_matrix(argvals, nbasis, order, 2);
-    // penalty_col may be sized (actual_k_pm)² — compute its actual side length.
     let actual_k_pm = (penalty_col.len() as f64).sqrt() as usize;
-    // k used throughout: take the minimum in case of rare sizing mismatch.
     let k = actual_k.min(actual_k_pm);
 
-    // Helper: Ψ_j(t_i) from column-major basis_flat.
+    // Ψ_j(t_i) from column-major basis_flat.
     let psi_at = |i: usize, j: usize| -> f64 {
         if j < actual_k {
             basis_flat[i + j * m]
@@ -716,40 +822,33 @@ pub fn smooth_monotone(
 
     // ── Initialisation ────────────────────────────────────────────────────────
     let t_range = (argvals[m - 1] - argvals[0]).max(1e-12);
-    let beta0_init = data[0];
-    // beta1 sign auto-detects data direction; avoids dividing by zero t_range.
-    let beta1_init = (data[m - 1] - data[0]) / t_range;
-    // If the data is flat, use a tiny positive value so the fit is still valid.
-    let beta1_init = if beta1_init.abs() < 1e-12 {
-        1e-6
-    } else {
-        beta1_init
+    let beta1_init = {
+        let raw = (data[m - 1] - data[0]) / t_range;
+        if raw.abs() < 1e-12 {
+            1e-6
+        } else {
+            raw
+        }
     };
-    let mut beta0 = beta0_init;
+    let mut beta0 = data[0];
     let mut beta1 = beta1_init;
-    let mut alpha = vec![0.0_f64; k]; // w = 0 everywhere → exp(w) = 1
+    let mut alpha = vec![0.0_f64; k];
+    let big_p = 2 + k;
 
-    let big_p = 2 + k; // total parameter dimension
-
-    // ── Helper: build W[i] and Iexp_psi[i*k + j] via cumulative trapezoid ────
-    // argvals may not start at 0; we shift so integration starts at argvals[0].
-    // W[i] = ∫_{argvals[0]}^{argvals[i]} exp(w(u)) du (trapezoid rule on data grid)
-    // Iexp_psi[i*k+j] = ∫_{argvals[0]}^{argvals[i]} exp(w(u))·Ψ_j(u) du
+    // Build W[i] and Iexp_psi[i*k+j] via cumulative trapezoid.
+    // W[i] = ∫_{argvals[0]}^{argvals[i]} exp(w(u)) du
+    // Iexp_psi[i*k+j] = ∫ exp(w(u))·Ψ_j(u) du
     let build_integrals = |alpha: &[f64]| -> (Vec<f64>, Vec<f64>) {
         let mut exp_w = vec![0.0_f64; m];
         for i in 0..m {
             let w_i: f64 = (0..k).map(|j| alpha[j] * psi_at(i, j)).sum();
-            // Clamp to [-30, 30] to avoid overflow (threat T-44-08).
-            let w_clamped = w_i.clamp(-30.0, 30.0);
-            exp_w[i] = w_clamped.exp();
+            exp_w[i] = w_i.clamp(-30.0, 30.0).exp();
         }
-        // W[i]: cumulative trapezoid of exp_w.
         let mut w_int = vec![0.0_f64; m];
         for i in 1..m {
             let dt = argvals[i] - argvals[i - 1];
             w_int[i] = w_int[i - 1] + 0.5 * (exp_w[i - 1] + exp_w[i]) * dt;
         }
-        // Iexp_psi: cumulative trapezoid of exp_w * Ψ_j for each j.
         let mut iexp_psi = vec![0.0_f64; m * k];
         for i in 1..m {
             let dt = argvals[i] - argvals[i - 1];
@@ -769,92 +868,21 @@ pub fn smooth_monotone(
 
     for iter in 0..max_iter {
         let (w_int, iexp_psi) = build_integrals(&alpha);
-
-        // Residuals: r_i = data[i] - f(t_i).
-        let mut resid = vec![0.0_f64; m];
-        for i in 0..m {
-            let f_i = beta0 + beta1 * w_int[i];
-            resid[i] = data[i] - f_i;
-        }
-
-        // Build normal equations A = JᵀJ (row-major big_p × big_p) and g = Jᵀr.
-        let mut a_mat = vec![0.0_f64; big_p * big_p];
-        let mut g_vec = vec![0.0_f64; big_p];
-
-        for i in 0..m {
-            // Jacobian row for observation i: [1, W[i], β₁·Iexp_psi[i,0..k]]
-            // col-0: ∂f/∂β₀ = 1
-            // col-1: ∂f/∂β₁ = W[i]
-            // col-(2+j): ∂f/∂α_j = β₁ · Iexp_psi[i*k+j]
-            let j0 = 1.0_f64;
-            let j1 = w_int[i];
-
-            // Accumulate JᵀJ and Jᵀr.
-            // Row/col indices: 0 = β₀, 1 = β₁, 2+j = α_j.
-
-            // (0,0): j0*j0
-            a_mat[0] += j0 * j0;
-            // (0,1): j0*j1
-            a_mat[1] += j0 * j1;
-            a_mat[big_p] += j1 * j0; // (1,0) = symmetric
-                                     // (1,1): j1*j1
-            a_mat[big_p + 1] += j1 * j1;
-
-            // g[0], g[1]
-            g_vec[0] += j0 * resid[i];
-            g_vec[1] += j1 * resid[i];
-
-            for aj in 0..k {
-                let jc = beta1 * iexp_psi[i * k + aj];
-                // (0, 2+aj) and (2+aj, 0)
-                a_mat[2 + aj] += j0 * jc;
-                a_mat[(2 + aj) * big_p] += jc * j0;
-                // (1, 2+aj) and (2+aj, 1)
-                a_mat[big_p + (2 + aj)] += j1 * jc;
-                a_mat[(2 + aj) * big_p + 1] += jc * j1;
-                // (2+aj, 2+aj) and cross-terms
-                for bj in 0..k {
-                    let jd = beta1 * iexp_psi[i * k + bj];
-                    a_mat[(2 + aj) * big_p + (2 + bj)] += jc * jd;
-                }
-                // g[2+aj]
-                g_vec[2 + aj] += jc * resid[i];
-            }
-        }
-
-        // Levenberg ridge on diagonal (threat T-44-09, T-44-10).
-        for d in 0..big_p {
-            a_mat[d * big_p + d] += 1e-6 * (1.0 + a_mat[d * big_p + d].abs());
-        }
-
-        // Add λ·R into the α–α sub-block.
-        // penalty_col is COLUMN-MAJOR (k×k): penalty_col[a + b*k] = R[a,b].
-        // a_mat is ROW-MAJOR (big_p×big_p): a_mat[(2+a)*big_p + (2+b)] += λ·R[a,b].
-        for a in 0..k {
-            for b in 0..k {
-                let r_ab = if a < actual_k_pm && b < actual_k_pm {
-                    penalty_col[a + b * actual_k_pm]
-                } else {
-                    0.0
-                };
-                a_mat[(2 + a) * big_p + (2 + b)] += lambda * r_ab;
-            }
-        }
-
-        // Solve normal equations.
-        let delta = crate::linalg::cholesky_solve(&a_mat, &g_vec, big_p)?;
-
-        // Apply update.
-        beta0 += delta[0];
-        beta1 += delta[1];
-        for j in 0..k {
-            alpha[j] += delta[2 + j];
-        }
-
+        let delta_norm = smooth_monotone_gn_step(
+            data,
+            &w_int,
+            &iexp_psi,
+            &mut beta0,
+            &mut beta1,
+            &mut alpha,
+            k,
+            big_p,
+            m,
+            &penalty_col,
+            actual_k_pm,
+            lambda,
+        )?;
         iterations = iter + 1;
-
-        // Convergence check: ‖δ‖₂ < 1e-8.
-        let delta_norm: f64 = delta.iter().map(|d| d * d).sum::<f64>().sqrt();
         if delta_norm < 1e-8 {
             converged = true;
             break;
@@ -1241,6 +1269,52 @@ fn evaluate_nbasis_info_criterion(
     scores
 }
 
+/// Accumulate squared errors for one CV fold (basis already computed).
+///
+/// Returns `(total_se, count)` added by this fold; returns `(0.0, 0)` if the
+/// fold's penalized system cannot be inverted.
+fn eval_nbasis_cv_fold(
+    data: &FdMatrix,
+    b_full: &DMatrix<f64>,
+    r_mat: &DMatrix<f64>,
+    point_folds: &[usize],
+    fold: usize,
+    n: usize,
+    actual_k: usize,
+    lambda: f64,
+) -> (f64, usize) {
+    let (train_pts, test_pts) = crate::cv::fold_indices(point_folds, fold);
+    if train_pts.is_empty() || test_pts.is_empty() {
+        return (0.0, 0);
+    }
+    let b_train = b_full.select_rows(train_pts.iter());
+    let b_test = b_full.select_rows(test_pts.iter());
+    let btb = b_train.transpose() * &b_train;
+    let ridge_eps = 1e-10;
+    let system: DMatrix<f64> =
+        &btb + lambda * r_mat + ridge_eps * DMatrix::<f64>::identity(actual_k, actual_k);
+    let Some(system_inv) = invert_penalized_system(&system, actual_k) else {
+        return (0.0, 0);
+    };
+    let proj = &system_inv * b_train.transpose();
+    let mut total_se = 0.0;
+    let mut count = 0usize;
+    for i in 0..n {
+        let y_train = nalgebra::DVector::from_iterator(
+            train_pts.len(),
+            train_pts.iter().map(|&j| data[(i, j)]),
+        );
+        let coefs = &proj * &y_train;
+        let pred = &b_test * &coefs;
+        for (t_idx, &j) in test_pts.iter().enumerate() {
+            let err = data[(i, j)] - pred[t_idx];
+            total_se += err * err;
+            count += 1;
+        }
+    }
+    (total_se, count)
+}
+
 /// Evaluate nbasis via k-fold cross-validation of reconstruction error.
 fn evaluate_nbasis_cv(
     data: &FdMatrix,
@@ -1279,36 +1353,18 @@ fn evaluate_nbasis_cv(
         let mut count = 0usize;
 
         for fold in 0..n_folds {
-            let (train_pts, test_pts) = crate::cv::fold_indices(&point_folds, fold);
-            if train_pts.is_empty() || test_pts.is_empty() {
-                continue;
-            }
-            // Basis rows at the train/test points, and the projection operator
-            // built from the training points only (independent of any curve).
-            let b_train = b_full.select_rows(train_pts.iter());
-            let b_test = b_full.select_rows(test_pts.iter());
-            let btb = b_train.transpose() * &b_train;
-            let ridge_eps = 1e-10;
-            let system: DMatrix<f64> =
-                &btb + lambda * &r_mat + ridge_eps * DMatrix::<f64>::identity(actual_k, actual_k);
-            let Some(system_inv) = invert_penalized_system(&system, actual_k) else {
-                continue;
-            };
-            let proj = &system_inv * b_train.transpose(); // (k x |train|)
-
-            for i in 0..n {
-                let y_train = nalgebra::DVector::from_iterator(
-                    train_pts.len(),
-                    train_pts.iter().map(|&j| data[(i, j)]),
-                );
-                let coefs = &proj * &y_train;
-                let pred = &b_test * &coefs; // predictions at held-out points
-                for (t_idx, &j) in test_pts.iter().enumerate() {
-                    let err = data[(i, j)] - pred[t_idx];
-                    total_se += err * err;
-                    count += 1;
-                }
-            }
+            let (se, cnt) = eval_nbasis_cv_fold(
+                data,
+                &b_full,
+                &r_mat,
+                &point_folds,
+                fold,
+                n,
+                actual_k,
+                lambda,
+            );
+            total_se += se;
+            count += cnt;
         }
 
         if count > 0 {
