@@ -53,6 +53,203 @@ pub struct FofResult {
 }
 
 // ---------------------------------------------------------------------------
+// Private helpers for fof_regression
+// ---------------------------------------------------------------------------
+
+/// Validate inputs for fof_regression. Returns (n, ncomp_x_clamp, ncomp_y_clamp).
+fn fof_validate_inputs(
+    x_data: &FdMatrix,
+    y_data: &FdMatrix,
+    x_argvals: &[f64],
+    y_argvals: &[f64],
+    ncomp_x: usize,
+    ncomp_y: usize,
+) -> Result<(usize, usize, usize), FdarError> {
+    let (n_x, m_x) = x_data.shape();
+    let (n_y, m_y) = y_data.shape();
+
+    if n_x != n_y {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_data",
+            expected: format!("{n_x} rows (matching x_data)"),
+            actual: format!("{n_y} rows"),
+        });
+    }
+    let n = n_x;
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x_data",
+            expected: "at least 3 observations".to_string(),
+            actual: format!("{n}"),
+        });
+    }
+    if x_argvals.len() != m_x {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x_argvals",
+            expected: format!("{m_x} elements"),
+            actual: format!("{} elements", x_argvals.len()),
+        });
+    }
+    if y_argvals.len() != m_y {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_argvals",
+            expected: format!("{m_y} elements"),
+            actual: format!("{} elements", y_argvals.len()),
+        });
+    }
+    if ncomp_x == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp_x",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if ncomp_y == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp_y",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    let ncx = ncomp_x.min(n - 1).min(m_x);
+    let ncy = ncomp_y.min(n - 1).min(m_y);
+    Ok((n, ncx, ncy))
+}
+
+/// Solve OLS for each Y-score column: returns coef_matrix (ncomp_x × ncomp_y).
+fn fof_solve_coef_matrix(
+    x_scores: &FdMatrix,
+    y_scores: &FdMatrix,
+    n: usize,
+    ncomp_x: usize,
+    ncomp_y: usize,
+) -> Result<FdMatrix, FdarError> {
+    let mut xtx = compute_xtx(x_scores);
+    // Small ridge regularization for numerical stability (standard in
+    // double-FPCA regression; see Ivanescu et al. 2015).
+    let ridge = 1e-8 * (0..ncomp_x).map(|k| xtx[k * ncomp_x + k]).sum::<f64>() / ncomp_x as f64;
+    for k in 0..ncomp_x {
+        xtx[k * ncomp_x + k] += ridge.max(1e-12);
+    }
+    let l = cholesky_factor(&xtx, ncomp_x)?;
+
+    let mut coef_matrix = FdMatrix::zeros(ncomp_x, ncomp_y);
+    for l_col in 0..ncomp_y {
+        let mut xty = vec![0.0; ncomp_x];
+        for k in 0..ncomp_x {
+            let mut s = 0.0;
+            for i in 0..n {
+                s += x_scores[(i, k)] * y_scores[(i, l_col)];
+            }
+            xty[k] = s;
+        }
+        let b_col = cholesky_forward_back(&l, &xty, ncomp_x);
+        for k in 0..ncomp_x {
+            coef_matrix[(k, l_col)] = b_col[k];
+        }
+    }
+    Ok(coef_matrix)
+}
+
+/// Reconstruct β(s,t) surface from FPCA rotations and coefficient matrix.
+fn fof_reconstruct_beta_surface(
+    coef_matrix: &FdMatrix,
+    fpca_x: &FpcaResult,
+    fpca_y: &FpcaResult,
+    m_y: usize,
+    m_x: usize,
+    ncomp_x: usize,
+    ncomp_y: usize,
+) -> FdMatrix {
+    let mut beta_surface = FdMatrix::zeros(m_y, m_x);
+    for si in 0..m_y {
+        for tj in 0..m_x {
+            let mut val = 0.0;
+            for k in 0..ncomp_x {
+                for l_col in 0..ncomp_y {
+                    val += coef_matrix[(k, l_col)]
+                        * fpca_x.rotation[(tj, k)]
+                        * fpca_y.rotation[(si, l_col)];
+                }
+            }
+            beta_surface[(si, tj)] = val;
+        }
+    }
+    beta_surface
+}
+
+/// Compute fitted Y curves and residuals from scores, coef_matrix, and FPCA.
+/// Returns (fitted, residuals).
+fn fof_reconstruct_fitted(
+    x_scores: &FdMatrix,
+    coef_matrix: &FdMatrix,
+    fpca_y: &FpcaResult,
+    y_data: &FdMatrix,
+    n: usize,
+    m_y: usize,
+    ncomp_x: usize,
+    ncomp_y: usize,
+) -> (FdMatrix, FdMatrix) {
+    // Ŷ_scores = X_scores * B (n x ncomp_y)
+    let mut fitted_scores = FdMatrix::zeros(n, ncomp_y);
+    for i in 0..n {
+        for l_col in 0..ncomp_y {
+            let mut s = 0.0;
+            for k in 0..ncomp_x {
+                s += x_scores[(i, k)] * coef_matrix[(k, l_col)];
+            }
+            fitted_scores[(i, l_col)] = s;
+        }
+    }
+
+    // Ŷ(s) = mean_y(s) + Σ_l fitted_score_l * φ_y^l(s)
+    let mut fitted = FdMatrix::zeros(n, m_y);
+    for i in 0..n {
+        for j in 0..m_y {
+            let mut val = fpca_y.mean[j];
+            for l_col in 0..ncomp_y {
+                val += fitted_scores[(i, l_col)] * fpca_y.rotation[(j, l_col)];
+            }
+            fitted[(i, j)] = val;
+        }
+    }
+
+    // Residuals
+    let mut residuals = FdMatrix::zeros(n, m_y);
+    for i in 0..n {
+        for j in 0..m_y {
+            residuals[(i, j)] = y_data[(i, j)] - fitted[(i, j)];
+        }
+    }
+    (fitted, residuals)
+}
+
+/// Compute pointwise R² and overall R² from residuals and FPCA mean.
+fn fof_pointwise_r2(
+    y_data: &FdMatrix,
+    residuals: &FdMatrix,
+    fpca_y: &FpcaResult,
+    n: usize,
+    m_y: usize,
+) -> (Vec<f64>, f64) {
+    let mut r_squared_t = vec![0.0; m_y];
+    for j in 0..m_y {
+        let y_mean_j = fpca_y.mean[j];
+        let mut ss_tot = 0.0;
+        let mut ss_res = 0.0;
+        for i in 0..n {
+            ss_tot += (y_data[(i, j)] - y_mean_j).powi(2);
+            ss_res += residuals[(i, j)].powi(2);
+        }
+        r_squared_t[j] = if ss_tot > 0.0 {
+            1.0 - ss_res / ss_tot
+        } else {
+            0.0
+        };
+    }
+    let r_squared = r_squared_t.iter().sum::<f64>() / m_y as f64;
+    (r_squared_t, r_squared)
+}
+
+// ---------------------------------------------------------------------------
 // Main function
 // ---------------------------------------------------------------------------
 
@@ -118,54 +315,11 @@ pub fn fof_regression(
     ncomp_x: usize,
     ncomp_y: usize,
 ) -> Result<FofResult, FdarError> {
-    let (n_x, m_x) = x_data.shape();
-    let (n_y, m_y) = y_data.shape();
+    let (_, m_x) = x_data.shape();
+    let (_, m_y) = y_data.shape();
 
-    if n_x != n_y {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y_data",
-            expected: format!("{n_x} rows (matching x_data)"),
-            actual: format!("{n_y} rows"),
-        });
-    }
-    let n = n_x;
-
-    if n < 3 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "x_data",
-            expected: "at least 3 observations".to_string(),
-            actual: format!("{n}"),
-        });
-    }
-    if x_argvals.len() != m_x {
-        return Err(FdarError::InvalidDimension {
-            parameter: "x_argvals",
-            expected: format!("{m_x} elements"),
-            actual: format!("{} elements", x_argvals.len()),
-        });
-    }
-    if y_argvals.len() != m_y {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y_argvals",
-            expected: format!("{m_y} elements"),
-            actual: format!("{} elements", y_argvals.len()),
-        });
-    }
-    if ncomp_x == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "ncomp_x",
-            message: "must be >= 1".to_string(),
-        });
-    }
-    if ncomp_y == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "ncomp_y",
-            message: "must be >= 1".to_string(),
-        });
-    }
-
-    let ncomp_x = ncomp_x.min(n - 1).min(m_x);
-    let ncomp_y = ncomp_y.min(n - 1).min(m_y);
+    let (n, ncomp_x, ncomp_y) =
+        fof_validate_inputs(x_data, y_data, x_argvals, y_argvals, ncomp_x, ncomp_y)?;
 
     // --- FPCA on X and Y ---
     let fpca_x = fdata_to_pc(x_data, ncomp_x, x_argvals)?;
@@ -178,104 +332,29 @@ pub fn fof_regression(
     let x_scores = fpca_x.project(x_data)?;
     let y_scores = fpca_y.project(y_data)?;
 
-    let mut xtx = compute_xtx(&x_scores);
-    // Small ridge regularization for numerical stability (standard in
-    // double-FPCA regression; see Ivanescu et al. 2015).
-    let ridge = 1e-8 * (0..ncomp_x).map(|k| xtx[k * ncomp_x + k]).sum::<f64>() / ncomp_x as f64;
-    for k in 0..ncomp_x {
-        xtx[k * ncomp_x + k] += ridge.max(1e-12);
-    }
-    let l = cholesky_factor(&xtx, ncomp_x)?;
-
-    // Solve for each column of Y_scores separately
-    let mut coef_matrix = FdMatrix::zeros(ncomp_x, ncomp_y);
-    for l_col in 0..ncomp_y {
-        // X' * y_scores[:,l_col]
-        let mut xty = vec![0.0; ncomp_x];
-        for k in 0..ncomp_x {
-            let mut s = 0.0;
-            for i in 0..n {
-                s += x_scores[(i, k)] * y_scores[(i, l_col)];
-            }
-            xty[k] = s;
-        }
-        let b_col = cholesky_forward_back(&l, &xty, ncomp_x);
-        for k in 0..ncomp_x {
-            coef_matrix[(k, l_col)] = b_col[k];
-        }
-    }
+    let coef_matrix = fof_solve_coef_matrix(&x_scores, &y_scores, n, ncomp_x, ncomp_y)?;
 
     // --- Reconstruct coefficient surface β(s,t) ---
-    // β(s_i, t_j) = Σ_k Σ_l B_{kl} * φ_x^k(t_j) * φ_y^l(s_i)
-    let mut beta_surface = FdMatrix::zeros(m_y, m_x);
-    for si in 0..m_y {
-        for tj in 0..m_x {
-            let mut val = 0.0;
-            for k in 0..ncomp_x {
-                for l_col in 0..ncomp_y {
-                    val += coef_matrix[(k, l_col)]
-                        * fpca_x.rotation[(tj, k)]
-                        * fpca_y.rotation[(si, l_col)];
-                }
-            }
-            beta_surface[(si, tj)] = val;
-        }
-    }
+    let beta_surface =
+        fof_reconstruct_beta_surface(&coef_matrix, &fpca_x, &fpca_y, m_y, m_x, ncomp_x, ncomp_y);
 
-    // --- Fitted Y-scores and reconstruction ---
-    // Ŷ_scores = X_scores * B (n x ncomp_y)
-    let mut fitted_scores = FdMatrix::zeros(n, ncomp_y);
-    for i in 0..n {
-        for l_col in 0..ncomp_y {
-            let mut s = 0.0;
-            for k in 0..ncomp_x {
-                s += x_scores[(i, k)] * coef_matrix[(k, l_col)];
-            }
-            fitted_scores[(i, l_col)] = s;
-        }
-    }
-
-    // Reconstruct fitted curves: Ŷ(s) = mean_y(s) + Σ_l fitted_score_l * φ_y^l(s)
-    let mut fitted = FdMatrix::zeros(n, m_y);
-    for i in 0..n {
-        for j in 0..m_y {
-            let mut val = fpca_y.mean[j];
-            for l_col in 0..ncomp_y {
-                val += fitted_scores[(i, l_col)] * fpca_y.rotation[(j, l_col)];
-            }
-            fitted[(i, j)] = val;
-        }
-    }
-
-    // --- Residuals ---
-    let mut residuals = FdMatrix::zeros(n, m_y);
-    for i in 0..n {
-        for j in 0..m_y {
-            residuals[(i, j)] = y_data[(i, j)] - fitted[(i, j)];
-        }
-    }
+    // --- Fitted Y curves and residuals ---
+    let (fitted, residuals) = fof_reconstruct_fitted(
+        &x_scores,
+        &coef_matrix,
+        &fpca_y,
+        y_data,
+        n,
+        m_y,
+        ncomp_x,
+        ncomp_y,
+    );
 
     // --- Intercept: α(s) = mean_y(s) (since we centered Y via FPCA) ---
     let intercept = fpca_y.mean.clone();
 
     // --- Pointwise R² ---
-    let mut r_squared_t = vec![0.0; m_y];
-    for j in 0..m_y {
-        let y_mean_j = fpca_y.mean[j];
-        let mut ss_tot = 0.0;
-        let mut ss_res = 0.0;
-        for i in 0..n {
-            ss_tot += (y_data[(i, j)] - y_mean_j).powi(2);
-            ss_res += residuals[(i, j)].powi(2);
-        }
-        r_squared_t[j] = if ss_tot > 0.0 {
-            1.0 - ss_res / ss_tot
-        } else {
-            0.0
-        };
-    }
-
-    let r_squared = r_squared_t.iter().sum::<f64>() / m_y as f64;
+    let (r_squared_t, r_squared) = fof_pointwise_r2(y_data, &residuals, &fpca_y, n, m_y);
 
     Ok(FofResult {
         intercept,
@@ -395,6 +474,78 @@ pub struct FofCvResult {
     pub min_cv_mse: f64,
 }
 
+// ---------------------------------------------------------------------------
+// Private helpers for fof_cv
+// ---------------------------------------------------------------------------
+
+/// Validate fof_cv inputs. Returns (ncomp_x_max_clamp, ncomp_y_max_clamp).
+fn fof_cv_validate(
+    x_data: &FdMatrix,
+    n_folds: usize,
+    ncomp_x_max: usize,
+    ncomp_y_max: usize,
+) -> Result<(usize, usize), FdarError> {
+    let n = x_data.nrows();
+    if n < n_folds {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x_data",
+            expected: format!("at least {n_folds} rows"),
+            actual: format!("{n}"),
+        });
+    }
+    let ncx = ncomp_x_max.min(n - 2);
+    let ncy = ncomp_y_max.min(n - 2);
+    Ok((ncx, ncy))
+}
+
+/// Run one (ncx, ncy) candidate over all folds. Returns (total_imse, count).
+fn fof_cv_candidate_fold(
+    x_data: &FdMatrix,
+    y_data: &FdMatrix,
+    x_argvals: &[f64],
+    y_argvals: &[f64],
+    folds: &[usize],
+    y_weights: &[f64],
+    n: usize,
+    n_folds: usize,
+    m_y: usize,
+    ncx: usize,
+    ncy: usize,
+) -> (f64, usize) {
+    let mut total_imse = 0.0;
+    let mut count = 0;
+
+    for fold in 0..n_folds {
+        let train_idx: Vec<usize> = (0..n).filter(|&i| folds[i] != fold).collect();
+        let test_idx: Vec<usize> = (0..n).filter(|&i| folds[i] == fold).collect();
+        let n_test = test_idx.len();
+        if n_test == 0 || train_idx.len() < ncx.max(ncy) + 2 {
+            continue;
+        }
+
+        let train_x = x_data.select_rows(&train_idx);
+        let train_y = y_data.select_rows(&train_idx);
+        let test_x = x_data.select_rows(&test_idx);
+        let test_y = y_data.select_rows(&test_idx);
+
+        let Ok(fit) = fof_regression(&train_x, &train_y, x_argvals, y_argvals, ncx, ncy) else {
+            continue;
+        };
+        let Ok(predicted) = predict_fof(&fit, &test_x) else {
+            continue;
+        };
+
+        for ti in 0..n_test {
+            let imse: f64 = (0..m_y)
+                .map(|j| (test_y[(ti, j)] - predicted[(ti, j)]).powi(2) * y_weights[j])
+                .sum();
+            total_imse += imse;
+            count += 1;
+        }
+    }
+    (total_imse, count)
+}
+
 /// K-fold cross-validation for function-on-function regression.
 ///
 /// Searches over a grid of (ncomp_x, ncomp_y) values and selects the
@@ -427,19 +578,10 @@ pub fn fof_cv(
     seed: u64,
 ) -> Result<FofCvResult, FdarError> {
     let n = x_data.nrows();
-    if n < n_folds {
-        return Err(FdarError::InvalidDimension {
-            parameter: "x_data",
-            expected: format!("at least {n_folds} rows"),
-            actual: format!("{n}"),
-        });
-    }
-
-    let folds = crate::cv::create_folds(n, n_folds, seed);
-    let ncomp_x_max = ncomp_x_max.min(n - 2);
-    let ncomp_y_max = ncomp_y_max.min(n - 2);
+    let (ncomp_x_max, ncomp_y_max) = fof_cv_validate(x_data, n_folds, ncomp_x_max, ncomp_y_max)?;
     let m_y = y_data.ncols();
 
+    let folds = crate::cv::create_folds(n, n_folds, seed);
     // Integration weights for IMSE
     let y_weights = crate::helpers::simpsons_weights(y_argvals);
 
@@ -450,40 +592,9 @@ pub fn fof_cv(
 
     for ncx in 1..=ncomp_x_max {
         for ncy in 1..=ncomp_y_max {
-            let mut total_imse = 0.0;
-            let mut count = 0;
-
-            for fold in 0..n_folds {
-                let train_idx: Vec<usize> = (0..n).filter(|&i| folds[i] != fold).collect();
-                let test_idx: Vec<usize> = (0..n).filter(|&i| folds[i] == fold).collect();
-                let n_test = test_idx.len();
-                if n_test == 0 || train_idx.len() < ncx.max(ncy) + 2 {
-                    continue;
-                }
-
-                let train_x = x_data.select_rows(&train_idx);
-                let train_y = y_data.select_rows(&train_idx);
-                let test_x = x_data.select_rows(&test_idx);
-                let test_y = y_data.select_rows(&test_idx);
-
-                let Ok(fit) = fof_regression(&train_x, &train_y, x_argvals, y_argvals, ncx, ncy)
-                else {
-                    continue;
-                };
-
-                let Ok(predicted) = predict_fof(&fit, &test_x) else {
-                    continue;
-                };
-
-                // Integrated MSE per test curve
-                for ti in 0..n_test {
-                    let imse: f64 = (0..m_y)
-                        .map(|j| (test_y[(ti, j)] - predicted[(ti, j)]).powi(2) * y_weights[j])
-                        .sum();
-                    total_imse += imse;
-                    count += 1;
-                }
-            }
+            let (total_imse, count) = fof_cv_candidate_fold(
+                x_data, y_data, x_argvals, y_argvals, &folds, &y_weights, n, n_folds, m_y, ncx, ncy,
+            );
 
             let mse = if count > 0 {
                 total_imse / count as f64
@@ -599,6 +710,214 @@ pub struct FofReResult {
     pub n_subjects: usize,
 }
 
+// ---------------------------------------------------------------------------
+// Private helpers for fof_re_regression
+// ---------------------------------------------------------------------------
+
+/// Validate inputs for fof_re_regression. Returns (n, ncomp_x_clamp, ncomp_y_clamp).
+fn fof_re_validate(
+    x_data: &FdMatrix,
+    y_data: &FdMatrix,
+    subject_ids: &[usize],
+    x_argvals: &[f64],
+    y_argvals: &[f64],
+    config: &FofReConfig,
+) -> Result<(usize, usize, usize), FdarError> {
+    let (n_x, m_x) = x_data.shape();
+    let (n_y, m_y) = y_data.shape();
+
+    if n_x != n_y {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_data",
+            expected: format!("{n_x} rows (matching x_data)"),
+            actual: format!("{n_y} rows"),
+        });
+    }
+    let n = n_x;
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x_data",
+            expected: "at least 3 observations".to_string(),
+            actual: format!("{n}"),
+        });
+    }
+    if x_argvals.len() != m_x {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x_argvals",
+            expected: format!("{m_x} elements"),
+            actual: format!("{} elements", x_argvals.len()),
+        });
+    }
+    if y_argvals.len() != m_y {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y_argvals",
+            expected: format!("{m_y} elements"),
+            actual: format!("{} elements", y_argvals.len()),
+        });
+    }
+    if subject_ids.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "subject_ids",
+            expected: format!("length {n}"),
+            actual: format!("length {}", subject_ids.len()),
+        });
+    }
+    if config.ncomp_x == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp_x",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if config.ncomp_y == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp_y",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    let ncx = config.ncomp_x.min(n - 1).min(m_x);
+    let ncy = config.ncomp_y.min(n - 1).min(m_y);
+    Ok((n, ncx, ncy))
+}
+
+/// Fit per-Y-score scalar mixed models. Returns (coef_matrix, u_hat_per_component,
+/// sigma2_u, sigma2_eps).
+fn fof_re_fit_components(
+    x_scores: &FdMatrix,
+    y_scores: &FdMatrix,
+    subject_map: &[usize],
+    n_subjects: usize,
+    n: usize,
+    ncomp_x: usize,
+    ncomp_y: usize,
+) -> (FdMatrix, Vec<Vec<f64>>, Vec<f64>, f64) {
+    let p = ncomp_x;
+    let mut coef_matrix = FdMatrix::zeros(ncomp_x, ncomp_y);
+    let mut u_hat_per_component: Vec<Vec<f64>> = Vec::with_capacity(ncomp_y);
+    let mut sigma2_u = vec![0.0; ncomp_y];
+    let mut sigma2_eps_total = 0.0_f64;
+
+    for l in 0..ncomp_y {
+        let y_scores_l: Vec<f64> = (0..n).map(|i| y_scores[(i, l)]).collect();
+
+        let result = crate::famm::fit_scalar_mixed_model(
+            &y_scores_l,
+            subject_map,
+            n_subjects,
+            Some(x_scores),
+            p,
+        );
+
+        for k in 0..ncomp_x {
+            if k < result.gamma.len() {
+                coef_matrix[(k, l)] = result.gamma[k];
+            }
+        }
+        u_hat_per_component.push(result.u_hat);
+        sigma2_u[l] = result.sigma2_u;
+        sigma2_eps_total += result.sigma2_eps;
+    }
+    let sigma2_eps = sigma2_eps_total / ncomp_y as f64;
+    (coef_matrix, u_hat_per_component, sigma2_u, sigma2_eps)
+}
+
+/// Transpose u_hat from [component][subject] to [subject][component] and
+/// recover random-effect functions.
+fn fof_re_random_effects(
+    u_hat_per_component: &[Vec<f64>],
+    fpca_y: &FpcaResult,
+    n_subjects: usize,
+    m_y: usize,
+    ncomp_y: usize,
+) -> FdMatrix {
+    let mut u_hat_by_subject: Vec<Vec<f64>> = vec![vec![0.0; ncomp_y]; n_subjects];
+    for l in 0..ncomp_y {
+        for s in 0..n_subjects {
+            u_hat_by_subject[s][l] = u_hat_per_component[l][s];
+        }
+    }
+    crate::famm::recover_random_effects(
+        &u_hat_by_subject,
+        &fpca_y.rotation,
+        n_subjects,
+        m_y,
+        ncomp_y,
+    )
+}
+
+/// Build fitted curves (mean_y + fixed + random) and residuals for RE model.
+fn fof_re_fitted_and_residuals(
+    x_scores: &FdMatrix,
+    coef_matrix: &FdMatrix,
+    fpca_y: &FpcaResult,
+    random_effects: &FdMatrix,
+    y_data: &FdMatrix,
+    subject_map: &[usize],
+    n: usize,
+    m_y: usize,
+    ncomp_x: usize,
+    ncomp_y: usize,
+) -> (FdMatrix, FdMatrix) {
+    let mut fitted = FdMatrix::zeros(n, m_y);
+    for i in 0..n {
+        let s = subject_map[i];
+        for j in 0..m_y {
+            let mut val = fpca_y.mean[j];
+            for l in 0..ncomp_y {
+                let mut score_l = 0.0;
+                for k in 0..ncomp_x {
+                    score_l += x_scores[(i, k)] * coef_matrix[(k, l)];
+                }
+                val += score_l * fpca_y.rotation[(j, l)];
+            }
+            val += random_effects[(s, j)];
+            fitted[(i, j)] = val;
+        }
+    }
+    let mut residuals = FdMatrix::zeros(n, m_y);
+    for i in 0..n {
+        for j in 0..m_y {
+            residuals[(i, j)] = y_data[(i, j)] - fitted[(i, j)];
+        }
+    }
+    (fitted, residuals)
+}
+
+/// Reconstruct beta_surface, random_effects, fitted curves, and residuals
+/// for the random-effects model.
+fn fof_re_reconstruct(
+    coef_matrix: &FdMatrix,
+    fpca_x: &FpcaResult,
+    fpca_y: &FpcaResult,
+    x_scores: &FdMatrix,
+    y_data: &FdMatrix,
+    u_hat_per_component: &[Vec<f64>],
+    subject_map: &[usize],
+    n: usize,
+    m_x: usize,
+    m_y: usize,
+    ncomp_x: usize,
+    ncomp_y: usize,
+    n_subjects: usize,
+) -> (FdMatrix, FdMatrix, FdMatrix, FdMatrix) {
+    let beta_surface =
+        fof_reconstruct_beta_surface(coef_matrix, fpca_x, fpca_y, m_y, m_x, ncomp_x, ncomp_y);
+    let random_effects =
+        fof_re_random_effects(u_hat_per_component, fpca_y, n_subjects, m_y, ncomp_y);
+    let (fitted, residuals) = fof_re_fitted_and_residuals(
+        x_scores,
+        coef_matrix,
+        fpca_y,
+        &random_effects,
+        y_data,
+        subject_map,
+        n,
+        m_y,
+        ncomp_x,
+        ncomp_y,
+    );
+    (beta_surface, random_effects, fitted, residuals)
+}
+
 /// Flexible random-effects function-on-function regression via double FPCA.
 ///
 /// Extends [`fof_regression`] by fitting a scalar linear mixed model (REML EM)
@@ -680,62 +999,11 @@ pub fn fof_re_regression(
     y_argvals: &[f64],
     config: &FofReConfig,
 ) -> Result<FofReResult, FdarError> {
-    let (n_x, m_x) = x_data.shape();
-    let (n_y, m_y) = y_data.shape();
+    let (_, m_x) = x_data.shape();
+    let (_, m_y) = y_data.shape();
 
-    // --- Input validation ---
-    if n_x != n_y {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y_data",
-            expected: format!("{n_x} rows (matching x_data)"),
-            actual: format!("{n_y} rows"),
-        });
-    }
-    let n = n_x;
-
-    if n < 3 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "x_data",
-            expected: "at least 3 observations".to_string(),
-            actual: format!("{n}"),
-        });
-    }
-    if x_argvals.len() != m_x {
-        return Err(FdarError::InvalidDimension {
-            parameter: "x_argvals",
-            expected: format!("{m_x} elements"),
-            actual: format!("{} elements", x_argvals.len()),
-        });
-    }
-    if y_argvals.len() != m_y {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y_argvals",
-            expected: format!("{m_y} elements"),
-            actual: format!("{} elements", y_argvals.len()),
-        });
-    }
-    if subject_ids.len() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "subject_ids",
-            expected: format!("length {n}"),
-            actual: format!("length {}", subject_ids.len()),
-        });
-    }
-    if config.ncomp_x == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "ncomp_x",
-            message: "must be >= 1".to_string(),
-        });
-    }
-    if config.ncomp_y == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "ncomp_y",
-            message: "must be >= 1".to_string(),
-        });
-    }
-
-    let ncomp_x = config.ncomp_x.min(n - 1).min(m_x);
-    let ncomp_y = config.ncomp_y.min(n - 1).min(m_y);
+    let (n, ncomp_x, ncomp_y) =
+        fof_re_validate(x_data, y_data, subject_ids, x_argvals, y_argvals, config)?;
 
     // --- Step 1: Double FPCA ---
     let fpca_x = fdata_to_pc(x_data, ncomp_x, x_argvals)?;
@@ -753,122 +1021,40 @@ pub fn fof_re_regression(
     // The L² weighting is already embedded in fpca_x.project(); re-scaling would double-count
     // it (Pitfall 2, per Phase 32 RESEARCH.md). This diverges from fit_all_components in
     // famm.rs which applies score_scale = h.sqrt() before calling fit_scalar_mixed_model.
-    let p = ncomp_x; // number of fixed-effect covariates per Y-score model
 
     // --- Step 2: Per-Y-score mixed model ---
-    let mut coef_matrix = FdMatrix::zeros(ncomp_x, ncomp_y);
-    // u_hat_per_component[l] = Vec of length n_subjects (random intercepts for Y-score l)
-    let mut u_hat_per_component: Vec<Vec<f64>> = Vec::with_capacity(ncomp_y);
-    let mut sigma2_u = vec![0.0; ncomp_y];
-    let mut sigma2_eps_total = 0.0_f64;
-
-    for l in 0..ncomp_y {
-        // Extract y_scores column l into a Vec<f64>
-        let y_scores_l: Vec<f64> = (0..n).map(|i| y_scores[(i, l)]).collect();
-
-        let result = crate::famm::fit_scalar_mixed_model(
-            &y_scores_l,
-            &subject_map,
-            n_subjects,
-            Some(&x_scores),
-            p,
-        );
-
-        // gamma_l: fixed-effect coefficients (length ncomp_x)
-        for k in 0..ncomp_x {
-            if k < result.gamma.len() {
-                coef_matrix[(k, l)] = result.gamma[k];
-            }
-        }
-        u_hat_per_component.push(result.u_hat);
-        sigma2_u[l] = result.sigma2_u;
-        sigma2_eps_total += result.sigma2_eps;
-    }
-    let sigma2_eps = sigma2_eps_total / ncomp_y as f64;
-
-    // --- Step 3: Reconstruction ---
-
-    // Reconstruct β(s,t) surface
-    let mut beta_surface = FdMatrix::zeros(m_y, m_x);
-    for si in 0..m_y {
-        for tj in 0..m_x {
-            let mut val = 0.0;
-            for k in 0..ncomp_x {
-                for l in 0..ncomp_y {
-                    val +=
-                        coef_matrix[(k, l)] * fpca_x.rotation[(tj, k)] * fpca_y.rotation[(si, l)];
-                }
-            }
-            beta_surface[(si, tj)] = val;
-        }
-    }
-
-    // recover_random_effects expects u_hat[subject][component].
-    // u_hat_per_component is organized as [component][subject], so transpose.
-    let mut u_hat_by_subject: Vec<Vec<f64>> = vec![vec![0.0; ncomp_y]; n_subjects];
-    for l in 0..ncomp_y {
-        for s in 0..n_subjects {
-            u_hat_by_subject[s][l] = u_hat_per_component[l][s];
-        }
-    }
-    // Reconstruct random effects: n_subjects × m_y
-    // random_effects[s, j] = Σ_l u_hat_by_subject[s][l] * phi_y^l(j)
-    let random_effects = crate::famm::recover_random_effects(
-        &u_hat_by_subject,
-        &fpca_y.rotation,
+    let (coef_matrix, u_hat_per_component, sigma2_u, sigma2_eps) = fof_re_fit_components(
+        &x_scores,
+        &y_scores,
+        &subject_map,
         n_subjects,
-        m_y,
+        n,
+        ncomp_x,
         ncomp_y,
     );
 
-    // Compute fitted curves: mean_y + fixed-effect contribution + subject random effect
-    let mut fitted = FdMatrix::zeros(n, m_y);
-    for i in 0..n {
-        let s = subject_map[i];
-        for j in 0..m_y {
-            let mut val = fpca_y.mean[j];
-            // Fixed-effect contribution: Σ_l (Σ_k x_scores[i,k] * gamma[k,l]) * phi_y^l(j)
-            for l in 0..ncomp_y {
-                let mut score_l = 0.0;
-                for k in 0..ncomp_x {
-                    score_l += x_scores[(i, k)] * coef_matrix[(k, l)];
-                }
-                val += score_l * fpca_y.rotation[(j, l)];
-            }
-            // Random-effect contribution: b_s(j) = Σ_l u_hat[l][s] * phi_y^l(j)
-            val += random_effects[(s, j)];
-            fitted[(i, j)] = val;
-        }
-    }
-
-    // Residuals
-    let mut residuals = FdMatrix::zeros(n, m_y);
-    for i in 0..n {
-        for j in 0..m_y {
-            residuals[(i, j)] = y_data[(i, j)] - fitted[(i, j)];
-        }
-    }
+    // --- Step 3: Reconstruction ---
+    let (beta_surface, random_effects, fitted, residuals) = fof_re_reconstruct(
+        &coef_matrix,
+        &fpca_x,
+        &fpca_y,
+        &x_scores,
+        y_data,
+        &u_hat_per_component,
+        &subject_map,
+        n,
+        m_x,
+        m_y,
+        ncomp_x,
+        ncomp_y,
+        n_subjects,
+    );
 
     // Intercept: α(s) = mean_y(s)
     let intercept = fpca_y.mean.clone();
 
     // Pointwise R²
-    let mut r_squared_t = vec![0.0; m_y];
-    for j in 0..m_y {
-        let y_mean_j = fpca_y.mean[j];
-        let mut ss_tot = 0.0;
-        let mut ss_res = 0.0;
-        for i in 0..n {
-            ss_tot += (y_data[(i, j)] - y_mean_j).powi(2);
-            ss_res += residuals[(i, j)].powi(2);
-        }
-        r_squared_t[j] = if ss_tot > 0.0 {
-            1.0 - ss_res / ss_tot
-        } else {
-            0.0
-        };
-    }
-    let r_squared = r_squared_t.iter().sum::<f64>() / m_y as f64;
+    let (r_squared_t, r_squared) = fof_pointwise_r2(y_data, &residuals, &fpca_y, n, m_y);
 
     Ok(FofReResult {
         intercept,
