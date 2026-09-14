@@ -898,7 +898,91 @@ fn select_lambda_gcv_peer(
 ///
 /// Deterministic: fixed initialisation + 100-iteration cap, no RNG.
 fn select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: usize) -> f64 {
-    // --- STEP 1: eigendecompose Q (ascending eigenvalue order, null space first) ---
+    // STEP 1–3: eigendecompose Q, partition null/range spaces, project designs.
+    let (z_null, z_range, ztz_range, s, r) = reml_setup_eigenbasis(wc, q, m, n);
+
+    // STEP 2 edge: zero-Q Decree (range space empty)
+    if r == 0 {
+        return 1e-4; // documented fallback: no random effect to estimate
+    }
+
+    // STEP 4: deterministic variance init + OLS alpha init
+    let y_mean = yc.iter().sum::<f64>() / n as f64;
+    let y_var = yc.iter().map(|&v| (v - y_mean).powi(2)).sum::<f64>() / (n - 1).max(1) as f64;
+    let mut sigma2_e = y_var.max(1e-12);
+    let mut sigma2_u = (sigma2_e * 0.1).max(1e-12);
+    let mut alpha = reml_init_alpha(yc, &z_null, n, s);
+
+    // STEP 5: EM loop, fixed cap 100 iterations
+    for _iter in 0..100 {
+        let su_old = sigma2_u;
+        let se_old = sigma2_e;
+
+        // r_alpha = yc - Z_null * alpha  (residual after fixed effects)
+        let r_alpha = reml_compute_r_alpha(yc, &z_null, &alpha, n, s);
+
+        // E-step: build M, Cholesky; on failure restore last-good values and stop.
+        let (sigma_b, trace_sigma_b, b_hat) =
+            match reml_estep(&r_alpha, &z_range, &ztz_range, sigma2_e, sigma2_u, n, r) {
+                Some(v) => v,
+                None => {
+                    sigma2_u = su_old;
+                    sigma2_e = se_old;
+                    break;
+                }
+            };
+
+        // M-step: new variance component estimates
+        let (sigma2_u_new, sigma2_e_new) = reml_mstep(
+            &r_alpha,
+            &b_hat,
+            &sigma_b,
+            &z_range,
+            &ztz_range,
+            trace_sigma_b,
+            n,
+            r,
+        );
+
+        // Clamp both components to a positive floor before GLS uses them as divisors (WR-02).
+        let sigma2_u_c = sigma2_u_new.max(1e-12);
+        let sigma2_e_c = sigma2_e_new.max(1e-12);
+
+        // GLS null-space alpha update (only when s > 0) via Woodbury identity.
+        if s > 0 {
+            alpha = reml_gls_null_update(
+                yc, &z_null, &z_range, &ztz_range, sigma2_e_c, sigma2_u_c, n, r, s, &alpha,
+            );
+        }
+
+        // Commit the clamped variance components for this iteration.
+        sigma2_u = sigma2_u_c;
+        sigma2_e = sigma2_e_c;
+
+        // Measure convergence on PRE-clamp updates (WR-01).
+        let delta = (sigma2_u_new - su_old).abs() + (sigma2_e_new - se_old).abs();
+        if delta < 1e-8 * (su_old + se_old) {
+            break;
+        }
+    }
+
+    // STEP 6: return λ = σ²_e / σ²_u
+    (sigma2_e / sigma2_u).max(1e-15)
+}
+
+/// Eigendecompose Q and project the centered design Wc into the Q eigenbasis.
+///
+/// Returns `(z_null, z_range, ztz_range, s, r)` where:
+/// - `z_null`   (n×s) — projections onto null-space eigenvectors
+/// - `z_range`  (n×r) — projections onto range-space eigenvectors
+/// - `ztz_range` (r×r, row-major, symmetric)
+/// - `s`, `r`   — null/range dimensions
+fn reml_setup_eigenbasis(
+    wc: &FdMatrix,
+    q: &[f64],
+    m: usize,
+    n: usize,
+) -> (Vec<f64>, Vec<f64>, Vec<f64>, usize, usize) {
     let q_mat = DMatrix::from_row_slice(m, m, q);
     let eigen = q_mat.symmetric_eigen();
 
@@ -928,14 +1012,7 @@ fn select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: us
     let s = null_idx.len();
     let r = range_idx.len();
 
-    // --- STEP 2: edge — zero-Q Decree (range space empty) ---
-    if r == 0 {
-        return 1e-4; // documented fallback: no random effect to estimate
-    }
-
-    // --- STEP 3: project designs into eigenbasis ---
-    // z_null[i*s + col]  = Σ_j wc[(i,j)] * V_null[(j, col)]
-    // z_range[i*r + col] = Σ_j wc[(i,j)] * V_range[(j, col)]
+    // Project Wc into null and range eigenbasis.
     let mut z_null = vec![0.0_f64; n * s];
     let mut z_range = vec![0.0_f64; n * r];
     for i in 0..n {
@@ -955,236 +1032,236 @@ fn select_lambda_reml_peer(wc: &FdMatrix, yc: &[f64], q: &[f64], m: usize, n: us
         }
     }
 
-    // Pre-compute ZtZ_range (r×r, row-major, symmetric) — built once, reused each iter
+    // ZtZ_range (r×r) — built once, reused every EM iteration.
     let mut ztz_range = vec![0.0_f64; r * r];
     for a in 0..r {
         for b in a..r {
-            let s_val: f64 = (0..n)
+            let sv: f64 = (0..n)
                 .map(|i| z_range[i * r + a] * z_range[i * r + b])
                 .sum();
-            ztz_range[a * r + b] = s_val;
-            ztz_range[b * r + a] = s_val;
+            ztz_range[a * r + b] = sv;
+            ztz_range[b * r + a] = sv;
         }
     }
 
-    // --- STEP 4: deterministic init (no RNG) ---
-    let y_mean = yc.iter().sum::<f64>() / n as f64;
-    let y_var = yc.iter().map(|&v| (v - y_mean).powi(2)).sum::<f64>() / (n - 1).max(1) as f64;
-    let mut sigma2_e = y_var.max(1e-12);
-    let mut sigma2_u = (sigma2_e * 0.1).max(1e-12);
+    (z_null, z_range, ztz_range, s, r)
+}
 
-    // OLS init of alpha (if s > 0): solve (Z_null' Z_null + 1e-10 I_s) alpha = Z_null' yc
-    let mut alpha = vec![0.0_f64; s];
-    if s > 0 {
-        // ZtZ_null (s×s) + ridge
-        let mut ztz_null = vec![0.0_f64; s * s];
-        for a in 0..s {
-            for b in a..s {
-                let sv: f64 = (0..n).map(|i| z_null[i * s + a] * z_null[i * s + b]).sum();
-                ztz_null[a * s + b] = sv;
-                ztz_null[b * s + a] = sv;
-            }
-        }
-        for diag in 0..s {
-            ztz_null[diag * s + diag] += 1e-10;
-        }
-        // Z_null' yc
-        let zty_null: Vec<f64> = (0..s)
-            .map(|col| (0..n).map(|i| z_null[i * s + col] * yc[i]).sum())
-            .collect();
-        if let Ok(a_init) = cholesky_solve(&ztz_null, &zty_null, s) {
-            alpha = a_init;
+/// OLS initialisation of the null-space fixed effect α.
+///
+/// Solves `(Z_null'Z_null + 1e-10·I_s) α = Z_null' yc`.
+/// Returns zero vector when `s == 0` or Cholesky fails.
+fn reml_init_alpha(yc: &[f64], z_null: &[f64], n: usize, s: usize) -> Vec<f64> {
+    if s == 0 {
+        return vec![0.0_f64; 0];
+    }
+    let mut ztz_null = vec![0.0_f64; s * s];
+    for a in 0..s {
+        for b in a..s {
+            let sv: f64 = (0..n).map(|i| z_null[i * s + a] * z_null[i * s + b]).sum();
+            ztz_null[a * s + b] = sv;
+            ztz_null[b * s + a] = sv;
         }
     }
+    for diag in 0..s {
+        ztz_null[diag * s + diag] += 1e-10;
+    }
+    let zty_null: Vec<f64> = (0..s)
+        .map(|col| (0..n).map(|i| z_null[i * s + col] * yc[i]).sum())
+        .collect();
+    cholesky_solve(&ztz_null, &zty_null, s).unwrap_or_else(|_| vec![0.0_f64; s])
+}
 
-    // --- STEP 5: EM loop, fixed cap 100 iterations ---
-    for _iter in 0..100 {
-        let su_old = sigma2_u;
-        let se_old = sigma2_e;
+/// Compute the fixed-effect residual `r_alpha = yc - Z_null * alpha`.
+///
+/// When `s == 0`, returns `yc.to_vec()` (no fixed effect to subtract).
+fn reml_compute_r_alpha(yc: &[f64], z_null: &[f64], alpha: &[f64], n: usize, s: usize) -> Vec<f64> {
+    if s == 0 {
+        return yc.to_vec();
+    }
+    (0..n)
+        .map(|i| {
+            let za: f64 = (0..s).map(|col| z_null[i * s + col] * alpha[col]).sum();
+            yc[i] - za
+        })
+        .collect()
+}
 
-        // r_alpha = yc - Z_null * alpha  (residual after fixed effects)
-        let r_alpha: Vec<f64> = if s > 0 {
-            (0..n)
-                .map(|i| {
-                    let za: f64 = (0..s).map(|col| z_null[i * s + col] * alpha[col]).sum();
-                    yc[i] - za
-                })
-                .collect()
-        } else {
-            yc.to_vec()
-        };
+/// REML E-step: compute posterior covariance Sigma_b = M^{-1} and b_hat.
+///
+/// Builds `M = ZtZ_range/σ²_e + I_r/σ²_u`, Choleskies it, then computes
+/// `Sigma_b`, `trace(Sigma_b)`, and `b_hat = Sigma_b * Z_range' r_alpha / σ²_e`.
+///
+/// Returns `None` on Cholesky failure (EM should stop and use last-good values).
+fn reml_estep(
+    r_alpha: &[f64],
+    z_range: &[f64],
+    ztz_range: &[f64],
+    sigma2_e: f64,
+    sigma2_u: f64,
+    n: usize,
+    r: usize,
+) -> Option<(Vec<f64>, f64, Vec<f64>)> {
+    // M = ZtZ_range/σ²_e + I_r/σ²_u  (r×r)
+    let mut big_m = vec![0.0_f64; r * r];
+    for idx in 0..r * r {
+        big_m[idx] = ztz_range[idx] / sigma2_e;
+    }
+    for diag in 0..r {
+        big_m[diag * r + diag] += 1.0 / sigma2_u;
+    }
+    // Cholesky of M. On failure, return None — EM caller restores last-good values (WR-03).
+    let l_m = cholesky_factor(&big_m, r).ok()?;
 
-        // E-step: M = ZtZ_range/sigma2_e + I_r/sigma2_u  (r×r)
-        let mut big_m = vec![0.0_f64; r * r];
-        for idx in 0..r * r {
-            big_m[idx] = ztz_range[idx] / sigma2_e;
+    // Sigma_b = M^{-1}: solve column by column.
+    let mut sigma_b = vec![0.0_f64; r * r];
+    let mut trace_sigma_b = 0.0_f64;
+    for col in 0..r {
+        let mut e_col = vec![0.0_f64; r];
+        e_col[col] = 1.0;
+        let sol = cholesky_forward_back(&l_m, &e_col, r);
+        for row in 0..r {
+            sigma_b[row * r + col] = sol[row];
         }
-        for diag in 0..r {
-            big_m[diag * r + diag] += 1.0 / sigma2_u;
-        }
+        trace_sigma_b += sol[col];
+    }
 
-        // Cholesky of the E-step matrix M. On failure the EM cannot advance, so
-        // restore the last stable variance components and stop — the function then
-        // returns λ = σ²_e/σ²_u from those last-good values (defined graceful
-        // fallback, never a panic or NaN; WR-03).
-        let l_m = match cholesky_factor(&big_m, r) {
-            Ok(l) => l,
-            Err(_) => {
-                sigma2_u = su_old;
-                sigma2_e = se_old;
-                break;
-            }
-        };
+    // Z_range' r_alpha  (length r)
+    let ztr: Vec<f64> = (0..r)
+        .map(|col| (0..n).map(|i| z_range[i * r + col] * r_alpha[i]).sum())
+        .collect();
 
-        // Sigma_b = M^{-1}: solve column by column (r solves)
-        let mut sigma_b = vec![0.0_f64; r * r];
-        let mut trace_sigma_b = 0.0_f64;
-        for col in 0..r {
-            let mut e_col = vec![0.0_f64; r];
-            e_col[col] = 1.0;
-            let sol = cholesky_forward_back(&l_m, &e_col, r);
-            for row in 0..r {
-                sigma_b[row * r + col] = sol[row];
-            }
-            trace_sigma_b += sol[col];
-        }
+    // b_hat = Sigma_b * ztr / σ²_e  (length r)
+    let b_hat: Vec<f64> = (0..r)
+        .map(|row| {
+            (0..r)
+                .map(|col| sigma_b[row * r + col] * ztr[col])
+                .sum::<f64>()
+                / sigma2_e
+        })
+        .collect();
 
-        // Z_range' r_alpha  (length r)
-        let ztr: Vec<f64> = (0..r)
-            .map(|col| (0..n).map(|i| z_range[i * r + col] * r_alpha[i]).sum())
-            .collect();
+    Some((sigma_b, trace_sigma_b, b_hat))
+}
 
-        // b_hat = Sigma_b * ztr / sigma2_e  (length r)
-        let b_hat: Vec<f64> = (0..r)
-            .map(|row| {
-                (0..r)
-                    .map(|col| sigma_b[row * r + col] * ztr[col])
-                    .sum::<f64>()
-                    / sigma2_e
+/// REML M-step: compute updated variance component estimates.
+///
+/// Returns `(sigma2_u_new, sigma2_e_new)` (pre-clamp).
+fn reml_mstep(
+    r_alpha: &[f64],
+    b_hat: &[f64],
+    sigma_b: &[f64],
+    z_range: &[f64],
+    ztz_range: &[f64],
+    trace_sigma_b: f64,
+    n: usize,
+    r: usize,
+) -> (f64, f64) {
+    // sigma2_u_new = (b_hat'b_hat + tr(Sigma_b)) / r
+    let b_sq: f64 = b_hat.iter().map(|&v| v * v).sum();
+    let sigma2_u_new = (b_sq + trace_sigma_b) / r as f64;
+
+    // resid = r_alpha - Z_range * b_hat  (length n)
+    let resid: Vec<f64> = (0..n)
+        .map(|i| {
+            let zb: f64 = (0..r).map(|col| z_range[i * r + col] * b_hat[col]).sum();
+            r_alpha[i] - zb
+        })
+        .collect();
+
+    // tr(Z_range Sigma_b Z_range') = tr(Sigma_b ZtZ_range)
+    let tr_zsz: f64 = (0..r)
+        .map(|a| {
+            (0..r)
+                .map(|j| sigma_b[a * r + j] * ztz_range[j * r + a])
+                .sum::<f64>()
+        })
+        .sum();
+
+    let resid_sq: f64 = resid.iter().map(|&v| v * v).sum();
+    let sigma2_e_new = (resid_sq + tr_zsz) / n as f64;
+
+    (sigma2_u_new, sigma2_e_new)
+}
+
+/// GLS null-space alpha update via Woodbury identity.
+///
+/// Updates α using `Σ⁻¹ = (1/σ²_e)(I_n − Z_range K^{-1} Z_range')` where
+/// `K = ZtZ_range + (σ²_e/σ²_u)·I_r`.  Returns the updated alpha; unchanged
+/// on Cholesky failure of K.
+#[allow(clippy::too_many_arguments)]
+fn reml_gls_null_update(
+    yc: &[f64],
+    z_null: &[f64],
+    z_range: &[f64],
+    ztz_range: &[f64],
+    sigma2_e_c: f64,
+    sigma2_u_c: f64,
+    n: usize,
+    r: usize,
+    s: usize,
+    alpha: &[f64],
+) -> Vec<f64> {
+    let ratio = sigma2_e_c / sigma2_u_c;
+    let mut k_mat = ztz_range.to_vec();
+    for diag in 0..r {
+        k_mat[diag * r + diag] += ratio;
+    }
+    let l_k = match cholesky_factor(&k_mat, r) {
+        Ok(l) => l,
+        Err(_) => return alpha.to_vec(), // Cholesky failed: keep current alpha
+    };
+
+    let mut gls_lhs = vec![0.0_f64; s * s];
+    let mut gls_rhs = vec![0.0_f64; s];
+
+    // Sigma^{-1} y_c via Woodbury
+    let zr_yc: Vec<f64> = (0..r)
+        .map(|col| (0..n).map(|i| z_range[i * r + col] * yc[i]).sum())
+        .collect();
+    let kinv_zr_yc = cholesky_forward_back(&l_k, &zr_yc, r);
+    let sinv_yc: Vec<f64> = (0..n)
+        .map(|i| {
+            let zk: f64 = (0..r)
+                .map(|col| z_range[i * r + col] * kinv_zr_yc[col])
+                .sum();
+            (yc[i] - zk) / sigma2_e_c
+        })
+        .collect();
+
+    for col_null in 0..s {
+        // Sigma^{-1} z_null_col via Woodbury
+        let zr_zn: Vec<f64> = (0..r)
+            .map(|col| {
+                (0..n)
+                    .map(|i| z_range[i * r + col] * z_null[i * s + col_null])
+                    .sum()
             })
             .collect();
-
-        // M-step: sigma2_u_new = (b_hat'b_hat + tr(Sigma_b)) / r
-        let b_sq: f64 = b_hat.iter().map(|&v| v * v).sum();
-        let sigma2_u_new = (b_sq + trace_sigma_b) / r as f64;
-
-        // resid = r_alpha - Z_range * b_hat  (length n)
-        let resid: Vec<f64> = (0..n)
+        let kinv_zr_zn = cholesky_forward_back(&l_k, &zr_zn, r);
+        let sinv_zn: Vec<f64> = (0..n)
             .map(|i| {
-                let zb: f64 = (0..r).map(|col| z_range[i * r + col] * b_hat[col]).sum();
-                r_alpha[i] - zb
+                let zk: f64 = (0..r)
+                    .map(|col| z_range[i * r + col] * kinv_zr_zn[col])
+                    .sum();
+                (z_null[i * s + col_null] - zk) / sigma2_e_c
             })
             .collect();
 
-        // tr(Z_range Sigma_b Z_range') = tr(Sigma_b ZtZ_range) = Σ_{a,j} sigma_b[a*r+j]*ztz_range[j*r+a]
-        let tr_zsz: f64 = (0..r)
-            .map(|a| {
-                (0..r)
-                    .map(|j| sigma_b[a * r + j] * ztz_range[j * r + a])
-                    .sum::<f64>()
-            })
-            .sum();
-
-        let resid_sq: f64 = resid.iter().map(|&v| v * v).sum();
-        let sigma2_e_new = (resid_sq + tr_zsz) / n as f64;
-
-        // Clamp both variance components to a positive floor BEFORE they are used
-        // as divisors in the GLS block below — an unclamped σ²_e ≈ 0 would divide
-        // to Inf/NaN in the Woodbury solve (WR-02).
-        let sigma2_u_c = sigma2_u_new.max(1e-12);
-        let sigma2_e_c = sigma2_e_new.max(1e-12);
-
-        // GLS null-space update (only when s > 0) using Woodbury identity
-        // Sigma^{-1} = (1/sigma2_e)(I_n - Z_range * K^{-1} * Z_range')
-        // where K = sigma2_e/sigma2_u * I_r + ZtZ_range  (r×r)
-        if s > 0 {
-            // Build K = ZtZ_range + (sigma2_e/sigma2_u)*I_r
-            let ratio = sigma2_e_c / sigma2_u_c;
-            let mut k_mat = ztz_range.clone();
-            for diag in 0..r {
-                k_mat[diag * r + diag] += ratio;
-            }
-            // Cholesky of K for the Woodbury inverse
-            if let Ok(l_k) = cholesky_factor(&k_mat, r) {
-                // Compute Sigma^{-1} Z_null and Z_null' Sigma^{-1} Z_null for the s×s GLS system
-                // Sigma^{-1} z_null_col = (1/sigma2_e)(z_null_col - Z_range * K^{-1} Z_range' z_null_col)
-                let mut gls_lhs = vec![0.0_f64; s * s]; // Z_null' Sigma^{-1} Z_null  (s×s)
-                let mut gls_rhs = vec![0.0_f64; s]; // Z_null' Sigma^{-1} y_c  (length s)
-
-                // Precompute Z_range' y_c (length r)
-                let zr_yc: Vec<f64> = (0..r)
-                    .map(|col| (0..n).map(|i| z_range[i * r + col] * yc[i]).sum())
-                    .collect();
-                // K^{-1} Z_range' y_c  (length r)
-                let kinv_zr_yc = cholesky_forward_back(&l_k, &zr_yc, r);
-                // Sigma^{-1} y_c  (length n): (1/sigma2_e)(y_c - Z_range * K^{-1} Z_range' y_c)
-                let sinv_yc: Vec<f64> = (0..n)
-                    .map(|i| {
-                        let zk: f64 = (0..r)
-                            .map(|col| z_range[i * r + col] * kinv_zr_yc[col])
-                            .sum();
-                        (yc[i] - zk) / sigma2_e_c
-                    })
-                    .collect();
-
-                for col_null in 0..s {
-                    // Z_range' z_null_col  (length r)
-                    let zr_zn: Vec<f64> = (0..r)
-                        .map(|col| {
-                            (0..n)
-                                .map(|i| z_range[i * r + col] * z_null[i * s + col_null])
-                                .sum()
-                        })
-                        .collect();
-                    // K^{-1} Z_range' z_null_col
-                    let kinv_zr_zn = cholesky_forward_back(&l_k, &zr_zn, r);
-                    // Sigma^{-1} z_null_col  (length n)
-                    let sinv_zn: Vec<f64> = (0..n)
-                        .map(|i| {
-                            let zk: f64 = (0..r)
-                                .map(|col| z_range[i * r + col] * kinv_zr_zn[col])
-                                .sum();
-                            (z_null[i * s + col_null] - zk) / sigma2_e_c
-                        })
-                        .collect();
-
-                    // Z_null' Sigma^{-1} z_null_col → column col_null of gls_lhs
-                    for row_null in 0..s {
-                        let v: f64 = (0..n).map(|i| z_null[i * s + row_null] * sinv_zn[i]).sum();
-                        gls_lhs[row_null * s + col_null] = v;
-                    }
-                    // Z_null' Sigma^{-1} y_c: entry col_null of gls_rhs
-                    let rhs_val: f64 = (0..n).map(|i| z_null[i * s + col_null] * sinv_yc[i]).sum();
-                    gls_rhs[col_null] = rhs_val;
-                }
-
-                // Add ridge to GLS LHS for numerical stability
-                for diag in 0..s {
-                    gls_lhs[diag * s + diag] += 1e-10;
-                }
-
-                if let Ok(alpha_new) = cholesky_solve(&gls_lhs, &gls_rhs, s) {
-                    alpha = alpha_new;
-                }
-            }
+        for row_null in 0..s {
+            let v: f64 = (0..n).map(|i| z_null[i * s + row_null] * sinv_zn[i]).sum();
+            gls_lhs[row_null * s + col_null] = v;
         }
-
-        // Commit the clamped variance components for this iteration.
-        sigma2_u = sigma2_u_c;
-        sigma2_e = sigma2_e_c;
-
-        // Measure convergence on the PRE-clamp M-step updates so a component
-        // resting on the 1e-12 floor two iterations running is not mistaken for
-        // genuine convergence (WR-01) — that would return λ = σ²_e/floor
-        // (extreme over-smoothing) instead of the REML optimum.
-        let delta = (sigma2_u_new - su_old).abs() + (sigma2_e_new - se_old).abs();
-        if delta < 1e-8 * (su_old + se_old) {
-            break;
-        }
+        let rhs_val: f64 = (0..n).map(|i| z_null[i * s + col_null] * sinv_yc[i]).sum();
+        gls_rhs[col_null] = rhs_val;
     }
 
-    // --- STEP 6: return λ = σ²_e / σ²_u ---
-    (sigma2_e / sigma2_u).max(1e-15)
+    // Add ridge for numerical stability
+    for diag in 0..s {
+        gls_lhs[diag * s + diag] += 1e-10;
+    }
+
+    cholesky_solve(&gls_lhs, &gls_rhs, s).unwrap_or_else(|_| alpha.to_vec())
 }
 
 // ---------------------------------------------------------------------------
