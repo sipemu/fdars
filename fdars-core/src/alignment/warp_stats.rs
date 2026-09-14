@@ -158,44 +158,7 @@ pub fn warp_statistics(
         psis.push(gam_to_psi(&gam_01, h));
     }
 
-    // Iterative Karcher mean on the sphere
-    let mut psi_mean = psis[0].clone();
-    let max_iter = 20;
-    let step_size = 0.5;
-
-    for _ in 0..max_iter {
-        // Compute mean tangent vector
-        let mut mean_tangent = vec![0.0; m];
-        for psi_i in &psis {
-            let v = inv_exp_map_sphere(&psi_mean, psi_i, &time_01);
-            for (mt, vi) in mean_tangent.iter_mut().zip(v.iter()) {
-                *mt += vi / nf;
-            }
-        }
-
-        // Check convergence
-        let tangent_norm = l2_norm_l2(&mean_tangent, &time_01);
-        if tangent_norm < 1e-10 {
-            break;
-        }
-
-        // Take a step along the mean tangent direction
-        let step_tangent: Vec<f64> = mean_tangent.iter().map(|&v| v * step_size).collect();
-        psi_mean = exp_map_sphere(&psi_mean, &step_tangent, &time_01);
-
-        // Re-normalize to unit sphere
-        let norm = l2_norm_l2(&psi_mean, &time_01);
-        if norm > 1e-10 {
-            for v in &mut psi_mean {
-                *v /= norm;
-            }
-        }
-    }
-
-    // Convert Karcher mean psi back to warping function
-    let karcher_gam_01 = psi_to_gam(&psi_mean, &time_01);
-    let mut karcher_mean_warp: Vec<f64> = karcher_gam_01.iter().map(|&g| t0 + g * domain).collect();
-    crate::warping::normalize_warp(&mut karcher_mean_warp, argvals);
+    let karcher_mean_warp = karcher_mean_psi_to_warp(&psis, &time_01, nf, t0, domain, argvals);
 
     // ── Step 4: Geodesic distances ──
 
@@ -215,4 +178,55 @@ pub fn warp_statistics(
         karcher_mean_warp,
         geodesic_distances,
     })
+}
+
+/// Compute the Karcher mean on the psi (Hilbert sphere) representation and
+/// convert it back to a warping function on the original domain.
+///
+/// Runs up to 20 gradient-descent iterations with step size 0.5; stops early
+/// when the mean tangent norm falls below 1e-10. Sphere re-normalization is
+/// applied after each step. The sequence of `inv_exp_map_sphere` / `exp_map_sphere`
+/// calls is lifted verbatim — FP accumulation order preserved.
+fn karcher_mean_psi_to_warp(
+    psis: &[Vec<f64>],
+    time_01: &[f64],
+    nf: f64,
+    t0: f64,
+    domain: f64,
+    argvals: &[f64],
+) -> Vec<f64> {
+    let m = time_01.len();
+    let mut psi_mean = psis[0].clone();
+    let max_iter = 20;
+    let step_size = 0.5;
+
+    for _ in 0..max_iter {
+        let mut mean_tangent = vec![0.0; m];
+        for psi_i in psis {
+            let v = inv_exp_map_sphere(&psi_mean, psi_i, time_01);
+            for (mt, vi) in mean_tangent.iter_mut().zip(v.iter()) {
+                *mt += vi / nf;
+            }
+        }
+
+        let tangent_norm = l2_norm_l2(&mean_tangent, time_01);
+        if tangent_norm < 1e-10 {
+            break;
+        }
+
+        let step_tangent: Vec<f64> = mean_tangent.iter().map(|&v| v * step_size).collect();
+        psi_mean = exp_map_sphere(&psi_mean, &step_tangent, time_01);
+
+        let norm = l2_norm_l2(&psi_mean, time_01);
+        if norm > 1e-10 {
+            for v in &mut psi_mean {
+                *v /= norm;
+            }
+        }
+    }
+
+    let karcher_gam_01 = psi_to_gam(&psi_mean, time_01);
+    let mut karcher_mean_warp: Vec<f64> = karcher_gam_01.iter().map(|&g| t0 + g * domain).collect();
+    crate::warping::normalize_warp(&mut karcher_mean_warp, argvals);
+    karcher_mean_warp
 }

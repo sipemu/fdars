@@ -118,64 +118,7 @@ pub fn elastic_align_pair_multires(
     normalize_warp(&mut gamma, argvals);
 
     // ── Stage 2: Gradient refinement ──
-    for _ in 0..config.n_refine_steps {
-        // Compute current cost and gradient
-        let f2_warped = reparameterize_curve(f2, argvals, &gamma);
-        let q2_warped = srsf_single(&f2_warped, argvals);
-
-        // Approximate gradient: dJ/dγ_j ≈ -2(q1_j - q2_warped_j) * dq2/dγ_j
-        // We use a finite-difference approximation for simplicity
-        let h = 1.0 / (m as f64 * 10.0);
-        let weights = simpsons_weights(argvals);
-        let _current_dist = l2_distance(&q1, &q2_warped, &weights);
-
-        let mut improved = false;
-        for j in 1..m - 1 {
-            // Perturb gamma[j] and measure cost change
-            let orig = gamma[j];
-
-            gamma[j] = orig + h;
-            // Ensure monotonicity
-            if gamma[j] <= gamma[j - 1] || gamma[j] >= gamma[j + 1] {
-                gamma[j] = orig;
-                continue;
-            }
-
-            let f2_pert = reparameterize_curve(f2, argvals, &gamma);
-            let q2_pert = srsf_single(&f2_pert, argvals);
-            let dist_plus = l2_distance(&q1, &q2_pert, &weights);
-
-            gamma[j] = orig - h;
-            if gamma[j] <= gamma[j - 1] || gamma[j] >= gamma[j + 1] {
-                gamma[j] = orig;
-                continue;
-            }
-
-            let f2_pert2 = reparameterize_curve(f2, argvals, &gamma);
-            let q2_pert2 = srsf_single(&f2_pert2, argvals);
-            let dist_minus = l2_distance(&q1, &q2_pert2, &weights);
-
-            // Central difference gradient
-            let grad = (dist_plus - dist_minus) / (2.0 * h);
-
-            // Gradient step
-            let new_val = orig - config.step_size * grad;
-            // Clamp to maintain monotonicity
-            let lo = gamma[j - 1] + 1e-12;
-            let hi = gamma[j + 1] - 1e-12;
-            gamma[j] = new_val.clamp(lo, hi);
-
-            if (gamma[j] - orig).abs() > 1e-15 {
-                improved = true;
-            }
-        }
-
-        if !improved {
-            break;
-        }
-
-        normalize_warp(&mut gamma, argvals);
-    }
+    refine_gamma(f2, argvals, &q1, config, &mut gamma);
 
     // ── Final alignment ──
     let f_aligned = reparameterize_curve(f2, argvals, &gamma);
@@ -191,6 +134,81 @@ pub fn elastic_align_pair_multires(
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/// Run gradient refinement on `gamma` for up to `config.n_refine_steps` iterations.
+///
+/// Preserves monotonicity of `gamma` at every step; stops early if no grid point
+/// improved. Exact iteration order and perturbation sequence lifted verbatim from
+/// the original loop body.
+fn refine_gamma(
+    f2: &[f64],
+    argvals: &[f64],
+    q1: &[f64],
+    config: &MultiresConfig,
+    gamma: &mut [f64],
+) {
+    let m = argvals.len();
+    let h = 1.0 / (m as f64 * 10.0);
+    let weights = simpsons_weights(argvals);
+
+    for _ in 0..config.n_refine_steps {
+        let mut improved = false;
+        for j in 1..m - 1 {
+            if refine_gamma_step(f2, argvals, q1, &weights, h, config.step_size, gamma, j) {
+                improved = true;
+            }
+        }
+        if !improved {
+            break;
+        }
+        normalize_warp(gamma, argvals);
+    }
+}
+
+/// Apply one finite-difference gradient step to `gamma[j]`.
+///
+/// Returns `true` if `gamma[j]` changed by more than 1e-15 (i.e. improvement occurred).
+/// The ±h perturbations are applied and reverted in place; monotonicity is checked
+/// before each perturbation and the point is skipped if the perturbed value would
+/// violate it.
+fn refine_gamma_step(
+    f2: &[f64],
+    argvals: &[f64],
+    q1: &[f64],
+    weights: &[f64],
+    h: f64,
+    step_size: f64,
+    gamma: &mut [f64],
+    j: usize,
+) -> bool {
+    let orig = gamma[j];
+
+    gamma[j] = orig + h;
+    if gamma[j] <= gamma[j - 1] || gamma[j] >= gamma[j + 1] {
+        gamma[j] = orig;
+        return false;
+    }
+    let f2_pert = reparameterize_curve(f2, argvals, gamma);
+    let q2_pert = srsf_single(&f2_pert, argvals);
+    let dist_plus = l2_distance(q1, &q2_pert, weights);
+
+    gamma[j] = orig - h;
+    if gamma[j] <= gamma[j - 1] || gamma[j] >= gamma[j + 1] {
+        gamma[j] = orig;
+        return false;
+    }
+    let f2_pert2 = reparameterize_curve(f2, argvals, gamma);
+    let q2_pert2 = srsf_single(&f2_pert2, argvals);
+    let dist_minus = l2_distance(q1, &q2_pert2, weights);
+
+    let grad = (dist_plus - dist_minus) / (2.0 * h);
+    let new_val = orig - step_size * grad;
+    let lo = gamma[j - 1] + 1e-12;
+    let hi = gamma[j + 1] - 1e-12;
+    gamma[j] = new_val.clamp(lo, hi);
+
+    (gamma[j] - orig).abs() > 1e-15
+}
 
 /// Create a uniform subsample of a grid.
 fn subsample_grid(argvals: &[f64], m_coarse: usize) -> Vec<f64> {

@@ -124,28 +124,74 @@ pub fn phase_boxplot(
     let median_index = order[0];
     let median = gammas.row(median_index);
 
-    // Step 3: Top ceil(n/2) warps form the central region.
+    // Steps 3–4: Top ceil(n/2) warps → central envelope (pointwise min/max).
     let n_central = n.div_ceil(2);
     let central_indices = &order[..n_central];
-
-    // Step 4: Central envelope (pointwise min/max).
-    let mut central_lower = vec![f64::INFINITY; m];
-    let mut central_upper = vec![f64::NEG_INFINITY; m];
-    for &idx in central_indices {
-        for j in 0..m {
-            let v = gammas[(idx, j)];
-            if v < central_lower[j] {
-                central_lower[j] = v;
-            }
-            if v > central_upper[j] {
-                central_upper[j] = v;
-            }
-        }
-    }
+    let (central_lower, central_upper) = central_envelope(gammas, central_indices, m);
 
     // Step 5: IQR envelope and whisker fences.
     let domain_lo = argvals[0];
     let domain_hi = argvals[m - 1];
+    let (fence_lower, fence_upper) = whisker_fences(
+        &central_lower,
+        &central_upper,
+        factor,
+        domain_lo,
+        domain_hi,
+        m,
+    );
+
+    // Step 6: Identify outliers (any warp exceeding fences at any grid point).
+    let outlier_indices = find_outliers(gammas, n, m, &fence_lower, &fence_upper);
+
+    // Step 7: Trim whiskers to actual non-outlier envelope.
+    let (whisker_lower, whisker_upper) =
+        trim_whiskers(gammas, n, m, &outlier_indices, fence_lower, fence_upper);
+
+    Ok(PhaseBoxplot {
+        median,
+        median_index,
+        central_lower,
+        central_upper,
+        whisker_lower,
+        whisker_upper,
+        depths,
+        outlier_indices,
+        factor,
+    })
+}
+
+/// Compute the pointwise min/max envelope over a subset of rows.
+///
+/// Returns `(lower, upper)` vectors of length `m`.
+fn central_envelope(gammas: &FdMatrix, indices: &[usize], m: usize) -> (Vec<f64>, Vec<f64>) {
+    let mut lower = vec![f64::INFINITY; m];
+    let mut upper = vec![f64::NEG_INFINITY; m];
+    for &idx in indices {
+        for j in 0..m {
+            let v = gammas[(idx, j)];
+            if v < lower[j] {
+                lower[j] = v;
+            }
+            if v > upper[j] {
+                upper[j] = v;
+            }
+        }
+    }
+    (lower, upper)
+}
+
+/// Compute IQR-based whisker fences clamped to the domain.
+///
+/// Returns `(fence_lower, fence_upper)` of length `m`.
+fn whisker_fences(
+    central_lower: &[f64],
+    central_upper: &[f64],
+    factor: f64,
+    domain_lo: f64,
+    domain_hi: f64,
+    m: usize,
+) -> (Vec<f64>, Vec<f64>) {
     let mut fence_lower = vec![0.0; m];
     let mut fence_upper = vec![0.0; m];
     for j in 0..m {
@@ -153,24 +199,44 @@ pub fn phase_boxplot(
         fence_lower[j] = (central_lower[j] - factor * iqr).max(domain_lo);
         fence_upper[j] = (central_upper[j] + factor * iqr).min(domain_hi);
     }
+    (fence_lower, fence_upper)
+}
 
-    // Step 6: Identify outliers (any warp exceeding fences at any grid point).
-    let mut outlier_indices = Vec::new();
+/// Identify warps that exceed the fence at any grid point.
+fn find_outliers(
+    gammas: &FdMatrix,
+    n: usize,
+    m: usize,
+    fence_lower: &[f64],
+    fence_upper: &[f64],
+) -> Vec<usize> {
+    let mut outliers = Vec::new();
     for i in 0..n {
-        let mut is_outlier = false;
         for j in 0..m {
             let v = gammas[(i, j)];
             if v < fence_lower[j] || v > fence_upper[j] {
-                is_outlier = true;
+                outliers.push(i);
                 break;
             }
         }
-        if is_outlier {
-            outlier_indices.push(i);
-        }
     }
+    outliers
+}
 
-    // Step 7: Trim whiskers to actual non-outlier envelope.
+/// Build the whisker envelope from non-outlier warps.
+///
+/// Falls back to `fence_lower`/`fence_upper` if every warp is an outlier.
+fn trim_whiskers(
+    gammas: &FdMatrix,
+    n: usize,
+    m: usize,
+    outlier_indices: &[usize],
+    fence_lower: Vec<f64>,
+    fence_upper: Vec<f64>,
+) -> (Vec<f64>, Vec<f64>) {
+    if outlier_indices.len() == n {
+        return (fence_lower, fence_upper);
+    }
     let mut whisker_lower = vec![f64::INFINITY; m];
     let mut whisker_upper = vec![f64::NEG_INFINITY; m];
     for i in 0..n {
@@ -187,24 +253,7 @@ pub fn phase_boxplot(
             }
         }
     }
-
-    // If all warps are outliers (unlikely but defensive), fall back to fences.
-    if outlier_indices.len() == n {
-        whisker_lower = fence_lower;
-        whisker_upper = fence_upper;
-    }
-
-    Ok(PhaseBoxplot {
-        median,
-        median_index,
-        central_lower,
-        central_upper,
-        whisker_lower,
-        whisker_upper,
-        depths,
-        outlier_indices,
-        factor,
-    })
+    (whisker_lower, whisker_upper)
 }
 
 #[cfg(test)]
