@@ -661,7 +661,7 @@ fn gkam_max_delta(old: &[f64], new: &[f64]) -> f64 {
 fn gkam_backfit_sweep(
     y: &[f64],
     mu_y: f64,
-    component_fits: &mut Vec<Vec<f64>>,
+    component_fits: &mut [Vec<f64>],
     n: usize,
     q: usize,
     p_scalar: usize,

@@ -212,6 +212,58 @@ fn cv_error_for_k(
     }
 }
 
+/// Collect OOF predictions and fold errors for one fold at `optimal_k`.
+///
+/// Writes predictions into `oof_predictions[test_idx[ti]]` and returns the fold
+/// MSE (or NAN if the fold is too small or the fit fails).
+fn oof_fold_predict(
+    data: &FdMatrix,
+    y: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+    folds: &[usize],
+    fold: usize,
+    n: usize,
+    ncols: usize,
+    optimal_k: usize,
+    oof_predictions: &mut [f64],
+) -> f64 {
+    let train_idx: Vec<usize> = (0..n).filter(|&i| folds[i] != fold).collect();
+    let test_idx: Vec<usize> = (0..n).filter(|&i| folds[i] == fold).collect();
+    let n_test = test_idx.len();
+    if n_test == 0 || train_idx.len() < optimal_k + 2 {
+        return f64::NAN;
+    }
+
+    let mut train_data = FdMatrix::zeros(train_idx.len(), ncols);
+    let mut test_data = FdMatrix::zeros(n_test, ncols);
+    copy_rows(&mut train_data, data, &train_idx);
+    copy_rows(&mut test_data, data, &test_idx);
+
+    let train_y: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
+    let train_sc = scalar_covariates.map(|sc| {
+        let mut m = FdMatrix::zeros(train_idx.len(), sc.ncols());
+        copy_rows(&mut m, sc, &train_idx);
+        m
+    });
+    let test_sc = scalar_covariates.map(|sc| {
+        let mut m = FdMatrix::zeros(n_test, sc.ncols());
+        copy_rows(&mut m, sc, &test_idx);
+        m
+    });
+
+    if let Ok(fit) = fregre_lm(&train_data, &train_y, train_sc.as_ref(), optimal_k) {
+        let preds = predict_fregre_lm(&fit, &test_data, test_sc.as_ref());
+        let mut fold_mse = 0.0;
+        for (ti, &i) in test_idx.iter().enumerate() {
+            oof_predictions[i] = preds[ti];
+            fold_mse += (preds[ti] - y[i]).powi(2);
+        }
+        fold_mse / n_test as f64
+    } else {
+        f64::NAN
+    }
+}
+
 /// K-fold cross-validation for selecting the number of FPC components.
 ///
 /// # Arguments
@@ -288,43 +340,18 @@ pub fn fregre_cv(
     let mut fold_errors = Vec::with_capacity(n_folds);
 
     for fold in 0..n_folds {
-        let train_idx: Vec<usize> = (0..n).filter(|&i| folds[i] != fold).collect();
-        let test_idx: Vec<usize> = (0..n).filter(|&i| folds[i] == fold).collect();
-        let n_test = test_idx.len();
-        if n_test == 0 || train_idx.len() < optimal_k + 2 {
-            fold_errors.push(f64::NAN);
-            continue;
-        }
-
-        let mut train_data = FdMatrix::zeros(train_idx.len(), ncols);
-        let mut test_data = FdMatrix::zeros(n_test, ncols);
-        copy_rows(&mut train_data, data, &train_idx);
-        copy_rows(&mut test_data, data, &test_idx);
-
-        let train_y: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
-
-        let train_sc = scalar_covariates.map(|sc| {
-            let mut m = FdMatrix::zeros(train_idx.len(), sc.ncols());
-            copy_rows(&mut m, sc, &train_idx);
-            m
-        });
-        let test_sc = scalar_covariates.map(|sc| {
-            let mut m = FdMatrix::zeros(n_test, sc.ncols());
-            copy_rows(&mut m, sc, &test_idx);
-            m
-        });
-
-        if let Ok(fit) = fregre_lm(&train_data, &train_y, train_sc.as_ref(), optimal_k) {
-            let preds = predict_fregre_lm(&fit, &test_data, test_sc.as_ref());
-            let mut fold_mse = 0.0;
-            for (ti, &i) in test_idx.iter().enumerate() {
-                oof_predictions[i] = preds[ti];
-                fold_mse += (preds[ti] - y[i]).powi(2);
-            }
-            fold_errors.push(fold_mse / n_test as f64);
-        } else {
-            fold_errors.push(f64::NAN);
-        }
+        let err = oof_fold_predict(
+            data,
+            y,
+            scalar_covariates,
+            &folds,
+            fold,
+            n,
+            ncols,
+            optimal_k,
+            &mut oof_predictions,
+        );
+        fold_errors.push(err);
     }
 
     Ok(FregreCvResult {
