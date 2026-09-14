@@ -7,6 +7,56 @@ pub fn uniform_grid(n: usize) -> Vec<f64> {
     (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
 }
 
+/// Generate a uniform grid on \[0, `end`\] with `n` points.
+///
+/// Uses the form `i * end / (n - 1)` (multiply before divide).
+/// See also [`uniform_grid_range_div`] for the `i / (n - 1) * end` form,
+/// which differs by floating-point rounding at some grid points.
+pub fn uniform_grid_range(n: usize, end: f64) -> Vec<f64> {
+    (0..n).map(|i| i as f64 * end / (n - 1) as f64).collect()
+}
+
+/// Generate a uniform grid on \[0, `end`\] with `n` points.
+///
+/// Uses the form `i / (n - 1) * end` (divide before multiply).
+/// This is NOT floating-point identical to [`uniform_grid_range`] for all `n`;
+/// provided separately to preserve numeric identity at detrend test call sites.
+pub fn uniform_grid_range_div(n: usize, end: f64) -> Vec<f64> {
+    (0..n).map(|i| i as f64 / (n - 1) as f64 * end).collect()
+}
+
+/// Binarize a continuous response at a threshold: values `>= threshold` → 1.0, else 0.0.
+///
+/// Used in tests to convert a continuous `y` into a binary response at its median.
+pub fn binarize_at_median(y: &[f64], threshold: f64) -> Vec<f64> {
+    y.iter()
+        .map(|&v| if v >= threshold { 1.0 } else { 0.0 })
+        .collect()
+}
+
+/// Build a flat n×m [`crate::matrix::FdMatrix`] with values `(idx * scale).sin()` (column-major).
+///
+/// Reproduces the repeated test idiom:
+/// `FdMatrix::from_column_major((0..(n*m)).map(|i| (i as f64 * scale).sin()).collect(), n, m)`.
+pub fn sin_matrix(n: usize, m: usize, scale: f64) -> crate::matrix::FdMatrix {
+    crate::matrix::FdMatrix::from_column_major(
+        (0..(n * m)).map(|i| (i as f64 * scale).sin()).collect(),
+        n,
+        m,
+    )
+    .expect("sin_matrix: n*m matches data length by construction")
+}
+
+/// Sine curve evaluated on a grid: `sin(2π · t[i])`.
+///
+/// Reproduces the repeated landmark test idiom:
+/// `t.iter().map(|&ti| (2.0 * PI * ti).sin()).collect()`.
+pub fn sine_curve(t: &[f64]) -> Vec<f64> {
+    t.iter()
+        .map(|&ti| (2.0 * std::f64::consts::PI * ti).sin())
+        .collect()
+}
+
 /// Compute the Adjusted Rand Index (ARI) between two label vectors.
 ///
 /// ARI measures the agreement between two clusterings, adjusted for
