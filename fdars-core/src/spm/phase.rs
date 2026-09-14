@@ -465,9 +465,60 @@ pub fn spm_monitor_from_fields(
     new_data: &FdMatrix,
     argvals: &[f64],
 ) -> Result<SpmMonitorResult, FdarError> {
+    let (m, ncomp) = monitor_fields_validate(
+        fpca_mean,
+        fpca_rotation,
+        fpca_weights,
+        eigenvalues,
+        new_data,
+        argvals,
+    )?;
+
+    let n_new = new_data.nrows();
+
+    // 1. Project new data onto FPC scores (center + weight + rotate)
+    let scores = monitor_fields_project(
+        new_data,
+        fpca_mean,
+        fpca_rotation,
+        fpca_weights,
+        n_new,
+        m,
+        ncomp,
+    );
+
+    // 2. Compute T² from scores / eigenvalues
+    let t2 = hotelling_t2(&scores, eigenvalues)?;
+
+    // 3. Reconstruct (centered) and compute SPE
+    let centered = center_data(new_data, fpca_mean);
+    let recon_centered = monitor_fields_recon(&scores, fpca_rotation, n_new, m, ncomp);
+    let spe = spe_univariate(&centered, &recon_centered, argvals)?;
+
+    // 4. Flag alarms
+    let t2_alarm: Vec<bool> = t2.iter().map(|&v| v > t2_ucl).collect();
+    let spe_alarm: Vec<bool> = spe.iter().map(|&v| v > spe_ucl).collect();
+
+    Ok(SpmMonitorResult {
+        t2,
+        spe,
+        t2_alarm,
+        spe_alarm,
+        scores,
+    })
+}
+
+/// Validate inputs for `spm_monitor_from_fields`, returning `(m, ncomp)`.
+fn monitor_fields_validate(
+    fpca_mean: &[f64],
+    fpca_rotation: &FdMatrix,
+    fpca_weights: &[f64],
+    eigenvalues: &[f64],
+    new_data: &FdMatrix,
+    argvals: &[f64],
+) -> Result<(usize, usize), FdarError> {
     let m = fpca_mean.len();
     let ncomp = eigenvalues.len();
-
     if new_data.ncols() != m {
         return Err(FdarError::InvalidDimension {
             parameter: "new_data",
@@ -503,10 +554,19 @@ pub fn spm_monitor_from_fields(
             actual: format!("{}", argvals.len()),
         });
     }
+    Ok((m, ncomp))
+}
 
-    let n_new = new_data.nrows();
-
-    // 1. Project new data onto FPC scores (center + weight + rotate)
+/// Project new data onto FPC scores: center + weight + rotate.
+fn monitor_fields_project(
+    new_data: &FdMatrix,
+    fpca_mean: &[f64],
+    fpca_rotation: &FdMatrix,
+    fpca_weights: &[f64],
+    n_new: usize,
+    m: usize,
+    ncomp: usize,
+) -> FdMatrix {
     let mut scores = FdMatrix::zeros(n_new, ncomp);
     for i in 0..n_new {
         for k in 0..ncomp {
@@ -517,14 +577,17 @@ pub fn spm_monitor_from_fields(
             scores[(i, k)] = sum;
         }
     }
+    scores
+}
 
-    // 2. Compute T² from scores / eigenvalues
-    let t2 = hotelling_t2(&scores, eigenvalues)?;
-
-    // 3. Reconstruct (centered) and compute SPE
-    //    centered = new_data - mean
-    let centered = center_data(new_data, fpca_mean);
-    //    centered_reconstruction = scores * rotation^T
+/// Compute centered reconstruction: scores * rotation^T.
+fn monitor_fields_recon(
+    scores: &FdMatrix,
+    fpca_rotation: &FdMatrix,
+    n_new: usize,
+    m: usize,
+    ncomp: usize,
+) -> FdMatrix {
     let mut recon_centered = FdMatrix::zeros(n_new, m);
     for i in 0..n_new {
         for j in 0..m {
@@ -535,19 +598,7 @@ pub fn spm_monitor_from_fields(
             recon_centered[(i, j)] = val;
         }
     }
-    let spe = spe_univariate(&centered, &recon_centered, argvals)?;
-
-    // 4. Flag alarms
-    let t2_alarm: Vec<bool> = t2.iter().map(|&v| v > t2_ucl).collect();
-    let spe_alarm: Vec<bool> = spe.iter().map(|&v| v > spe_ucl).collect();
-
-    Ok(SpmMonitorResult {
-        t2,
-        spe,
-        t2_alarm,
-        spe_alarm,
-        scores,
-    })
+    recon_centered
 }
 
 /// Build a multivariate SPM chart from Phase I data.
