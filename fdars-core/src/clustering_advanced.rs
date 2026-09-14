@@ -159,9 +159,63 @@ pub fn dbscan_fd(
     argvals: &[f64],
     config: &DbscanConfig,
 ) -> Result<DbscanResult, FdarError> {
-    let (n, m) = data.shape();
+    let (n, _m) = dbscan_validate(data, argvals, config)?;
+    let dist = l2_distance_matrix(data, argvals);
 
-    // Validation
+    // Standard DBSCAN
+    // labels: None = unvisited/noise, Some(c) = cluster c
+    let mut labels: Vec<Option<usize>> = vec![None; n];
+    let mut visited: Vec<bool> = vec![false; n];
+    let mut cluster_id: usize = 0;
+
+    for i in 0..n {
+        if visited[i] {
+            continue;
+        }
+        visited[i] = true;
+
+        // Compute eps-neighbourhood of i (excluding i itself)
+        let neighbors = dbscan_query_neighbors(&dist, n, i, config.eps);
+
+        // Core-point rule: i + its neighbors must reach min_points
+        if neighbors.len() + 1 < config.min_points {
+            // Leave as noise for now (may be absorbed as border point later)
+            continue;
+        }
+
+        // i is a core point — start a new cluster
+        labels[i] = Some(cluster_id);
+        dbscan_expand_cluster(
+            &dist,
+            n,
+            neighbors,
+            config.eps,
+            config.min_points,
+            cluster_id,
+            &mut labels,
+            &mut visited,
+        );
+        cluster_id += 1;
+    }
+
+    let n_clusters = cluster_id;
+    let n_noise = labels.iter().filter(|l| l.is_none()).count();
+
+    Ok(DbscanResult {
+        cluster: labels,
+        n_clusters,
+        n_noise,
+        distances: dist,
+    })
+}
+
+/// Validate inputs for `dbscan_fd`; returns `(n, m)` on success.
+fn dbscan_validate(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &DbscanConfig,
+) -> Result<(usize, usize), FdarError> {
+    let (n, m) = data.shape();
     if n == 0 || m == 0 {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
@@ -188,75 +242,53 @@ pub fn dbscan_fd(
             message: "min_points must be >= 1".to_string(),
         });
     }
+    Ok((n, m))
+}
 
-    let dist = l2_distance_matrix(data, argvals);
+/// Return all indices `j != i` within eps-radius of `i` in the distance matrix.
+fn dbscan_query_neighbors(dist: &FdMatrix, n: usize, i: usize, eps: f64) -> Vec<usize> {
+    (0..n).filter(|&j| j != i && dist[(i, j)] <= eps).collect()
+}
 
-    // Standard DBSCAN
-    // labels: None = unvisited/noise, Some(c) = cluster c
-    let mut labels: Vec<Option<usize>> = vec![None; n];
-    let mut visited: Vec<bool> = vec![false; n];
-    let mut cluster_id: usize = 0;
+/// BFS expansion of a core point's cluster.
+///
+/// Mutates `labels` and `visited` in-place, absorbing reachable points into
+/// `cluster_id`. `initial_neighbors` is the already-computed neighbourhood of
+/// the seed point (i has already been labelled and visited by the caller).
+fn dbscan_expand_cluster(
+    dist: &FdMatrix,
+    n: usize,
+    initial_neighbors: Vec<usize>,
+    eps: f64,
+    min_points: usize,
+    cluster_id: usize,
+    labels: &mut Vec<Option<usize>>,
+    visited: &mut Vec<bool>,
+) {
+    let mut queue = initial_neighbors;
+    let mut qi = 0;
+    while qi < queue.len() {
+        let j = queue[qi];
+        qi += 1;
 
-    for i in 0..n {
-        if visited[i] {
-            continue;
-        }
-        visited[i] = true;
-
-        // Compute eps-neighbourhood of i (excluding i itself)
-        let neighbors: Vec<usize> = (0..n)
-            .filter(|&j| j != i && dist[(i, j)] <= config.eps)
-            .collect();
-
-        // Core-point rule: i + its neighbors must reach min_points
-        if neighbors.len() + 1 < config.min_points {
-            // Leave as noise for now (may be absorbed as border point later)
-            continue;
-        }
-
-        // i is a core point — start a new cluster
-        labels[i] = Some(cluster_id);
-
-        // BFS expansion
-        let mut queue = neighbors.clone();
-        let mut qi = 0;
-        while qi < queue.len() {
-            let j = queue[qi];
-            qi += 1;
-
-            if !visited[j] {
-                visited[j] = true;
-                let j_neighbors: Vec<usize> = (0..n)
-                    .filter(|&k| k != j && dist[(j, k)] <= config.eps)
-                    .collect();
-                if j_neighbors.len() + 1 >= config.min_points {
-                    // j is also a core point — add its unqueued neighbours
-                    for nb in j_neighbors {
-                        if !queue.contains(&nb) {
-                            queue.push(nb);
-                        }
+        if !visited[j] {
+            visited[j] = true;
+            let j_neighbors = dbscan_query_neighbors(dist, n, j, eps);
+            if j_neighbors.len() + 1 >= min_points {
+                // j is also a core point — add its unqueued neighbours
+                for nb in j_neighbors {
+                    if !queue.contains(&nb) {
+                        queue.push(nb);
                     }
                 }
             }
-
-            // Absorb j into cluster if not yet assigned
-            if labels[j].is_none() {
-                labels[j] = Some(cluster_id);
-            }
         }
 
-        cluster_id += 1;
+        // Absorb j into cluster if not yet assigned
+        if labels[j].is_none() {
+            labels[j] = Some(cluster_id);
+        }
     }
-
-    let n_clusters = cluster_id;
-    let n_noise = labels.iter().filter(|l| l.is_none()).count();
-
-    Ok(DbscanResult {
-        cluster: labels,
-        n_clusters,
-        n_noise,
-        distances: dist,
-    })
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -876,30 +908,9 @@ pub fn funfem_cluster(
             funfem_e_step(&proj_scores, &mu_disc, &var_disc, &pi, n, k, p_disc_eff);
         resp = new_resp;
 
-        // ── Update pi from responsibilities ────────────────────────────────
-        let mut n_k_new: Vec<f64> = vec![0.0; k];
-        for i in 0..n {
-            for ki in 0..k {
-                n_k_new[ki] += resp[i * k + ki];
-            }
-        }
-        let n_total: f64 = n_k_new.iter().sum();
-        for ki in 0..k {
-            pi[ki] = (n_k_new[ki] / n_total).max(1e-300);
-        }
-
-        // Hard assignments from responsibilities (for subspace update)
-        cluster = (0..n)
-            .map(|i| {
-                (0..k)
-                    .max_by(|&a, &b| {
-                        resp[i * k + a]
-                            .partial_cmp(&resp[i * k + b])
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                    })
-                    .unwrap_or(0)
-            })
-            .collect();
+        // ── Update pi from responsibilities and derive hard assignments ──────
+        let (n_k_new, new_cluster) = funfem_update_pi_and_cluster(&resp, n, k, &mut pi);
+        cluster = new_cluster;
 
         // Update score-space params for next subspace computation
         update_gmm_params_from_soft(
@@ -959,6 +970,41 @@ pub fn funfem_cluster(
         iterations,
         converged,
     })
+}
+
+/// Update mixture weights `pi` from soft responsibilities and derive hard cluster labels.
+///
+/// Returns `(n_k_new, cluster)` where `n_k_new[ki]` is the effective soft count for
+/// cluster `ki` and `cluster[i]` is the index of the highest-responsibility cluster
+/// for curve `i`. Mutates `pi` in-place (normalized, floored at 1e-300).
+fn funfem_update_pi_and_cluster(
+    resp: &[f64],
+    n: usize,
+    k: usize,
+    pi: &mut [f64],
+) -> (Vec<f64>, Vec<usize>) {
+    let mut n_k_new = vec![0.0_f64; k];
+    for i in 0..n {
+        for ki in 0..k {
+            n_k_new[ki] += resp[i * k + ki];
+        }
+    }
+    let n_total: f64 = n_k_new.iter().sum();
+    for ki in 0..k {
+        pi[ki] = (n_k_new[ki] / n_total).max(1e-300);
+    }
+    let cluster = (0..n)
+        .map(|i| {
+            (0..k)
+                .max_by(|&a, &b| {
+                    resp[i * k + a]
+                        .partial_cmp(&resp[i * k + b])
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .unwrap_or(0)
+        })
+        .collect();
+    (n_k_new, cluster)
 }
 
 /// Validate inputs for `funfem_cluster`; returns `(n, m)` on success.
