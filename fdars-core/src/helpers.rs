@@ -525,24 +525,37 @@ pub fn spline_interpolate(
     // --- Evaluate per curve ---
     let mut out = crate::matrix::FdMatrix::zeros(n, m_q);
     for i in 0..n {
-        // Gather curve i as a column vector (length m)
-        let y_vec: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
-        let y_col = nalgebra::DVector::from_vec(y_vec);
-
-        // Solve: coefs = pinv * y  (shape: nbasis × 1)
-        let coefs = &pinv * y_col;
-
-        // Evaluate: out[i, j] = sum_k coefs[k] * basis_query[j + k*m_q]
-        for j in 0..m_q {
-            let mut val = 0.0;
-            for k in 0..nbasis {
-                val += coefs[k] * basis_query[j + k * m_q];
-            }
-            out[(i, j)] = val;
-        }
+        spline_eval_curve(data, i, m, &pinv, &basis_query, m_q, nbasis, &mut out);
     }
 
     Ok(out)
+}
+
+/// Evaluate a single curve through the B-spline system and store results in `out`.
+///
+/// Gathers curve `i`, computes spline coefficients via `pinv * y`, then
+/// accumulates `out[i, j] = sum_k coefs[k] * basis_query[j + k*m_q]`.
+/// FP-accumulation order is verbatim.
+fn spline_eval_curve(
+    data: &crate::matrix::FdMatrix,
+    i: usize,
+    m: usize,
+    pinv: &nalgebra::DMatrix<f64>,
+    basis_query: &[f64],
+    m_q: usize,
+    nbasis: usize,
+    out: &mut crate::matrix::FdMatrix,
+) {
+    let y_vec: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
+    let y_col = nalgebra::DVector::from_vec(y_vec);
+    let coefs = pinv * y_col;
+    for j in 0..m_q {
+        let mut val = 0.0;
+        for k in 0..nbasis {
+            val += coefs[k] * basis_query[j + k * m_q];
+        }
+        out[(i, j)] = val;
+    }
 }
 
 /// Interpolate functional data to a new grid using B-splines with explicit extrapolation control.
@@ -622,36 +635,8 @@ pub fn spline_interpolate_with_policy(
     let m_q = query_points.len();
 
     // --- Map each query point to an effective in-range point (or mark as Fill) ---
-    // `effective[j]` holds the remapped query to pass to the spline; `fill_mask[j]` is true
-    // when the output should be the Fill constant instead.
-    let mut effective = Vec::with_capacity(m_q);
-    let mut fill_mask = vec![false; m_q];
-
-    for (j, &q) in query_points.iter().enumerate() {
-        let in_range = q >= t_min && q <= t_max;
-        if in_range {
-            effective.push(q);
-        } else {
-            match &policy {
-                ExtrapolationPolicy::Boundary => effective.push(q.clamp(t_min, t_max)),
-                ExtrapolationPolicy::Exception => {
-                    return Err(crate::FdarError::InvalidParameter {
-                        parameter: "query_points",
-                        message: format!("query {q} is outside domain [{t_min}, {t_max}]"),
-                    });
-                }
-                ExtrapolationPolicy::Fill(_) => {
-                    // Placeholder; we will overwrite this column from the fill value.
-                    fill_mask[j] = true;
-                    effective.push(t_min); // dummy in-range value — will be discarded
-                }
-                ExtrapolationPolicy::Periodic => {
-                    let wrapped = t_min + ((q - t_min) % domain_len + domain_len) % domain_len;
-                    effective.push(wrapped);
-                }
-            }
-        }
-    }
+    let (effective, fill_mask) =
+        spline_map_queries(query_points, t_min, t_max, domain_len, &policy)?;
 
     // --- Run the core spline logic on the effective (all in-range) query points ---
     // Reuse the same SVD-based evaluation as spline_interpolate.
@@ -671,28 +656,104 @@ pub fn spline_interpolate_with_policy(
     let basis_query = crate::basis::bspline::bspline_basis_from_knots(&effective, &knots, order);
 
     let mut out = crate::matrix::FdMatrix::zeros(n, m_q);
+    let fill_val = if let ExtrapolationPolicy::Fill(v) = policy {
+        Some(v)
+    } else {
+        None
+    };
     for i in 0..n {
-        let y_vec: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
-        let y_col = nalgebra::DVector::from_vec(y_vec);
-        let coefs = &pinv * y_col;
-
-        for j in 0..m_q {
-            if fill_mask[j] {
-                // Fill policy: overwrite with constant.
-                if let ExtrapolationPolicy::Fill(v) = policy {
-                    out[(i, j)] = v;
-                }
-            } else {
-                let mut val = 0.0_f64;
-                for k in 0..nbasis {
-                    val += coefs[k] * basis_query[j + k * m_q];
-                }
-                out[(i, j)] = val;
-            }
-        }
+        spline_eval_curve_masked(
+            data,
+            i,
+            m,
+            &pinv,
+            &basis_query,
+            m_q,
+            nbasis,
+            &fill_mask,
+            fill_val,
+            &mut out,
+        );
     }
 
     Ok(out)
+}
+
+/// Map each query point to an effective in-domain value according to the extrapolation policy.
+///
+/// Returns `(effective, fill_mask)`: `effective[j]` is the remapped in-range query point;
+/// `fill_mask[j]` is `true` when the column should be overwritten with the Fill constant.
+/// FP-accumulation order verbatim.
+fn spline_map_queries(
+    query_points: &[f64],
+    t_min: f64,
+    t_max: f64,
+    domain_len: f64,
+    policy: &ExtrapolationPolicy,
+) -> Result<(Vec<f64>, Vec<bool>), crate::FdarError> {
+    let m_q = query_points.len();
+    let mut effective = Vec::with_capacity(m_q);
+    let mut fill_mask = vec![false; m_q];
+    for (j, &q) in query_points.iter().enumerate() {
+        let in_range = q >= t_min && q <= t_max;
+        if in_range {
+            effective.push(q);
+        } else {
+            match policy {
+                ExtrapolationPolicy::Boundary => effective.push(q.clamp(t_min, t_max)),
+                ExtrapolationPolicy::Exception => {
+                    return Err(crate::FdarError::InvalidParameter {
+                        parameter: "query_points",
+                        message: format!("query {q} is outside domain [{t_min}, {t_max}]"),
+                    });
+                }
+                ExtrapolationPolicy::Fill(_) => {
+                    fill_mask[j] = true;
+                    effective.push(t_min); // dummy in-range value — will be discarded
+                }
+                ExtrapolationPolicy::Periodic => {
+                    let wrapped = t_min + ((q - t_min) % domain_len + domain_len) % domain_len;
+                    effective.push(wrapped);
+                }
+            }
+        }
+    }
+    Ok((effective, fill_mask))
+}
+
+/// Evaluate a single curve through the B-spline system with fill-mask support.
+///
+/// For positions where `fill_mask[j]` is true, writes `fill_val` (Fill policy constant).
+/// Otherwise accumulates `out[i, j] = sum_k coefs[k] * basis_query[j + k*m_q]`.
+/// FP-accumulation order verbatim.
+fn spline_eval_curve_masked(
+    data: &crate::matrix::FdMatrix,
+    i: usize,
+    m: usize,
+    pinv: &nalgebra::DMatrix<f64>,
+    basis_query: &[f64],
+    m_q: usize,
+    nbasis: usize,
+    fill_mask: &[bool],
+    fill_val: Option<f64>,
+    out: &mut crate::matrix::FdMatrix,
+) {
+    let y_vec: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
+    let y_col = nalgebra::DVector::from_vec(y_vec);
+    let coefs = pinv * y_col;
+    for j in 0..m_q {
+        if fill_mask[j] {
+            if let Some(v) = fill_val {
+                out[(i, j)] = v;
+            }
+        } else {
+            let mut val = 0.0_f64;
+            for k in 0..nbasis {
+                val += coefs[k] * basis_query[j + k * m_q];
+            }
+            out[(i, j)] = val;
+        }
+    }
 }
 
 /// Cubic Hermite interpolation at a single point.
