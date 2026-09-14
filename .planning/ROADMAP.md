@@ -86,7 +86,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 **Plans**: 4 plans
 
 - [x] 108-01-PLAN.md — TRACER: reword 2 SATD doc-comment false-positives + fix the critical `.unwrap()` at rpd.rs:229 (satd→0, defects→0)
-- [ ] 108-02-PLAN.md — entropy in `#[cfg(test)]` modules: shared `#[cfg(test)]` helpers in test_helpers.rs + call-site substitutions
+- [x] 108-02-PLAN.md — entropy in `#[cfg(test)]` modules: shared `#[cfg(test)]` helpers in test_helpers.rs + call-site substitutions
 - [ ] 108-03-PLAN.md — entropy in production files: private per-file helpers (fem_smoothing, friedman, soft_dtw, scalar_on_shape, classification/fit)
 - [ ] 108-04-PLAN.md — entropy in `///` doc-comment examples + STABLE 3× entropy 0 confirmation / escalation
 

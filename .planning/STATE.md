@@ -4,18 +4,18 @@ milestone: v0.46.0
 milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
 current_phase: 108
 current_phase_name: Entropy Extraction & SATD/Unwrap Cleanup
-current_plan: 3
+current_plan: 4
 status: executing
-stopped_at: Phase 108 Plan 01 complete — SATD+defect cleared; ready for 108-02 entropy
-last_updated: "2026-09-14T10:18:39.223Z"
+stopped_at: Phase 108 Plan 02 complete — entropy test-module patterns cleared (E-01..E-12 in 3x pmat runs)
+last_updated: "2026-09-14T10:50:36.841Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 108 execution started
-state_head: 4c3aed9ae538bbf805973033d5e1e9bec757fb23
+state_head: 0573addb4d41873e842dc4ae9a845611a0673da4
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-13)
 ## Current Position
 
 Phase: 108 (Entropy Extraction & SATD/Unwrap Cleanup) — EXECUTING
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 4
 Status: Ready to execute
 Last activity: 2026-09-14 — Phase 108 Plan 01 complete
@@ -96,6 +96,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 107-spm-complexity-cluster P03 | 25 | 3 tasks | 4 files |
 | Phase 107 P04 | 1800 | 3 tasks | 3 files |
 | Phase 108 P01 | 15 | 2 tasks | 3 files |
+| Phase 108 P02 | 35 | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,8 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 107]: profile_validate_windows split-validate keeps profile_validate under threshold (7 guards total)
 - [Phase 108]: pmat SATD semantic detection: rewording requires removing the CONCEPT not just the keyword token — lp.rs needed two iterations to clear Performance category
 - [Phase 108]: depth/rpd.rs unwrap fix: used .expect() not ? to keep build_augmented return type as FdMatrix and avoid cascading signature changes to the public API
+- [Phase 108]: Detrend uses uniform_grid_range_div (div-before-mul); seasonal uses uniform_grid_range (mul-before-div) — FP forms verified non-identical, separate helpers required
+- [Phase 108]: uniform_step_grid(n, step) added for i*step patterns (covariance.rs E-09); not consolidatable with uniform_grid_range (FP-distinct)
 
 ### Pending Todos
 
@@ -154,8 +157,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T10:18:39.195Z
-Stopped at: Phase 108 Plan 01 complete — SATD+defect cleared; ready for 108-02 entropy
+Last session: 2026-09-14T10:50:36.795Z
+Stopped at: Phase 108 Plan 02 complete — entropy test-module patterns cleared (E-01..E-12 in 3x pmat runs)
 Resume file: None
 
 ## Operator Next Steps
