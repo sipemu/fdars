@@ -4,18 +4,18 @@ milestone: v0.46.0
 milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
 current_phase: 109
 current_phase_name: Complexity Tail & Quality-Gate Green
-current_plan: 3
+current_plan: 4
 status: executing
-stopped_at: Completed 109-01-PLAN.md (TRACER)
-last_updated: "2026-09-14T12:25:02.924Z"
+stopped_at: Completed 109-02-PLAN.md
+last_updated: "2026-09-14T12:38:15.217Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 109 execution resumed (wave continue)
-state_head: 402d4cd3bd82c850a2f3bc77c1805ce16bba0f14
+state_head: 16d1fc881c5d8572d594f54fb0d9af8cd6cfd181
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 26
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-13)
 ## Current Position
 
 Phase: 109 (Complexity Tail & Quality-Gate Green) — EXECUTING
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 4
 Status: Ready to execute
 Last activity: 2026-09-14 — Phase 109 execution resumed (wave continue)
@@ -99,6 +99,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 108 P02 | 35 | 3 tasks | 11 files |
 | Phase 108 P03 | 12 | 2 tasks | 5 files |
 | Phase 109 P01 | 7 | 3 tasks | 3 files |
+| Phase 109 P02 | 11 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,8 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 108]: pmat entropy counts structurally-identical lines inside a helper: node_bbox needed single-fold accumulation to clear fem_smoothing flag; sin_sin_surface test helper also required
 - [Phase 108]: helpers::extract_curves equivalence verified by source inspection (FdMatrix::rows() == (0..nrows).map(|i| row(i)).collect()): reused in soft_dtw without adding new extract_rows helper
 - [Phase 109]: 109-01 TRACER: two-seam decomposition for cog 28-32; single-seam for cog 24-25; inline on hot-path helpers; clippy ptr_arg auto-fixed
+- [Phase 109]: build_centered_stacked shared between karcher_covariance_nd and pca_nd to reduce duplication and keep both functions below threshold
+- [Phase 109]: gauss_validate consolidates four identical guard checks across both generative functions
 
 ### Pending Todos
 
@@ -165,8 +168,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T12:25:02.890Z
-Stopped at: Completed 109-01-PLAN.md (TRACER)
+Last session: 2026-09-14T12:38:15.184Z
+Stopped at: Completed 109-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
