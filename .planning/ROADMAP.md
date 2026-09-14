@@ -67,7 +67,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 **Plans**: 4 plans
 
 - [x] 107-01-PLAN.md — Tracer: amewma.rs + iterative.rs (spm_amewma_monitor cog 52, spm_phase1_iterative cog 42)
-- [ ] 107-02-PLAN.md — MFPCA cluster: mfpca.rs + ncomp.rs + contrib.rs (mfpca, select_ncomp, t2_contributions_mfpca, spe_contributions)
+- [x] 107-02-PLAN.md — MFPCA cluster: mfpca.rs + ncomp.rs + contrib.rs (mfpca, select_ncomp, t2_contributions_mfpca, spe_contributions)
 - [ ] 107-03-PLAN.md — Monitors: ewma.rs + mewma.rs + stats.rs + phase.rs (spm_ewma_monitor, spm_mewma_monitor, spe_multivariate, spm_monitor_from_fields)
 - [ ] 107-04-PLAN.md — Remaining monitors: partial.rs + frcc.rs + profile.rs (conditional_expectation, frcc_phase1, profile_phase1)
 
