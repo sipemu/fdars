@@ -6,16 +6,16 @@ current_phase: 109
 current_phase_name: Complexity Tail & Quality-Gate Green
 current_plan: 4
 status: executing
-stopped_at: Completed 109-02-PLAN.md
-last_updated: "2026-09-14T12:38:15.217Z"
+stopped_at: Completed 109-03-PLAN.md
+last_updated: "2026-09-14T12:48:54.322Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 109 execution resumed (wave continue)
-state_head: 16d1fc881c5d8572d594f54fb0d9af8cd6cfd181
+state_head: 64b98b215301018aa58db44fe1bcea452893db07
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 26
-  completed_plans: 14
+  completed_plans: 15
 ---
 
 # Project State
@@ -100,6 +100,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 108 P03 | 12 | 2 tasks | 5 files |
 | Phase 109 P01 | 7 | 3 tasks | 3 files |
 | Phase 109 P02 | 11 | 3 tasks | 3 files |
+| Phase 109 P03 | 15 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -143,6 +144,7 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 109]: 109-01 TRACER: two-seam decomposition for cog 28-32; single-seam for cog 24-25; inline on hot-path helpers; clippy ptr_arg auto-fixed
 - [Phase 109]: build_centered_stacked shared between karcher_covariance_nd and pca_nd to reduce duplication and keep both functions below threshold
 - [Phase 109]: gauss_validate consolidates four identical guard checks across both generative functions
+- [Phase 109]: peer/lpeer/select_lambda_reml_peer decomposed into 10 private helpers; all below cog 23/cyc 30; REML EM order verbatim; sigma_inv closure to named fn with explicit params; reml_estep returns Option (None=Cholesky failure)
 
 ### Pending Todos
 
@@ -168,8 +170,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T12:38:15.184Z
-Stopped at: Completed 109-02-PLAN.md
+Last session: 2026-09-14T12:48:54.290Z
+Stopped at: Completed 109-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
