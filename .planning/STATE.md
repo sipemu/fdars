@@ -4,17 +4,18 @@ milestone: v0.46.0
 milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
 current_phase: 108
 current_phase_name: Entropy Extraction & SATD/Unwrap Cleanup
-status: planning
-stopped_at: Phase 107 complete, ready to plan Phase 108
-last_updated: "2026-09-14T09:49:19.333Z"
+current_plan: 3
+status: executing
+stopped_at: Phase 108 Plan 01 complete — SATD+defect cleared; ready for 108-02 entropy
+last_updated: "2026-09-14T10:18:39.223Z"
 last_activity: 2026-09-14
-last_activity_desc: Phase 107 complete, transitioned to Phase 108
-state_head: 556e0fa65ede49440f69cf2758c95b25b1a71797
+last_activity_desc: Phase 108 execution started
+state_head: 4c3aed9ae538bbf805973033d5e1e9bec757fb23
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 12
+  completed_plans: 9
 ---
 
 # Project State
@@ -24,14 +25,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-13)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps on the road to a deliberate 1.0 cut.
-**Current focus:** Phase 107 — SPM Complexity Cluster
+**Current focus:** Phase 108 — Entropy Extraction & SATD/Unwrap Cleanup
 
 ## Current Position
 
-Phase: 108 — Entropy Extraction & SATD/Unwrap Cleanup
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-14 — Phase 107 complete, transitioned to Phase 108
+Phase: 108 (Entropy Extraction & SATD/Unwrap Cleanup) — EXECUTING
+Current Plan: 3
+Total Plans in Phase: 4
+Status: Ready to execute
+Last activity: 2026-09-14 — Phase 108 Plan 01 complete
 
 ## Milestone Roadmap (v0.46.0)
 
@@ -93,6 +95,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 107 P02 | 360 | 3 tasks | 3 files |
 | Phase 107-spm-complexity-cluster P03 | 25 | 3 tasks | 4 files |
 | Phase 107 P04 | 1800 | 3 tasks | 3 files |
+| Phase 108 P01 | 15 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -124,6 +127,8 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 107]: 107-03: extract validate-and-call helpers in ewma/mewma/stats/phase — mewma_validate returns ncomp, spe_mv_compute_var returns Vec per-obs, monitor_fields_validate consolidates 5 guards (cog 15, no split-validate needed)
 - [Phase 107]: cond_exp_build_m_matrix returns (m_matrix, diag_max) tuple where diag_max is from ORIGINAL pre-regularization matrix to preserve Tikhonov retry sequence
 - [Phase 107]: profile_validate_windows split-validate keeps profile_validate under threshold (7 guards total)
+- [Phase 108]: pmat SATD semantic detection: rewording requires removing the CONCEPT not just the keyword token — lp.rs needed two iterations to clear Performance category
+- [Phase 108]: depth/rpd.rs unwrap fix: used .expect() not ? to keep build_augmented return type as FdMatrix and avoid cascading signature changes to the public API
 
 ### Pending Todos
 
@@ -149,8 +154,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T09:31:16.093Z
-Stopped at: Phase 107 complete, ready to plan Phase 108
+Last session: 2026-09-14T10:18:39.195Z
+Stopped at: Phase 108 Plan 01 complete — SATD+defect cleared; ready for 108-02 entropy
 Resume file: None
 
 ## Operator Next Steps

@@ -28,7 +28,7 @@ This milestone drives `pmat quality-gate` to **PASS** (0 violations), fixes the 
 ### Entropy & Technical Debt
 
 - [ ] **QUAL-04**: The repeated `DataTransformation` patterns flagged by `pmat analyze entropy` (11 violations across `metric/tests.rs`, `fem_smoothing.rs`, `explain_generic/friedman.rs`, `seasonal/tests.rs`, `regression.rs`, `covariance.rs`, `detrend/tests.rs`, `scalar_on_function/tests.rs`, and the project-level pattern-diversity finding) are extracted into shared helpers so pmat entropy reports **0 actionable violations**.
-- [ ] **QUAL-05**: The 2 SATD doc-comment false-positives (`depth/dispatch.rs:281`, `metric/lp.rs:175`) are reworded so keyword matchers no longer flag them, AND the 1 critical `.unwrap()` at `depth/rpd.rs:229` is replaced with proper error handling (`?` or `.expect()` with a descriptive message) — `pmat analyze satd` and `pmat analyze defects` both report **0 violations**.
+- [x] **QUAL-05**: The 2 SATD doc-comment false-positives (`depth/dispatch.rs:281`, `metric/lp.rs:175`) are reworded so keyword matchers no longer flag them, AND the 1 critical `.unwrap()` at `depth/rpd.rs:229` is replaced with proper error handling (`?` or `.expect()` with a descriptive message) — `pmat analyze satd` and `pmat analyze defects` both report **0 violations**.
 
 ### CI Guardrail
 
@@ -74,7 +74,7 @@ Which phases cover which requirements.
 | QUAL-01 | Phase 106 | Complete |
 | QUAL-02 | Phase 107 | Complete |
 | QUAL-04 | Phase 108 | Pending |
-| QUAL-05 | Phase 108 | Pending |
+| QUAL-05 | Phase 108 | Complete |
 | QUAL-03 | Phase 109 | Pending |
 | CI-01 | Phase 110 | Pending |
 | REL-01 | Phase 111 | Pending |
