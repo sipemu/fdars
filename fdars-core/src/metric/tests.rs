@@ -121,9 +121,7 @@ fn test_hausdorff_self_symmetric() {
     let n = 4;
     let m = 15;
     let argvals = uniform_grid(m);
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.1);
     let dist = hausdorff_self(&data, &argvals, None, crate::dim::Dim::One);
     for i in 0..n {
         for j in 0..n {
@@ -158,9 +156,7 @@ fn test_hausdorff_invalid() {
 fn test_fourier_self_symmetric() {
     let n = 4;
     let m = 32;
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.1);
     let dist = fourier_self_1d(&data, 5);
     for i in 0..n {
         for j in 0..n {
@@ -196,9 +192,7 @@ fn test_hshift_self_symmetric() {
     let n = 4;
     let m = 20;
     let argvals = uniform_grid(m);
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.1);
     let dist = hshift_self_1d(&data, &argvals, 3);
     for i in 0..n {
         for j in 0..n {
@@ -778,9 +772,7 @@ fn test_soft_dtw_converges_to_hard_dtw() {
 fn test_soft_dtw_self_symmetric() {
     let n = 4;
     let m = 10;
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.2).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.2);
     let dist = soft_dtw_self_1d(&data, 1.0);
     for i in 0..n {
         for j in 0..n {
@@ -796,9 +788,7 @@ fn test_soft_dtw_self_symmetric() {
 fn test_soft_dtw_cross_vs_self() {
     let n = 3;
     let m = 10;
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.2).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.2);
     let cross = soft_dtw_cross_1d(&data, &data, 1.0);
     let self_mat = soft_dtw_self_1d(&data, 1.0);
     // Off-diagonal entries should match (diagonal differs because self_distance_matrix
@@ -819,9 +809,7 @@ fn test_soft_dtw_cross_vs_self() {
 fn test_soft_dtw_divergence_nonneg() {
     let n = 4;
     let m = 10;
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.3).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.3);
     let div = soft_dtw_div_self_1d(&data, 1.0);
     for i in 0..n {
         for j in 0..n {
@@ -1372,9 +1360,7 @@ fn test_pca_self_identical_zero() {
 fn test_pca_self_symmetric() {
     let n = 4;
     let m = 15;
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.1);
     let dist = pca_self_1d(&data, 2).unwrap();
     for i in 0..n {
         for j in 0..n {
@@ -1430,9 +1416,7 @@ fn test_pca_cross_dimensions() {
 fn test_pca_cross_self_consistent() {
     let n = 5;
     let m = 20;
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.1);
     let self_dist = pca_self_1d(&data, 2).unwrap();
     let cross_dist = pca_cross_1d(&data, &data, 2).unwrap();
     for i in 0..n {
@@ -1484,9 +1468,7 @@ fn test_deriv_self_symmetric() {
     let n = 4;
     let m = 20;
     let argvals = uniform_grid(m);
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.1);
     let dist = deriv_self_1d(&data, &argvals, 1, &[]);
     for i in 0..n {
         for j in 0..n {
@@ -1503,9 +1485,7 @@ fn test_deriv_self_second_derivative() {
     let n = 3;
     let m = 30;
     let argvals = uniform_grid(m);
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.1);
     let dist = deriv_self_1d(&data, &argvals, 2, &[]);
     assert_eq!(dist.shape(), (n, n));
     for i in 0..n {
@@ -1583,9 +1563,7 @@ fn test_basis_coef_self_symmetric() {
     let n = 4;
     let m = 20;
     let argvals = uniform_grid(m);
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.1);
     let dist = basis_coef_self_1d(
         &data,
         &argvals,
@@ -1636,9 +1614,7 @@ fn test_basis_coef_bspline() {
     let n = 3;
     let m = 20;
     let argvals = uniform_grid(m);
-    let data =
-        FdMatrix::from_column_major((0..(n * m)).map(|i| (i as f64 * 0.1).sin()).collect(), n, m)
-            .unwrap();
+    let data = crate::test_helpers::sin_matrix(n, m, 0.1);
     let dist = basis_coef_self_1d(
         &data,
         &argvals,

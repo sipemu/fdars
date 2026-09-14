@@ -59,10 +59,7 @@ fn test_functional_pdp_logistic_probabilities() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
 
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let pdp = functional_pdp_logistic(&fit, &data, None, 0, 15).unwrap();
@@ -123,10 +120,7 @@ fn test_functional_pdp_logistic_column_mismatch() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let wrong_data = FdMatrix::zeros(30, 40);
     assert!(functional_pdp_logistic(&fit, &wrong_data, None, 0, 10).is_err());
@@ -141,10 +135,7 @@ fn test_functional_pdp_logistic_zero_rows() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let empty_data = FdMatrix::zeros(0, 50);
     assert!(functional_pdp_logistic(&fit, &empty_data, None, 0, 10).is_err());
@@ -204,10 +195,7 @@ fn test_beta_decomposition_logistic_sums() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let dec = beta_decomposition_logistic(&fit).unwrap();
     for j in 0..50 {
@@ -342,10 +330,7 @@ fn test_fpc_importance_logistic_shape() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let imp = fpc_permutation_importance_logistic(&fit, &data, &y_bin, 10, 42).unwrap();
     assert_eq!(imp.importance.len(), 3);
@@ -454,10 +439,7 @@ fn test_h_statistic_logistic_positive() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let h = friedman_h_statistic_logistic(&fit, &data, None, 0, 1, 10).unwrap();
     assert!(
@@ -499,10 +481,7 @@ fn test_h_statistic_bounded() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let h = friedman_h_statistic_logistic(&fit, &data, None, 0, 1, 10).unwrap();
     assert!(
@@ -580,10 +559,7 @@ fn test_pointwise_importance_logistic_shape() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let pi = pointwise_importance_logistic(&fit).unwrap();
     assert_eq!(pi.importance.len(), 50);
@@ -644,10 +620,7 @@ fn test_vif_logistic_agrees_with_linear() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit_lm = fregre_lm(&data, &y_cont, None, 3).unwrap();
     let fit_log = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let vif_lm = fpc_vif(&fit_lm, &data, None).unwrap();
@@ -737,10 +710,7 @@ fn test_shap_logistic_sum_approximates_prediction() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let shap = fpc_shap_values_logistic(&fit, &data, None, 500, 42).unwrap();
     let mut shap_sums = Vec::new();
@@ -780,10 +750,7 @@ fn test_shap_logistic_reproducible() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let s1 = fpc_shap_values_logistic(&fit, &data, None, 100, 999).unwrap();
     let s2 = fpc_shap_values_logistic(&fit, &data, None, 100, 999).unwrap();
@@ -1082,10 +1049,7 @@ fn test_ale_logistic_bounded() {
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let ale = fpc_ale_logistic(&fit, &data, None, 0, 10).unwrap();
     for &v in &ale.ale_values {
@@ -1172,10 +1136,7 @@ fn test_sobol_logistic_bounded() {
         let mut s = y_cont.clone();
         s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let med = s[s.len() / 2];
-        y_cont
-            .iter()
-            .map(|&v| if v >= med { 1.0 } else { 0.0 })
-            .collect::<Vec<_>>()
+        crate::test_helpers::binarize_at_median(&y_cont, med)
     };
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let sobol = sobol_indices_logistic(&fit, &data, None, 500, 42).unwrap();
@@ -1193,10 +1154,7 @@ fn test_calibration_brier_range() {
         let mut s = y_cont.clone();
         s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let med = s[s.len() / 2];
-        y_cont
-            .iter()
-            .map(|&v| if v >= med { 1.0 } else { 0.0 })
-            .collect::<Vec<_>>()
+        crate::test_helpers::binarize_at_median(&y_cont, med)
     };
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let cal = calibration_diagnostics(&fit, &y_bin, 5).unwrap();
@@ -1214,10 +1172,7 @@ fn test_calibration_bin_counts_sum_to_n() {
         let mut s = y_cont.clone();
         s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let med = s[s.len() / 2];
-        y_cont
-            .iter()
-            .map(|&v| if v >= med { 1.0 } else { 0.0 })
-            .collect::<Vec<_>>()
+        crate::test_helpers::binarize_at_median(&y_cont, med)
     };
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let cal = calibration_diagnostics(&fit, &y_bin, 5).unwrap();
@@ -1232,10 +1187,7 @@ fn test_calibration_n_groups_match() {
         let mut s = y_cont.clone();
         s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let med = s[s.len() / 2];
-        y_cont
-            .iter()
-            .map(|&v| if v >= med { 1.0 } else { 0.0 })
-            .collect::<Vec<_>>()
+        crate::test_helpers::binarize_at_median(&y_cont, med)
     };
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let cal = calibration_diagnostics(&fit, &y_bin, 5).unwrap();
@@ -1261,10 +1213,7 @@ fn test_saliency_logistic_bounded_by_quarter_beta() {
         let mut s = y_cont.clone();
         s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let med = s[s.len() / 2];
-        y_cont
-            .iter()
-            .map(|&v| if v >= med { 1.0 } else { 0.0 })
-            .collect::<Vec<_>>()
+        crate::test_helpers::binarize_at_median(&y_cont, med)
     };
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let sal = functional_saliency_logistic(&fit).unwrap();
@@ -1415,10 +1364,7 @@ fn test_counterfactual_logistic_flips_class() {
         let mut s = y_cont.clone();
         s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let med = s[s.len() / 2];
-        y_cont
-            .iter()
-            .map(|&v| if v >= med { 1.0 } else { 0.0 })
-            .collect::<Vec<_>>()
+        crate::test_helpers::binarize_at_median(&y_cont, med)
     };
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let cf = counterfactual_logistic(&fit, &data, None, 0, 1000, 0.5).unwrap();
@@ -1515,10 +1461,7 @@ fn test_lime_logistic_shape() {
         let mut s = y_cont.clone();
         s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let med = s[s.len() / 2];
-        y_cont
-            .iter()
-            .map(|&v| if v >= med { 1.0 } else { 0.0 })
-            .collect::<Vec<_>>()
+        crate::test_helpers::binarize_at_median(&y_cont, med)
     };
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let lime = lime_explanation_logistic(&fit, &data, None, 0, 500, 1.0, 42).unwrap();
@@ -1552,10 +1495,7 @@ fn make_logistic_fit() -> (
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     (data, y_bin, fit)
 }

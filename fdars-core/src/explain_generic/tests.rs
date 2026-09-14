@@ -40,9 +40,7 @@ fn make_binary_y(y: &[f64]) -> Vec<f64> {
     let mut sorted = y.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let median = sorted[sorted.len() / 2];
-    y.iter()
-        .map(|&v| if v >= median { 1.0 } else { 0.0 })
-        .collect()
+    crate::test_helpers::binarize_at_median(y, median)
 }
 
 /// Convert continuous y to multiclass labels (3 classes).

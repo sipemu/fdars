@@ -54,7 +54,7 @@ fn test_peak_detection_known_sine() {
     // Peaks occur at t = period/4 + k*period = 0.5, 2.5, 4.5, 6.5, 8.5
     let m = 200; // High resolution for accurate detection
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+    let argvals = crate::test_helpers::uniform_grid_range(m, 10.0);
     let data: Vec<f64> = argvals
         .iter()
         .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin())
@@ -97,7 +97,7 @@ fn test_peak_detection_with_min_distance() {
     // Same sine wave but with min_distance constraint
     let m = 200;
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+    let argvals = crate::test_helpers::uniform_grid_range(m, 10.0);
     let data: Vec<f64> = argvals
         .iter()
         .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin())
@@ -128,7 +128,7 @@ fn test_peak_detection_period_1() {
     // Peaks at t = 0.25, 1.25, 2.25, ..., 9.25 (10 peaks)
     let m = 400; // Higher resolution for higher frequency
     let period = 1.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+    let argvals = crate::test_helpers::uniform_grid_range(m, 10.0);
     let data: Vec<f64> = argvals
         .iter()
         .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin())
@@ -160,7 +160,7 @@ fn test_peak_detection_shifted_sine() {
     // Same peak locations, just shifted up
     let m = 200;
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+    let argvals = crate::test_helpers::uniform_grid_range(m, 10.0);
     let data: Vec<f64> = argvals
         .iter()
         .map(|&t| (2.0 * std::f64::consts::PI * t / period).sin() + 1.0)
@@ -192,7 +192,7 @@ fn test_peak_detection_prominence() {
     // Create signal with peaks of different heights
     // Large peaks at odd positions, small peaks at even positions
     let m = 200;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+    let argvals = crate::test_helpers::uniform_grid_range(m, 10.0);
     let data: Vec<f64> = argvals
         .iter()
         .map(|&t| {
@@ -222,7 +222,7 @@ fn test_peak_detection_different_amplitudes() {
     // Test with various amplitudes: 0.5, 1.0, 2.0, 5.0
     let m = 200;
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+    let argvals = crate::test_helpers::uniform_grid_range(m, 10.0);
 
     for amplitude in [0.5, 1.0, 2.0, 5.0] {
         let data: Vec<f64> = argvals
@@ -257,7 +257,7 @@ fn test_peak_detection_varying_frequency() {
     // Signal with varying frequency: chirp-like signal
     // Peaks get closer together over time
     let m = 400;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+    let argvals = crate::test_helpers::uniform_grid_range(m, 10.0);
 
     // Frequency increases linearly: f(t) = 0.5 + 0.1*t
     // Phase integral: phi(t) = 2*pi * (0.5*t + 0.05*t^2)
@@ -2754,7 +2754,7 @@ fn test_detect_peaks_with_smoothing() {
     // Test peak detection with smoothing enabled (smooth_first = true)
     let m = 200;
     let period = 2.0;
-    let argvals: Vec<f64> = (0..m).map(|i| i as f64 * 10.0 / (m - 1) as f64).collect();
+    let argvals = crate::test_helpers::uniform_grid_range(m, 10.0);
 
     // Noisy sine wave
     let data: Vec<f64> = argvals

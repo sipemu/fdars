@@ -197,10 +197,7 @@ fn test_functional_logistic_basic() {
         crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
 
     let result = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6);
     assert!(result.is_ok());
@@ -221,10 +218,7 @@ fn test_functional_logistic_with_scalar_covariates() {
         crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
 
     let mut sc = FdMatrix::zeros(30, 1);
     for i in 0..30 {
@@ -251,10 +245,7 @@ fn test_functional_logistic_convergence() {
         crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
 
     let fit = functional_logistic(&data, &y_bin, None, 3, 100, 1e-8).unwrap();
     assert!(fit.iterations <= 100, "Should converge within max_iter");
@@ -345,10 +336,7 @@ fn test_functional_logistic_beta_se() {
         crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
 
     let fit = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     assert_eq!(fit.beta_se.len(), 50, "beta_se should have length m");
@@ -489,10 +477,7 @@ fn test_bootstrap_ci_functional_logistic_shape() {
         crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
 
     let result = bootstrap_ci_functional_logistic(&data, &y_bin, None, 2, 50, 0.05, 123, 25, 1e-6);
     assert!(
@@ -514,10 +499,7 @@ fn test_bootstrap_ci_logistic_ordering() {
         crate::helpers::sort_nan_safe(&mut sorted);
         sorted[sorted.len() / 2]
     };
-    let y_bin: Vec<f64> = y_cont
-        .iter()
-        .map(|&v| if v >= y_median { 1.0 } else { 0.0 })
-        .collect();
+    let y_bin = crate::test_helpers::binarize_at_median(&y_cont, y_median);
 
     let ci =
         bootstrap_ci_functional_logistic(&data, &y_bin, None, 2, 100, 0.05, 42, 25, 1e-6).unwrap();
