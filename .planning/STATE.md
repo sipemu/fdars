@@ -6,16 +6,16 @@ current_phase: 109
 current_phase_name: Complexity Tail & Quality-Gate Green
 current_plan: 4
 status: executing
-stopped_at: Completed 109-07-PLAN.md
-last_updated: "2026-09-14T16:03:01.315Z"
+stopped_at: Completed 109-08-PLAN.md
+last_updated: "2026-09-14T19:52:41.222Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 109 execution resumed (wave continue)
-state_head: "0b8efccb91062bc3282df5813cdbb5ec14e80cfd"
+state_head: 84599a99053ebc7250c328f64b0f185840279722
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 26
-  completed_plans: 19
+  completed_plans: 20
 ---
 
 # Project State
@@ -103,6 +103,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 109 P03 | 15 | 3 tasks | 1 files |
 | Phase 109 P04 | 25 | 3 tasks | 1 files |
 | Phase 109 P07 | 30 | 3 tasks | 3 files |
+| Phase 109 P08 | 30 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -151,6 +152,7 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 109]: gmm_hard/soft_cluster_params return owned (mu, sigma) tuples to avoid borrow aliasing
 - [Phase 109]: 109-07: CD sweep helpers lift verbatim — cd_group_partial/cd_group_ols_soft/cd_scalar_partial_j decompose group_lasso_cd (cog 67→17) without reordering FP accumulation
 - [Phase 109]: 109-07: gkam_validate split-validate applied — gkam_validate_predictors (per-predictor loop cog 11) + gkam_validate (guards cog 15)
+- [Phase 109]: fsvd: combine gram-eigen and singular-vector recovery in one fn to avoid re-building eigen twice (eigenvector ordering risk)
 
 ### Pending Todos
 
@@ -176,8 +178,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T16:03:01.284Z
-Stopped at: Completed 109-07-PLAN.md
+Last session: 2026-09-14T19:52:36.506Z
+Stopped at: Completed 109-08-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
