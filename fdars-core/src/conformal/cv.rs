@@ -10,6 +10,114 @@ use super::{
     ClassificationScore, ConformalClassificationResult, ConformalMethod, ConformalRegressionResult,
 };
 
+/// Validate inputs for `cv_conformal_regression`.
+fn validate_cv_regression_inputs(
+    n: usize,
+    n_test: usize,
+    y_len: usize,
+    alpha: f64,
+) -> Result<(), FdarError> {
+    if n < 4 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 4 observations".to_string(),
+            actual: format!("{n}"),
+        });
+    }
+    if n_test == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "test_data",
+            expected: "at least 1 observation".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    if y_len != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{n}"),
+            actual: format!("{y_len}"),
+        });
+    }
+    if alpha <= 0.0 || alpha >= 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "alpha",
+            message: format!("must be in (0, 1), got {alpha}"),
+        });
+    }
+    Ok(())
+}
+
+/// Run one fold of cross-conformal regression.
+///
+/// Fits the model on train indices, predicts on calibration + test combined,
+/// stores calibration residuals at original indices, and accumulates test predictions.
+/// Returns `Err` if `fit_predict` returns `None`; returns `Ok(false)` for empty folds.
+#[allow(clippy::too_many_arguments)]
+fn run_cv_regression_fold(
+    data: &FdMatrix,
+    y: &[f64],
+    test_data: &FdMatrix,
+    scalar_train: Option<&FdMatrix>,
+    scalar_test: Option<&FdMatrix>,
+    train_idx: &[usize],
+    test_idx: &[usize],
+    fold: usize,
+    n_test: usize,
+    all_cal_residuals: &mut [f64],
+    test_preds_sum: &mut [f64],
+    fit_predict: &dyn Fn(
+        &FdMatrix,
+        &[f64],
+        Option<&FdMatrix>,
+        &FdMatrix,
+        Option<&FdMatrix>,
+    ) -> Option<(Vec<f64>, Vec<f64>)>,
+) -> Result<bool, FdarError> {
+    if train_idx.is_empty() || test_idx.is_empty() {
+        return Ok(false);
+    }
+
+    let train_data = subset_rows(data, train_idx);
+    let train_y = subset_vec(y, train_idx);
+    let train_sc = scalar_train.map(|sc| subset_rows(sc, train_idx));
+    let cal_data = subset_rows(data, test_idx);
+    let cal_sc = scalar_train.map(|sc| subset_rows(sc, test_idx));
+
+    // Single call: predict on combined [cal_data; test_data] to avoid double model fit
+    let n_cal_fold = cal_data.nrows();
+    let combined = vstack(&cal_data, test_data);
+    let combined_sc = vstack_opt(cal_sc.as_ref(), scalar_test);
+    let (all_preds, _) = fit_predict(
+        &train_data,
+        &train_y,
+        train_sc.as_ref(),
+        &combined,
+        combined_sc.as_ref(),
+    )
+    .ok_or_else(|| FdarError::ComputationFailed {
+        operation: "cv_conformal_regression",
+        detail: format!("fit_predict closure returned None on fold {fold}"),
+    })?;
+
+    // Split predictions: first n_cal_fold are calibration, rest are test
+    let cal_preds = &all_preds[..n_cal_fold];
+    let test_preds_fold = &all_preds[n_cal_fold..];
+
+    // Store calibration residuals at their original positions
+    for (local_i, &orig_i) in test_idx.iter().enumerate() {
+        if local_i < cal_preds.len() {
+            all_cal_residuals[orig_i] = (y[orig_i] - cal_preds[local_i]).abs();
+        }
+    }
+
+    for j in 0..n_test {
+        if j < test_preds_fold.len() {
+            test_preds_sum[j] += test_preds_fold[j];
+        }
+    }
+    Ok(true)
+}
+
 /// Cross-conformal (CV+) prediction intervals for regression.
 ///
 /// Uses K-fold CV: each fold produces out-of-fold predictions that serve
@@ -46,33 +154,7 @@ pub fn cv_conformal_regression(
 ) -> Result<ConformalRegressionResult, FdarError> {
     let n = data.nrows();
     let n_test = test_data.nrows();
-    if n < 4 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "at least 4 observations".to_string(),
-            actual: format!("{n}"),
-        });
-    }
-    if n_test == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "test_data",
-            expected: "at least 1 observation".to_string(),
-            actual: "0".to_string(),
-        });
-    }
-    if y.len() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y",
-            expected: format!("{n}"),
-            actual: format!("{}", y.len()),
-        });
-    }
-    if alpha <= 0.0 || alpha >= 1.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "alpha",
-            message: format!("must be in (0, 1), got {alpha}"),
-        });
-    }
+    validate_cv_regression_inputs(n, n_test, y.len(), alpha)?;
     let n_folds = n_folds.max(2).min(n);
 
     let folds = create_folds(n, n_folds, seed);
@@ -82,49 +164,23 @@ pub fn cv_conformal_regression(
 
     for fold in 0..n_folds {
         let (train_idx, test_idx) = fold_indices(&folds, fold);
-        if train_idx.is_empty() || test_idx.is_empty() {
-            continue;
+        let advanced = run_cv_regression_fold(
+            data,
+            y,
+            test_data,
+            scalar_train,
+            scalar_test,
+            &train_idx,
+            &test_idx,
+            fold,
+            n_test,
+            &mut all_cal_residuals,
+            &mut test_preds_sum,
+            &fit_predict,
+        )?;
+        if advanced {
+            n_models += 1;
         }
-
-        let train_data = subset_rows(data, &train_idx);
-        let train_y = subset_vec(y, &train_idx);
-        let train_sc = scalar_train.map(|sc| subset_rows(sc, &train_idx));
-        let cal_data = subset_rows(data, &test_idx);
-        let cal_sc = scalar_train.map(|sc| subset_rows(sc, &test_idx));
-
-        // Single call: predict on combined [cal_data; test_data] to avoid double model fit
-        let n_cal_fold = cal_data.nrows();
-        let combined = vstack(&cal_data, test_data);
-        let combined_sc = vstack_opt(cal_sc.as_ref(), scalar_test);
-        let (all_preds, _) = fit_predict(
-            &train_data,
-            &train_y,
-            train_sc.as_ref(),
-            &combined,
-            combined_sc.as_ref(),
-        )
-        .ok_or_else(|| FdarError::ComputationFailed {
-            operation: "cv_conformal_regression",
-            detail: format!("fit_predict closure returned None on fold {fold}"),
-        })?;
-
-        // Split predictions: first n_cal_fold are calibration, rest are test
-        let cal_preds = &all_preds[..n_cal_fold];
-        let test_preds_fold = &all_preds[n_cal_fold..];
-
-        // Store calibration residuals at their original positions
-        for (local_i, &orig_i) in test_idx.iter().enumerate() {
-            if local_i < cal_preds.len() {
-                all_cal_residuals[orig_i] = (y[orig_i] - cal_preds[local_i]).abs();
-            }
-        }
-
-        for j in 0..n_test {
-            if j < test_preds_fold.len() {
-                test_preds_sum[j] += test_preds_fold[j];
-            }
-        }
-        n_models += 1;
     }
 
     if n_models == 0 {
@@ -244,41 +300,15 @@ fn aggregate_conformal_results(
     ))
 }
 
-/// Cross-conformal (CV+) prediction sets for classification.
+/// Validate inputs and resolve n_classes for `cv_conformal_classification`.
 ///
-/// The `fit_predict_probs` closure takes `(train_data, train_y, train_sc, predict_data, predict_sc)`,
-/// fits on `train_data`/`train_y`, and returns `Some((probs, _))` — probability vectors on
-/// `predict_data`. Only the first element of the tuple is used.
-///
-/// # Errors
-///
-/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
-/// `test_data` is empty, `y` length differs from the number of rows in `data`,
-/// or `y` is empty (no classes can be determined).
-/// Returns [`FdarError::InvalidParameter`] if `alpha` is not in (0, 1).
-/// Returns [`FdarError::ComputationFailed`] if the `fit_predict_probs` closure returns
-/// `None` on any fold, or no valid folds are produced.
-#[must_use = "expensive computation whose result should not be discarded"]
-pub fn cv_conformal_classification(
-    data: &FdMatrix,
+/// Returns `n_classes` on success.
+fn validate_cv_classif_inputs(
+    n: usize,
+    n_test: usize,
     y: &[usize],
-    test_data: &FdMatrix,
-    scalar_train: Option<&FdMatrix>,
-    scalar_test: Option<&FdMatrix>,
-    fit_predict_probs: impl Fn(
-        &FdMatrix,
-        &[usize],
-        Option<&FdMatrix>,
-        &FdMatrix,
-        Option<&FdMatrix>,
-    ) -> Option<(Vec<Vec<f64>>, Vec<Vec<f64>>)>,
-    n_folds: usize,
-    score_type: ClassificationScore,
     alpha: f64,
-    seed: u64,
-) -> Result<ConformalClassificationResult, FdarError> {
-    let n = data.nrows();
-    let n_test = test_data.nrows();
+) -> Result<usize, FdarError> {
     if n < 4 {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
@@ -316,6 +346,45 @@ pub fn cv_conformal_classification(
             actual: "empty".to_string(),
         })?
         + 1;
+    Ok(n_classes)
+}
+
+/// Cross-conformal (CV+) prediction sets for classification.
+///
+/// The `fit_predict_probs` closure takes `(train_data, train_y, train_sc, predict_data, predict_sc)`,
+/// fits on `train_data`/`train_y`, and returns `Some((probs, _))` — probability vectors on
+/// `predict_data`. Only the first element of the tuple is used.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `data` has fewer than 4 observations,
+/// `test_data` is empty, `y` length differs from the number of rows in `data`,
+/// or `y` is empty (no classes can be determined).
+/// Returns [`FdarError::InvalidParameter`] if `alpha` is not in (0, 1).
+/// Returns [`FdarError::ComputationFailed`] if the `fit_predict_probs` closure returns
+/// `None` on any fold, or no valid folds are produced.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn cv_conformal_classification(
+    data: &FdMatrix,
+    y: &[usize],
+    test_data: &FdMatrix,
+    scalar_train: Option<&FdMatrix>,
+    scalar_test: Option<&FdMatrix>,
+    fit_predict_probs: impl Fn(
+        &FdMatrix,
+        &[usize],
+        Option<&FdMatrix>,
+        &FdMatrix,
+        Option<&FdMatrix>,
+    ) -> Option<(Vec<Vec<f64>>, Vec<Vec<f64>>)>,
+    n_folds: usize,
+    score_type: ClassificationScore,
+    alpha: f64,
+    seed: u64,
+) -> Result<ConformalClassificationResult, FdarError> {
+    let n = data.nrows();
+    let n_test = test_data.nrows();
+    let n_classes = validate_cv_classif_inputs(n, n_test, y, alpha)?;
     let n_folds = n_folds.max(2).min(n);
 
     let folds = create_folds(n, n_folds, seed);
