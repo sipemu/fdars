@@ -140,92 +140,10 @@ pub fn spm_amewma_monitor(
     _argvals: &[f64],
     config: &AmewmaConfig,
 ) -> Result<AmewmaMonitorResult, FdarError> {
-    // --- Validation ---
-    let m = chart.fpca.mean.len();
-    if sequential_data.ncols() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "sequential_data",
-            expected: format!("{m} columns"),
-            actual: format!("{} columns", sequential_data.ncols()),
-        });
-    }
-    if config.lambda_min <= 0.0 || config.lambda_min > 1.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "lambda_min",
-            message: format!("lambda_min must be in (0, 1], got {}", config.lambda_min),
-        });
-    }
-    if config.lambda_max <= 0.0 || config.lambda_max > 1.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "lambda_max",
-            message: format!("lambda_max must be in (0, 1], got {}", config.lambda_max),
-        });
-    }
-    if config.lambda_min > config.lambda_max {
-        return Err(FdarError::InvalidParameter {
-            parameter: "lambda_min",
-            message: format!(
-                "lambda_min ({}) must be <= lambda_max ({})",
-                config.lambda_min, config.lambda_max
-            ),
-        });
-    }
-    if config.lambda_init < config.lambda_min || config.lambda_init > config.lambda_max {
-        return Err(FdarError::InvalidParameter {
-            parameter: "lambda_init",
-            message: format!(
-                "lambda_init ({}) must be in [lambda_min, lambda_max] = [{}, {}]",
-                config.lambda_init, config.lambda_min, config.lambda_max
-            ),
-        });
-    }
-    if config.eta <= 0.0 || config.eta > 1.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "eta",
-            message: format!("eta must be in (0, 1], got {}", config.eta),
-        });
-    }
-    if let Some(clip) = config.error_clip {
-        if clip <= 0.0 {
-            return Err(FdarError::InvalidParameter {
-                parameter: "error_clip",
-                message: format!("error_clip must be positive, got {clip}"),
-            });
-        }
-    }
+    amewma_validate(chart, sequential_data, config)?;
 
-    let ncomp = chart.eigenvalues.len().min(config.ncomp);
+    let (z, actual_ncomp) = amewma_project_standardize(chart, sequential_data, config.ncomp)?;
     let n = sequential_data.nrows();
-
-    // --- Project all observations ---
-    let all_scores = chart.fpca.project(sequential_data)?;
-
-    // Truncate to ncomp columns if needed
-    let scores = if all_scores.ncols() > ncomp {
-        let mut trunc = FdMatrix::zeros(n, ncomp);
-        for i in 0..n {
-            for k in 0..ncomp {
-                trunc[(i, k)] = all_scores[(i, k)];
-            }
-        }
-        trunc
-    } else {
-        all_scores
-    };
-    let actual_ncomp = scores.ncols();
-
-    // --- Standardize: z[i,l] = score[i,l] / sqrt(eigenvalue[l]) ---
-    let mut z = FdMatrix::zeros(n, actual_ncomp);
-    for i in 0..n {
-        for l in 0..actual_ncomp {
-            let ev = chart.eigenvalues[l];
-            z[(i, l)] = if ev > 0.0 {
-                scores[(i, l)] / ev.sqrt()
-            } else {
-                0.0
-            };
-        }
-    }
 
     // --- Adaptive EWMA loop ---
     // Sparks (2000) variant: adaptive lambda with time-dependent covariance.
@@ -251,10 +169,14 @@ pub fn spm_amewma_monitor(
         // Step 1: Apply EWMA with PREVIOUS lambda (proper causal ordering)
         let lambda_cur = lambda_prev;
 
-        // EWMA with current lambda: S_t = lambda_t * z_i + (1 - lambda_t) * S_{t-1}
+        // EWMA update: S_t = lambda_t * z_i + (1 - lambda_t) * S_{t-1}
+        let z_i = z.row(i);
+        let s_prev: Vec<f64> = (0..actual_ncomp)
+            .map(|l| if i > 0 { smoothed[(i - 1, l)] } else { 0.0 })
+            .collect();
+        let s_t = amewma_ewma_step(&z_i, &s_prev, lambda_cur, actual_ncomp);
         for l in 0..actual_ncomp {
-            let s_prev = if i > 0 { smoothed[(i - 1, l)] } else { 0.0 };
-            smoothed[(i, l)] = lambda_cur * z[(i, l)] + (1.0 - lambda_cur) * s_prev;
+            smoothed[(i, l)] = s_t[l];
         }
 
         // Time-dependent covariance correction:
@@ -311,4 +233,137 @@ pub fn spm_amewma_monitor(
         ucl,
         alarm,
     })
+}
+
+/// Validate inputs for `spm_amewma_monitor`.
+///
+/// Checks dimension consistency and all `AmewmaConfig` parameter ranges.
+fn amewma_validate(
+    chart: &SpmChart,
+    sequential_data: &FdMatrix,
+    config: &AmewmaConfig,
+) -> Result<(), FdarError> {
+    let m = chart.fpca.mean.len();
+    if sequential_data.ncols() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "sequential_data",
+            expected: format!("{m} columns"),
+            actual: format!("{} columns", sequential_data.ncols()),
+        });
+    }
+    amewma_validate_lambda_range(config)?;
+    amewma_validate_params(config)
+}
+
+/// Validate lambda/eta/clip parameters for `spm_amewma_monitor`.
+fn amewma_validate_lambda_range(config: &AmewmaConfig) -> Result<(), FdarError> {
+    if config.lambda_min <= 0.0 || config.lambda_min > 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda_min",
+            message: format!("lambda_min must be in (0, 1], got {}", config.lambda_min),
+        });
+    }
+    if config.lambda_max <= 0.0 || config.lambda_max > 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda_max",
+            message: format!("lambda_max must be in (0, 1], got {}", config.lambda_max),
+        });
+    }
+    if config.lambda_min > config.lambda_max {
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda_min",
+            message: format!(
+                "lambda_min ({}) must be <= lambda_max ({})",
+                config.lambda_min, config.lambda_max
+            ),
+        });
+    }
+    if config.lambda_init < config.lambda_min || config.lambda_init > config.lambda_max {
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda_init",
+            message: format!(
+                "lambda_init ({}) must be in [lambda_min, lambda_max] = [{}, {}]",
+                config.lambda_init, config.lambda_min, config.lambda_max
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Validate eta and error_clip parameters for `spm_amewma_monitor`.
+fn amewma_validate_params(config: &AmewmaConfig) -> Result<(), FdarError> {
+    if config.eta <= 0.0 || config.eta > 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "eta",
+            message: format!("eta must be in (0, 1], got {}", config.eta),
+        });
+    }
+    if let Some(clip) = config.error_clip {
+        if clip <= 0.0 {
+            return Err(FdarError::InvalidParameter {
+                parameter: "error_clip",
+                message: format!("error_clip must be positive, got {clip}"),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Project, truncate, and standardize sequential data for `spm_amewma_monitor`.
+///
+/// Returns `(z, actual_ncomp)` where `z` is the standardized score matrix
+/// (n × actual_ncomp) and `actual_ncomp` is the effective component count
+/// after clamping to available eigenvalues.
+fn amewma_project_standardize(
+    chart: &SpmChart,
+    sequential_data: &FdMatrix,
+    ncomp: usize,
+) -> Result<(FdMatrix, usize), FdarError> {
+    let ncomp = chart.eigenvalues.len().min(ncomp);
+    let n = sequential_data.nrows();
+
+    // Project all observations
+    let all_scores = chart.fpca.project(sequential_data)?;
+
+    // Truncate to ncomp columns if needed
+    let scores = if all_scores.ncols() > ncomp {
+        let mut trunc = FdMatrix::zeros(n, ncomp);
+        for i in 0..n {
+            for k in 0..ncomp {
+                trunc[(i, k)] = all_scores[(i, k)];
+            }
+        }
+        trunc
+    } else {
+        all_scores
+    };
+    let actual_ncomp = scores.ncols();
+
+    // Standardize: z[i,l] = score[i,l] / sqrt(eigenvalue[l])
+    let mut z = FdMatrix::zeros(n, actual_ncomp);
+    for i in 0..n {
+        for l in 0..actual_ncomp {
+            let ev = chart.eigenvalues[l];
+            z[(i, l)] = if ev > 0.0 {
+                scores[(i, l)] / ev.sqrt()
+            } else {
+                0.0
+            };
+        }
+    }
+
+    Ok((z, actual_ncomp))
+}
+
+/// Compute one EWMA update step: S_t = lambda_cur * z_i + (1 - lambda_cur) * S_{t-1}.
+///
+/// Returns the new smoothed vector `s_t` of length `ncomp`.
+/// Marked `#[inline]` as this is called in the hot monitoring loop.
+#[inline]
+fn amewma_ewma_step(z_i: &[f64], s_prev: &[f64], lambda_cur: f64, ncomp: usize) -> Vec<f64> {
+    let mut s_t = Vec::with_capacity(ncomp);
+    for l in 0..ncomp {
+        s_t.push(lambda_cur * z_i[l] + (1.0 - lambda_cur) * s_prev[l]);
+    }
+    s_t
 }
