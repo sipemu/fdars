@@ -195,6 +195,261 @@ fn build_learners(
 }
 
 // ---------------------------------------------------------------------------
+// Private helpers for gamlss_fosr
+// ---------------------------------------------------------------------------
+
+/// Validate data/predictor/argvals dimensions for gamlss_fosr.
+fn gamlss_validate_dims(
+    data: &FdMatrix,
+    predictors: &FdMatrix,
+    argvals: &[f64],
+) -> Result<(), FdarError> {
+    let (n, m_t) = data.shape();
+    if n < 3 || m_t == 0 || predictors.nrows() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/predictors",
+            expected: format!("n >= 3, m > 0, predictors.nrows() == n (n={n})"),
+            actual: format!("n={n}, m={m_t}, predictors.nrows()={}", predictors.nrows()),
+        });
+    }
+    if argvals.len() != m_t {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("length == data.ncols() = {m_t}"),
+            actual: format!("length = {}", argvals.len()),
+        });
+    }
+    if predictors.ncols() == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "predictors",
+            expected: "at least 1 predictor column".to_string(),
+            actual: "0 columns".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Validate boosting config parameters for gamlss_fosr.
+fn gamlss_validate_config(config: &BoostingConfig, n: usize) -> Result<(), FdarError> {
+    if config.mstop == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "mstop",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if config.nu <= 0.0 || config.nu > 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "nu",
+            message: format!("must be in (0, 1], got {}", config.nu),
+        });
+    }
+    if config.nbasis < 4 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: format!("must be >= 4, got {}", config.nbasis),
+        });
+    }
+    if config.lambda <= 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda",
+            message: format!("must be > 0, got {}", config.lambda),
+        });
+    }
+    if config.order < 1 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "order",
+            message: format!("must be >= 1, got {}", config.order),
+        });
+    }
+    if config.nbasis > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: format!(
+                "must be <= n (got nbasis={}, n={n}) — prevents degenerate Cholesky",
+                config.nbasis
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Validate all inputs for gamlss_fosr.
+fn gamlss_validate_inputs(
+    data: &FdMatrix,
+    predictors: &FdMatrix,
+    argvals: &[f64],
+    config: &BoostingConfig,
+) -> Result<(), FdarError> {
+    gamlss_validate_dims(data, predictors, argvals)?;
+    gamlss_validate_config(config, data.nrows())?;
+    Ok(())
+}
+
+/// Initialize μ̂(t) = Ȳ(t). Returns (mu_intercept, mu_fitted).
+fn gamlss_init_mu(data: &FdMatrix, n: usize, m_t: usize) -> (Vec<f64>, FdMatrix) {
+    let mu_intercept: Vec<f64> = (0..m_t)
+        .map(|t| (0..n).map(|i| data[(i, t)]).sum::<f64>() / n as f64)
+        .collect();
+    let mut mu_fitted = FdMatrix::zeros(n, m_t);
+    for t in 0..m_t {
+        let col = mu_fitted.column_mut(t);
+        for i in 0..n {
+            col[i] = mu_intercept[t];
+        }
+    }
+    (mu_intercept, mu_fitted)
+}
+
+/// Warm-start σ̂ at the marginal residual scale.
+/// Returns (sigma_marg, sigma_intercept, eta_sigma, sigma_fitted).
+fn gamlss_init_sigma(
+    data: &FdMatrix,
+    mu_intercept: &[f64],
+    n: usize,
+    m_t: usize,
+) -> (f64, Vec<f64>, FdMatrix, FdMatrix) {
+    let sigma_marg = {
+        let total = (n * m_t) as f64;
+        let mut ss = 0.0f64;
+        for t in 0..m_t {
+            for i in 0..n {
+                let d = data[(i, t)] - mu_intercept[t];
+                ss += d * d;
+            }
+        }
+        (ss / total).sqrt().max(1e-6)
+    };
+    let eta0 = sigma_marg.ln();
+    let sigma_intercept: Vec<f64> = vec![sigma_marg; m_t];
+    let mut eta_sigma = FdMatrix::zeros(n, m_t);
+    let mut sigma_fitted = FdMatrix::zeros(n, m_t);
+    for t in 0..m_t {
+        let eta_col = eta_sigma.column_mut(t);
+        for i in 0..n {
+            eta_col[i] = eta0;
+        }
+    }
+    for t in 0..m_t {
+        let col = sigma_fitted.column_mut(t);
+        for i in 0..n {
+            col[i] = sigma_marg;
+        }
+    }
+    (sigma_marg, sigma_intercept, eta_sigma, sigma_fitted)
+}
+
+/// Compute data-adaptive log-σ clamp bounds [log(s·1e-2), log(s·1e2)].
+fn gamlss_scale_bounds(data: &FdMatrix, n: usize, m_t: usize) -> (f64, f64) {
+    let total = (n * m_t) as f64;
+    let mut mean = 0.0f64;
+    for t in 0..m_t {
+        for i in 0..n {
+            mean += data[(i, t)];
+        }
+    }
+    mean /= total;
+    let mut var = 0.0f64;
+    for t in 0..m_t {
+        for i in 0..n {
+            let d = data[(i, t)] - mean;
+            var += d * d;
+        }
+    }
+    let scale_ref = (var / total).sqrt().max(1e-6);
+    ((scale_ref * 1e-2).ln(), (scale_ref * 1e2).ln())
+}
+
+/// Run one μ-step: compute U_μ, pick best learner, update μ̂, accumulate mu_beta.
+fn gamlss_mu_step(
+    data: &FdMatrix,
+    mu_fitted: &mut FdMatrix,
+    sigma_fitted: &FdMatrix,
+    mu_beta: &mut FdMatrix,
+    learners: &[BaseLearner],
+    sigma_marg: f64,
+    nu: f64,
+    n: usize,
+    m_t: usize,
+) -> Result<(), FdarError> {
+    let u_mu = mu_neg_gradient(data, mu_fitted, sigma_fitted, sigma_marg);
+    let (j_mu, fitted_mu, coefs_mu) = super::boost_fosr::boost_fosr_one_step(&u_mu, learners)?;
+    let _ = coefs_mu;
+
+    let n_f64 = n as f64;
+    for t in 0..m_t {
+        let mu_col = mu_fitted.column_mut(t);
+        let h_col = fitted_mu.column(t);
+        for i in 0..n {
+            mu_col[i] += nu * h_col[i];
+        }
+    }
+    for t in 0..m_t {
+        let h_col = fitted_mu.column(t);
+        let mean_effect: f64 = h_col.iter().sum::<f64>() / n_f64;
+        mu_beta[(j_mu, t)] += nu * mean_effect;
+    }
+    Ok(())
+}
+
+/// Run one σ-step: compute U_σ, center it, pick best learner, update η_σ and σ̂,
+/// accumulate sigma_beta.
+fn gamlss_sigma_step(
+    data: &FdMatrix,
+    mu_fitted: &FdMatrix,
+    sigma_fitted: &mut FdMatrix,
+    eta_sigma: &mut FdMatrix,
+    sigma_beta: &mut FdMatrix,
+    learners: &[BaseLearner],
+    log_sigma_lo: f64,
+    log_sigma_hi: f64,
+    nu: f64,
+    n: usize,
+    m_t: usize,
+) -> Result<(), FdarError> {
+    let u_sigma = sigma_neg_gradient(data, mu_fitted, sigma_fitted);
+
+    // Functional-intercept decomposition: center U_σ over observations
+    let n_f64 = n as f64;
+    let mut u_sigma_mean = vec![0.0f64; m_t];
+    for t in 0..m_t {
+        let col = u_sigma.column(t);
+        u_sigma_mean[t] = col.iter().sum::<f64>() / n_f64;
+    }
+    let mut u_sigma_centered = u_sigma.clone();
+    for t in 0..m_t {
+        let col = u_sigma_centered.column_mut(t);
+        let mt = u_sigma_mean[t];
+        for v in col.iter_mut() {
+            *v -= mt;
+        }
+    }
+
+    let (j_sigma, fitted_sigma, coefs_sigma) =
+        super::boost_fosr::boost_fosr_one_step(&u_sigma_centered, learners)?;
+    let _ = coefs_sigma;
+
+    // Update η_σ += ν·(intercept_t + ĥ_σ), then σ̂ = exp(η_σ)
+    for t in 0..m_t {
+        let eta_col = eta_sigma.column_mut(t);
+        let h_col = fitted_sigma.column(t);
+        let sig_col = sigma_fitted.column_mut(t);
+        let intercept_t = u_sigma_mean[t];
+        for i in 0..n {
+            eta_col[i] =
+                (eta_col[i] + nu * (intercept_t + h_col[i])).clamp(log_sigma_lo, log_sigma_hi);
+            sig_col[i] = eta_col[i].exp();
+        }
+    }
+
+    for t in 0..m_t {
+        let h_col = fitted_sigma.column(t);
+        let mean_effect: f64 = h_col.iter().sum::<f64>() / n_f64;
+        sigma_beta[(j_sigma, t)] += nu * mean_effect;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Public: gamlss_fosr
 // ---------------------------------------------------------------------------
 
@@ -255,248 +510,56 @@ pub fn gamlss_fosr(
     argvals: &[f64],
     config: &BoostingConfig,
 ) -> Result<GamlssResult, FdarError> {
-    // ---- Input validation --------------------------------------------------
+    gamlss_validate_inputs(data, predictors, argvals, config)?;
+
     let (n, m_t) = data.shape();
     let p = predictors.ncols();
-
-    if n < 3 || m_t == 0 || predictors.nrows() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data/predictors",
-            expected: format!("n >= 3, m > 0, predictors.nrows() == n (n={n})"),
-            actual: format!("n={n}, m={m_t}, predictors.nrows()={}", predictors.nrows()),
-        });
-    }
-    if argvals.len() != m_t {
-        return Err(FdarError::InvalidDimension {
-            parameter: "argvals",
-            expected: format!("length == data.ncols() = {m_t}"),
-            actual: format!("length = {}", argvals.len()),
-        });
-    }
-    if p == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "predictors",
-            expected: "at least 1 predictor column".to_string(),
-            actual: "0 columns".to_string(),
-        });
-    }
-    if config.mstop == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "mstop",
-            message: "must be >= 1".to_string(),
-        });
-    }
-    if config.nu <= 0.0 || config.nu > 1.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "nu",
-            message: format!("must be in (0, 1], got {}", config.nu),
-        });
-    }
-    if config.nbasis < 4 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "nbasis",
-            message: format!("must be >= 4, got {}", config.nbasis),
-        });
-    }
-    if config.lambda <= 0.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "lambda",
-            message: format!("must be > 0, got {}", config.lambda),
-        });
-    }
-    if config.order < 1 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "order",
-            message: format!("must be >= 1, got {}", config.order),
-        });
-    }
-    if config.nbasis > n {
-        return Err(FdarError::InvalidParameter {
-            parameter: "nbasis",
-            message: format!(
-                "must be <= n (got nbasis={}, n={n}) — prevents degenerate Cholesky",
-                config.nbasis
-            ),
-        });
-    }
-
     let nu = config.nu;
 
     // ---- Build base learners (shared by μ and σ models) --------------------
-    // The same set of base-learners (same predictor design matrices, same Cholesky
-    // factors) is reused for both the μ-step and σ-step each cyclic iteration.
-    // This is valid because the base-learner structure (Φⱼ, Aⱼ) depends only on
-    // the predictor values, not on the distributional parameter being fitted.
     let learners = build_learners(predictors, n, config)?;
 
     // ---- Initialization ----------------------------------------------------
-    // μ̂(t) = Ȳ(t) — pointwise mean of Y across observations
-    let mu_intercept: Vec<f64> = (0..m_t)
-        .map(|t| (0..n).map(|i| data[(i, t)]).sum::<f64>() / n as f64)
-        .collect();
-
-    let mut mu_fitted = FdMatrix::zeros(n, m_t);
-    for t in 0..m_t {
-        let col = mu_fitted.column_mut(t);
-        for i in 0..n {
-            col[i] = mu_intercept[t];
-        }
-    }
-
-    // Warm-start σ̂ at the marginal residual scale σ₀ = SD(Y − μ̂₀) rather than at
-    // 1.0. Starting from a realistic scale keeps the coupled μ/σ dynamics near
-    // equilibrium from the first iteration (σ = 1 would be far too large when the
-    // true residual scale is small, forcing a violent σ collapse that destabilizes
-    // the μ-step). σ₀ also serves as the μ-gradient denominator floor.
-    let sigma_marg = {
-        let total = (n * m_t) as f64;
-        let mut ss = 0.0f64;
-        for t in 0..m_t {
-            for i in 0..n {
-                let d = data[(i, t)] - mu_intercept[t];
-                ss += d * d;
-            }
-        }
-        (ss / total).sqrt().max(1e-6)
-    };
-    let eta0 = sigma_marg.ln();
-    let sigma_intercept: Vec<f64> = vec![sigma_marg; m_t];
-    let mut eta_sigma = FdMatrix::zeros(n, m_t); // log-σ accumulator
-    let mut sigma_fitted = FdMatrix::zeros(n, m_t);
-    for t in 0..m_t {
-        let eta_col = eta_sigma.column_mut(t);
-        for i in 0..n {
-            eta_col[i] = eta0;
-        }
-    }
-    for t in 0..m_t {
-        let col = sigma_fitted.column_mut(t);
-        for i in 0..n {
-            col[i] = sigma_marg;
-        }
-    }
+    let (mu_intercept, mut mu_fitted) = gamlss_init_mu(data, n, m_t);
+    let (sigma_marg, sigma_intercept, mut eta_sigma, mut sigma_fitted) =
+        gamlss_init_sigma(data, &mu_intercept, n, m_t);
 
     // Accumulated coefficient matrices (p × m_t), init to zero
     let mut mu_beta = FdMatrix::zeros(p, m_t);
     let mut sigma_beta = FdMatrix::zeros(p, m_t);
 
     // ---- Scale stabilization bounds ----------------------------------------
-    // A machine-epsilon floor (NUMERICAL_EPS) is far too small for a *scale*
-    // parameter: if σ collapses toward it, 1/σ² explodes and amplifies the μ
-    // pseudo-response `(Y−μ)/σ²` into overflow → NaN, which makes every
-    // base-learner's RSS non-finite and aborts boosting (Pitfall 2). Bound the
-    // log-σ accumulator to a data-adaptive window [1e-2·s, 1e2·s] where `s` is
-    // the pooled response standard deviation. This lets the σ-step self-correct
-    // without ever letting σ run away, and the floor stays safely below any
-    // realistic estimated scale so it does not bias σ̂ upward.
-    let scale_ref = {
-        let total = (n * m_t) as f64;
-        let mut mean = 0.0f64;
-        for t in 0..m_t {
-            for i in 0..n {
-                mean += data[(i, t)];
-            }
-        }
-        mean /= total;
-        let mut var = 0.0f64;
-        for t in 0..m_t {
-            for i in 0..n {
-                let d = data[(i, t)] - mean;
-                var += d * d;
-            }
-        }
-        (var / total).sqrt().max(1e-6)
-    };
-    let log_sigma_lo = (scale_ref * 1e-2).ln();
-    let log_sigma_hi = (scale_ref * 1e2).ln();
+    let (log_sigma_lo, log_sigma_hi) = gamlss_scale_bounds(data, n, m_t);
 
     // ---- Cyclic boosting loop ----------------------------------------------
     let mut ll_path: Vec<f64> = Vec::with_capacity(config.mstop);
 
     for _iter in 0..config.mstop {
-        // -- μ-step ----------------------------------------------------------
-        // Pseudo-response U_μ = (Y − μ̂) / σ̂²
-        let u_mu = mu_neg_gradient(data, &mu_fitted, &sigma_fitted, sigma_marg);
+        gamlss_mu_step(
+            data,
+            &mut mu_fitted,
+            &sigma_fitted,
+            &mut mu_beta,
+            &learners,
+            sigma_marg,
+            nu,
+            n,
+            m_t,
+        )?;
+        gamlss_sigma_step(
+            data,
+            &mu_fitted,
+            &mut sigma_fitted,
+            &mut eta_sigma,
+            &mut sigma_beta,
+            &learners,
+            log_sigma_lo,
+            log_sigma_hi,
+            nu,
+            n,
+            m_t,
+        )?;
 
-        // One boosting step on U_μ
-        let (j_mu, fitted_mu, coefs_mu) = super::boost_fosr::boost_fosr_one_step(&u_mu, &learners)?;
-
-        // Update μ̂ += ν · ĥ_μ
-        for t in 0..m_t {
-            let mu_col = mu_fitted.column_mut(t);
-            let h_col = fitted_mu.column(t);
-            for i in 0..n {
-                mu_col[i] += nu * h_col[i];
-            }
-        }
-
-        // Accumulate μ coefficients (p × m_t) for the selected base-learner
-        // coefs_mu is (K × m_t); summarize by mean fitted effect per time point
-        // as a scalar representative (same approach as boost_fosr.rs)
-        let n_f64 = n as f64;
-        for t in 0..m_t {
-            let h_col = fitted_mu.column(t);
-            let mean_effect: f64 = h_col.iter().sum::<f64>() / n_f64;
-            mu_beta[(j_mu, t)] += nu * mean_effect;
-        }
-        let _ = coefs_mu; // coefficient accumulation above is via fitted values
-
-        // -- σ-step ----------------------------------------------------------
-        // Pseudo-response U_σ = −1 + (Y − μ̂)² / σ̂²  (uses UPDATED μ̂)
-        let u_sigma = sigma_neg_gradient(data, &mu_fitted, &sigma_fitted);
-
-        // Functional-intercept decomposition (gamboostLSS always carries an
-        // offset for each distributional parameter). The i-mean of U_σ at each
-        // grid point t is the observation-homogeneous component — it captures a
-        // heteroscedastic pattern that varies purely over the response grid t
-        // (the common case) directly, instead of forcing it through a scalar
-        // predictor learner (which would otherwise mis-locate the scale or
-        // absorb unmodeled μ-residual structure). The predictor base-learner
-        // then fits only the CENTERED (i-varying) remainder.
-        let mut u_sigma_mean = vec![0.0f64; m_t];
-        for t in 0..m_t {
-            let col = u_sigma.column(t);
-            u_sigma_mean[t] = col.iter().sum::<f64>() / n_f64;
-        }
-        let mut u_sigma_centered = u_sigma.clone();
-        for t in 0..m_t {
-            let col = u_sigma_centered.column_mut(t);
-            let mt = u_sigma_mean[t];
-            for v in col.iter_mut() {
-                *v -= mt;
-            }
-        }
-
-        // One boosting step on the CENTERED σ pseudo-response (i-varying part)
-        let (j_sigma, fitted_sigma, coefs_sigma) =
-            super::boost_fosr::boost_fosr_one_step(&u_sigma_centered, &learners)?;
-
-        // Update η_σ += ν · (intercept_t + ĥ_σ), then σ̂ = exp(η_σ)
-        for t in 0..m_t {
-            let eta_col = eta_sigma.column_mut(t);
-            let h_col = fitted_sigma.column(t);
-            let sig_col = sigma_fitted.column_mut(t);
-            let intercept_t = u_sigma_mean[t];
-            for i in 0..n {
-                // Clamp the log-σ accumulator to the data-adaptive window BEFORE
-                // exponentiating — guarantees σ ∈ [1e-2·s, 1e2·s], finite and
-                // strictly positive, preventing the 1/σ² overflow cascade.
-                eta_col[i] =
-                    (eta_col[i] + nu * (intercept_t + h_col[i])).clamp(log_sigma_lo, log_sigma_hi);
-                sig_col[i] = eta_col[i].exp();
-            }
-        }
-
-        // Accumulate σ predictor coefficients (i-varying effect only; the
-        // functional intercept is folded into σ̂ but not attributed to a predictor)
-        for t in 0..m_t {
-            let h_col = fitted_sigma.column(t);
-            let mean_effect: f64 = h_col.iter().sum::<f64>() / n_f64;
-            sigma_beta[(j_sigma, t)] += nu * mean_effect;
-        }
-        let _ = coefs_sigma;
-
-        // -- Track log-likelihood --------------------------------------------
         let ll = gaussian_loglik(data, &mu_fitted, &sigma_fitted);
         ll_path.push(ll);
     }
