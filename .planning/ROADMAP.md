@@ -64,7 +64,11 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
   3. The full `cargo test` suite passes with identical numeric output — no behavior or numeric drift in any SPM code path.
   4. `cargo clippy --all-targets --features linalg,parallel -- -D warnings` and `cargo fmt --check` stay clean; the public SPM API surface is unchanged.
 
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 107-01-PLAN.md — Tracer: amewma.rs + iterative.rs (spm_amewma_monitor cog 52, spm_phase1_iterative cog 42)
+- [ ] 107-02-PLAN.md — MFPCA cluster: mfpca.rs + ncomp.rs + contrib.rs (mfpca, select_ncomp, t2_contributions_mfpca, spe_contributions)
+- [ ] 107-03-PLAN.md — Monitors: ewma.rs + mewma.rs + stats.rs + phase.rs (spm_ewma_monitor, spm_mewma_monitor, spe_multivariate, spm_monitor_from_fields)
+- [ ] 107-04-PLAN.md — Remaining monitors: partial.rs + frcc.rs + profile.rs (conditional_expectation, frcc_phase1, profile_phase1)
 
 ### Phase 108: Entropy Extraction & SATD/Unwrap Cleanup
 
@@ -129,7 +133,7 @@ Phases 106, 107, and 108 are independent and may run in parallel (or in any orde
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 106. Top-Level Complexity Hotspots | 4/4 | Complete    | 2026-09-14 |
-| 107. SPM Complexity Cluster | 0/TBD | Not started | - |
+| 107. SPM Complexity Cluster | 0/4 | Not started | - |
 | 108. Entropy Extraction & SATD/Unwrap Cleanup | 0/TBD | Not started | - |
 | 109. Complexity Tail & Quality-Gate Green | 0/TBD | Not started | - |
 | 110. pmat CI Guardrail | 0/TBD | Not started | - |
