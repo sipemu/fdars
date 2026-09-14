@@ -6,16 +6,16 @@ current_phase: 109
 current_phase_name: Complexity Tail & Quality-Gate Green
 current_plan: 4
 status: executing
-stopped_at: Completed 109-09-PLAN.md
-last_updated: "2026-09-14T20:08:43.050Z"
+stopped_at: Completed 109-10-PLAN.md
+last_updated: "2026-09-14T20:20:50.405Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 109 execution resumed (wave continue)
-state_head: fc786a00697e97b2d53bdce41de122bacadb8853
+state_head: 90fa5fd5883a57f70f3200fedb0bfee7da204cb4
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 26
-  completed_plans: 21
+  completed_plans: 22
 ---
 
 # Project State
@@ -105,6 +105,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 109 P07 | 30 | 3 tasks | 3 files |
 | Phase 109 P08 | 30 | 3 tasks | 3 files |
 | Phase 109 P09 | 12 | 3 tasks | 3 files |
+| Phase 109 P10 | 9 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -156,6 +157,7 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 109]: fsvd: combine gram-eigen and singular-vector recovery in one fn to avoid re-building eigen twice (eigenvector ordering risk)
 - [Phase 109]: fof_re_reconstruct required 2 sub-helpers (extra split vs plan) to clear pmat cog 23 threshold — same pattern as 106-03 boost_fofr
 - [Phase 109]: gamlss_validate split into _dims + _config (not single helper) — cog 30 exceeded threshold after first extraction
+- [Phase 109]: 109-10: EM decomposition: init_em_params + m_step_means_weights + m_step_update_subspace lift run_one_em body verbatim; seeded RNG draw order preserved
 
 ### Pending Todos
 
@@ -181,8 +183,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T20:08:42.999Z
-Stopped at: Completed 109-09-PLAN.md
+Last session: 2026-09-14T20:20:50.292Z
+Stopped at: Completed 109-10-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
