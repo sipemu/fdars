@@ -238,6 +238,80 @@ fn eigen_at_frequency(
     (eigenvalues, eigenvectors)
 }
 
+/// Build DPCA time-domain filters from eigenvector frequency trajectories via inverse FFT.
+///
+/// Returns `ncomp` filters, each an `(2L+1) × m` FdMatrix. The filter taps are
+/// recovered by inverse-FFTing each ψ_c(θ_k)[j] trajectory and dividing by
+/// `sqrt(w[j])` to undo the metric scaling. The symmetric-lag structure
+/// (`filt[L+lag] = filt[L-lag]`) is set by writing both entries from `buf[lag]`.
+fn dpca_build_filters(
+    freq_vecs: &[Vec<Vec<f64>>],
+    n_freq: usize,
+    ncomp: usize,
+    m: usize,
+    l: usize,
+    sqrt_w: &[f64],
+) -> Vec<FdMatrix> {
+    let mut inv_planner = FftPlanner::<f64>::new();
+    let ifft = inv_planner.plan_fft_inverse(n_freq);
+    let inv_n = 1.0 / (n_freq as f64);
+    let n_rows = 2 * l + 1;
+    let mut filters = Vec::with_capacity(ncomp);
+    for c in 0..ncomp {
+        let mut filt = vec![0.0f64; n_rows * m];
+        for j in 0..m {
+            let mut buf: Vec<Complex<f64>> = (0..n_freq)
+                .map(|k| Complex::new(freq_vecs[k][c][j], 0.0))
+                .collect();
+            ifft.process(&mut buf);
+            let inv_sw = 1.0 / sqrt_w[j];
+            for lag in 0..=l {
+                let tap = buf[lag].re * inv_n * inv_sw;
+                // At lag == 0, row_pos == row_neg (== L): same tap written twice (intended).
+                filt[(l + lag) + j * n_rows] = tap;
+                filt[(l - lag) + j * n_rows] = tap;
+            }
+        }
+        filters.push(
+            FdMatrix::from_column_major(filt, n_rows, m)
+                .expect("dimension invariant: filt.len() == (2L+1) * m"),
+        );
+    }
+    filters
+}
+
+/// Compute DPCA dynamic scores (Simpson-weighted convolution over the interior).
+///
+/// Returns `n_interior × ncomp` column-major scores matrix.
+fn dpca_compute_scores(
+    data: &FdMatrix,
+    filters: &[FdMatrix],
+    weights: &[f64],
+    n: usize,
+    m: usize,
+    l: usize,
+    ncomp: usize,
+) -> FdMatrix {
+    let n_interior = n - 2 * l;
+    let n_rows = 2 * l + 1;
+    let mut scores_flat = vec![0.0f64; n_interior * ncomp];
+    for (c, filt) in filters.iter().enumerate() {
+        for t in l..=(n - 1 - l) {
+            let mut s = 0.0;
+            for lag_idx in 0..n_rows {
+                let lag = lag_idx as isize - l as isize;
+                let ct = (t as isize + lag) as usize;
+                for j in 0..m {
+                    s += filt[(lag_idx, j)] * data[(ct, j)] * weights[j];
+                }
+            }
+            scores_flat[(t - l) + c * n_interior] = s;
+        }
+    }
+    FdMatrix::from_column_major(scores_flat, n_interior, ncomp)
+        .expect("dimension invariant: scores.len() == (N-2L) * ncomp")
+}
+
 // ─── FTS-03-02: dynamic functional PCA ────────────────────────────────────────
 
 /// Compute dynamic functional PCA (DPCA) from the spectral density operator.
@@ -293,64 +367,17 @@ pub fn dpca(
 
     // Eigendecompose per frequency; collect scaled eigenvectors ψ_c(θ_k).
     let mut eigenvalues = vec![vec![0.0f64; n_freq]; ncomp];
-    // freq_vecs[k][c] = ψ_c(θ_k) (length m, scaled/Euclidean-orthonormal).
     let mut freq_vecs: Vec<Vec<Vec<f64>>> = Vec::with_capacity(n_freq);
     for k in 0..n_freq {
         let (vals, vecs) = eigen_at_frequency(&sd.re[k], m, ncomp, &sqrt_w);
         for c in 0..ncomp {
-            eigenvalues[c][k] = vals[c].max(0.0); // clip negative finite-sample eigenvalues
+            eigenvalues[c][k] = vals[c].max(0.0);
         }
         freq_vecs.push(vecs);
     }
 
-    // Inverse-FFT each ψ_c(·)[j] trajectory → physical filter taps φ_c[j,l] = ψ_c[j,l]/sqrt(w[j]).
-    let mut inv_planner = FftPlanner::<f64>::new();
-    let ifft = inv_planner.plan_fft_inverse(n_freq);
-    let inv_n = 1.0 / (n_freq as f64);
-    let n_rows = 2 * l + 1;
-    let mut filters: Vec<FdMatrix> = Vec::with_capacity(ncomp);
-    for c in 0..ncomp {
-        let mut filt = vec![0.0f64; n_rows * m]; // column-major (2L+1) × m
-        for j in 0..m {
-            let mut buf: Vec<Complex<f64>> = (0..n_freq)
-                .map(|k| Complex::new(freq_vecs[k][c][j], 0.0))
-                .collect();
-            ifft.process(&mut buf);
-            let inv_sw = 1.0 / sqrt_w[j];
-            for lag in 0..=l {
-                let tap = buf[lag].re * inv_n * inv_sw;
-                let row_pos = l + lag; // lag +lag
-                let row_neg = l - lag; // lag -lag (symmetric filter)
-                                       // At lag == 0, row_pos == row_neg (== L): the two writes target the
-                                       // same central tap with the same value, which is intended.
-                filt[row_pos + j * n_rows] = tap;
-                filt[row_neg + j * n_rows] = tap;
-            }
-        }
-        filters.push(
-            FdMatrix::from_column_major(filt, n_rows, m)
-                .expect("dimension invariant: filt.len() == (2L+1) * m"),
-        );
-    }
-
-    // Dynamic scores: Simpson-weighted convolution over the interior t ∈ [L, N-1-L].
-    let n_interior = n - 2 * l;
-    let mut scores_flat = vec![0.0f64; n_interior * ncomp];
-    for (c, filt) in filters.iter().enumerate() {
-        for t in l..=(n - 1 - l) {
-            let mut s = 0.0;
-            for lag_idx in 0..n_rows {
-                let lag = lag_idx as isize - l as isize;
-                let ct = (t as isize + lag) as usize;
-                for j in 0..m {
-                    s += filt[(lag_idx, j)] * data[(ct, j)] * weights[j];
-                }
-            }
-            scores_flat[(t - l) + c * n_interior] = s;
-        }
-    }
-    let scores = FdMatrix::from_column_major(scores_flat, n_interior, ncomp)
-        .expect("dimension invariant: scores.len() == (N-2L) * ncomp");
+    let filters = dpca_build_filters(&freq_vecs, n_freq, ncomp, m, l, &sqrt_w);
+    let scores = dpca_compute_scores(data, &filters, &weights, n, m, l, ncomp);
 
     Ok(DpcaResult {
         filters,
@@ -365,30 +392,15 @@ pub fn dpca(
 
 // ─── FTS-03-03: reconstruction from dynamic scores ────────────────────────────
 
-/// Reconstruct curves from DPCA dynamic scores via inverse dynamic filtering.
-///
-/// For each retained-component count `K = 1..=ncomp`, reconstructs the interior
-/// series `X̂_K[t,j] = Σ_{c<K} Σ_l filters[c][l,j] · scores[t'+l, c]` and records
-/// the integrated-L2 error over the fully-defined interior. The error is monotone
-/// non-increasing in `K` (optimal DPCA projection). `fitted` holds the full-`ncomp`
-/// reconstruction over the DPCA interior.
-///
-/// # Errors
-///
-/// [`FdarError::InvalidDimension`] if `argvals`/`data` shapes are inconsistent with
-/// `dpca` (grid mismatch or score-length mismatch).
-#[must_use = "the reconstruction and its per-component error are the return value"]
-pub fn dpca_reconstruct(
+/// Validate `dpca_reconstruct` inputs; returns `(n, m, n_interior)` on success.
+fn dpca_reconstruct_validate(
     data: &FdMatrix,
     argvals: &[f64],
     dpca: &DpcaResult,
-) -> Result<DpcaReconstruction, FdarError> {
+) -> Result<(usize, usize, usize), FdarError> {
     let (n, m) = validate_fts_input(data, argvals)?;
     let l = dpca.filter_lag;
     let ncomp = dpca.ncomp;
-    // Guard the interior-length subtraction BEFORE it runs: passing data shorter
-    // than the DPCA fit (n < 2L+1) would underflow `n - 2*l` (panic in debug,
-    // garbage index in release) ahead of the consistency check below.
     if n < 2 * l + 1 {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
@@ -397,8 +409,6 @@ pub fn dpca_reconstruct(
         });
     }
     let n_interior = n - 2 * l;
-
-    // Consistency checks against the supplied DpcaResult.
     if dpca.scores.nrows() != n_interior || dpca.scores.ncols() != ncomp {
         return Err(FdarError::InvalidDimension {
             parameter: "dpca.scores",
@@ -419,22 +429,29 @@ pub fn dpca_reconstruct(
             });
         }
     }
+    Ok((n, m, n_interior))
+}
 
-    let weights = simpsons_weights(argvals);
+/// Build the full-ncomp fitted matrix over the DPCA interior using zero-padded scores.
+fn dpca_reconstruct_fitted(
+    dpca: &DpcaResult,
+    n: usize,
+    m: usize,
+    l: usize,
+    n_interior: usize,
+    ncomp: usize,
+) -> FdMatrix {
     let n_rows = 2 * l + 1;
-
-    // full-K fitted curves over the DPCA interior [L, N-1-L]; edges use zero-padded
-    // scores (out-of-range score rows contribute 0).
     let mut fitted_flat = vec![0.0f64; n_interior * m];
     for c in 0..ncomp {
         let filt = &dpca.filters[c];
         for t in l..=(n - 1 - l) {
-            let row = t - l; // interior row
+            let row = t - l;
             for lag_idx in 0..n_rows {
                 let lag = lag_idx as isize - l as isize;
-                let s_idx = row as isize + lag; // score interior index (t' + lag)
+                let s_idx = row as isize + lag;
                 if s_idx < 0 || s_idx as usize >= n_interior {
-                    continue; // zero-padded score at the boundary
+                    continue; // zero-padded
                 }
                 let s = dpca.scores[(s_idx as usize, c)];
                 for j in 0..m {
@@ -443,11 +460,21 @@ pub fn dpca_reconstruct(
             }
         }
     }
-    let fitted = FdMatrix::from_column_major(fitted_flat, n_interior, m)
-        .expect("dimension invariant: fitted.len() == (N-2L) * m");
+    FdMatrix::from_column_major(fitted_flat, n_interior, m)
+        .expect("dimension invariant: fitted.len() == (N-2L) * m")
+}
 
-    // Per-K cumulative reconstruction error over the fully-defined window
-    // t ∈ [2L, N-1-2L], where every score index (t'+lag) is in range.
+/// Compute per-K reconstruction error over the fully-defined window `t ∈ [2L, N-1-2L]`.
+fn dpca_reconstruct_error(
+    data: &FdMatrix,
+    dpca: &DpcaResult,
+    weights: &[f64],
+    n: usize,
+    m: usize,
+    l: usize,
+    ncomp: usize,
+) -> Vec<f64> {
+    let n_rows = 2 * l + 1;
     let lo = 2 * l;
     let hi = n.saturating_sub(2 * l + 1);
     let mut reconstruction_error = vec![0.0f64; ncomp];
@@ -473,7 +500,33 @@ pub fn dpca_reconstruct(
         }
         reconstruction_error[k - 1] = if count > 0 { err / count as f64 } else { 0.0 };
     }
+    reconstruction_error
+}
 
+/// Reconstruct curves from DPCA dynamic scores via inverse dynamic filtering.
+///
+/// For each retained-component count `K = 1..=ncomp`, reconstructs the interior
+/// series `X̂_K[t,j] = Σ_{c<K} Σ_l filters[c][l,j] · scores[t'+l, c]` and records
+/// the integrated-L2 error over the fully-defined interior. The error is monotone
+/// non-increasing in `K` (optimal DPCA projection). `fitted` holds the full-`ncomp`
+/// reconstruction over the DPCA interior.
+///
+/// # Errors
+///
+/// [`FdarError::InvalidDimension`] if `argvals`/`data` shapes are inconsistent with
+/// `dpca` (grid mismatch or score-length mismatch).
+#[must_use = "the reconstruction and its per-component error are the return value"]
+pub fn dpca_reconstruct(
+    data: &FdMatrix,
+    argvals: &[f64],
+    dpca: &DpcaResult,
+) -> Result<DpcaReconstruction, FdarError> {
+    let (n, m, n_interior) = dpca_reconstruct_validate(data, argvals, dpca)?;
+    let l = dpca.filter_lag;
+    let ncomp = dpca.ncomp;
+    let weights = simpsons_weights(argvals);
+    let fitted = dpca_reconstruct_fitted(dpca, n, m, l, n_interior, ncomp);
+    let reconstruction_error = dpca_reconstruct_error(data, dpca, &weights, n, m, l, ncomp);
     Ok(DpcaReconstruction {
         fitted,
         reconstruction_error,
