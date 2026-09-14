@@ -19,6 +19,235 @@ use crate::regression::{fdata_to_pc, FpcaResult};
 
 use super::{compute_fitted, compute_r_squared, ols_solve, MultiFregreLmResult};
 
+// ---------------------------------------------------------------------------
+// Private helpers for fregre_lm_multi
+// ---------------------------------------------------------------------------
+
+/// Validate inputs for `fregre_lm_multi`.
+fn validate_multi_inputs(
+    predictors: &[(&FdMatrix, &[f64], usize)],
+    y: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+    n: usize,
+) -> Result<(), FdarError> {
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{n}"),
+            actual: format!("{}", y.len()),
+        });
+    }
+    for (k, &(data_k, argvals_k, _)) in predictors.iter().enumerate() {
+        if data_k.nrows() != n {
+            return Err(FdarError::InvalidDimension {
+                parameter: "predictors",
+                expected: format!("{n} rows for predictor {k}"),
+                actual: format!("{} rows", data_k.nrows()),
+            });
+        }
+        if argvals_k.len() != data_k.ncols() {
+            return Err(FdarError::InvalidDimension {
+                parameter: "argvals",
+                expected: format!("{} elements for predictor {k}", data_k.ncols()),
+                actual: format!("{} elements", argvals_k.len()),
+            });
+        }
+    }
+    if let Some(sc) = scalar_covariates {
+        if sc.nrows() != n {
+            return Err(FdarError::InvalidDimension {
+                parameter: "scalar_covariates",
+                expected: format!("{n} rows"),
+                actual: format!("{} rows", sc.nrows()),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Run FPCA on each predictor and collect ncomp values.
+fn run_fpca_per_predictor(
+    predictors: &[(&FdMatrix, &[f64], usize)],
+    n: usize,
+) -> Result<(Vec<FpcaResult>, Vec<usize>), FdarError> {
+    let k_preds = predictors.len();
+    let mut fpcas: Vec<FpcaResult> = Vec::with_capacity(k_preds);
+    let mut ncomp_vec: Vec<usize> = Vec::with_capacity(k_preds);
+    for &(data_k, argvals_k, ncomp_k) in predictors {
+        let nc = ncomp_k.max(1).min(n - 1).min(data_k.ncols());
+        let fpca = fdata_to_pc(data_k, nc, argvals_k)?;
+        ncomp_vec.push(nc);
+        fpcas.push(fpca);
+    }
+    Ok((fpcas, ncomp_vec))
+}
+
+/// Build the concatenated design matrix [1, scores_1, ..., scores_K, scalars].
+///
+/// Uses projected scores (weighted inner product with eigenfunctions) so that
+/// training and prediction follow the same computational path.
+fn build_multi_design(
+    n: usize,
+    p_total: usize,
+    predictors: &[(&FdMatrix, &[f64], usize)],
+    fpcas: &[FpcaResult],
+    ncomp_vec: &[usize],
+    scalar_covariates: Option<&FdMatrix>,
+) -> FdMatrix {
+    let p_scalar = scalar_covariates.map_or(0, FdMatrix::ncols);
+    let mut design = FdMatrix::zeros(n, p_total);
+    for i in 0..n {
+        design[(i, 0)] = 1.0;
+    }
+    let mut col_offset = 1;
+    for (idx, fpca) in fpcas.iter().enumerate() {
+        let nc = ncomp_vec[idx];
+        let m_k = fpca.mean.len();
+        let data_k = predictors[idx].0;
+        for i in 0..n {
+            for k in 0..nc {
+                let mut s = 0.0;
+                for j in 0..m_k {
+                    s += (data_k[(i, j)] - fpca.mean[j]) * fpca.rotation[(j, k)] * fpca.weights[j];
+                }
+                design[(i, col_offset + k)] = s;
+            }
+        }
+        col_offset += nc;
+    }
+    if let Some(sc) = scalar_covariates {
+        for i in 0..n {
+            for j in 0..p_scalar {
+                design[(i, col_offset + j)] = sc[(i, j)];
+            }
+        }
+    }
+    design
+}
+
+/// Recover β_k(t) for each predictor from the fitted coefficients.
+fn recover_beta_t_multi(
+    fpcas: &[FpcaResult],
+    ncomp_vec: &[usize],
+    coeffs: &[f64],
+) -> Vec<Vec<f64>> {
+    let k_preds = fpcas.len();
+    let mut beta_t: Vec<Vec<f64>> = Vec::with_capacity(k_preds);
+    let mut coeff_offset = 1;
+    for (idx, fpca) in fpcas.iter().enumerate() {
+        let nc = ncomp_vec[idx];
+        let m_k = fpca.rotation.nrows();
+        let fpc_coeffs = &coeffs[coeff_offset..coeff_offset + nc];
+        let mut beta_k = vec![0.0; m_k];
+        for k in 0..nc {
+            for j in 0..m_k {
+                beta_k[j] += fpc_coeffs[k] * fpca.rotation[(j, k)];
+            }
+        }
+        beta_t.push(beta_k);
+        coeff_offset += nc;
+    }
+    beta_t
+}
+
+// ---------------------------------------------------------------------------
+// Private helper for predict_fregre_lm_multi
+// ---------------------------------------------------------------------------
+
+/// Compute the linear predictor contribution from all functional predictors for
+/// observation `i`.
+fn predict_func_contribution(
+    i: usize,
+    new_predictors: &[&FdMatrix],
+    fpcas: &[FpcaResult],
+    ncomp: &[usize],
+    coefficients: &[f64],
+) -> f64 {
+    let mut coeff_offset = 1;
+    let mut sum = 0.0;
+    for (idx, &pred) in new_predictors.iter().enumerate() {
+        let fpca = &fpcas[idx];
+        let nc = ncomp[idx];
+        let m_k = fpca.mean.len();
+        for k in 0..nc {
+            let mut s = 0.0;
+            for j in 0..m_k {
+                s += (pred[(i, j)] - fpca.mean[j]) * fpca.rotation[(j, k)] * fpca.weights[j];
+            }
+            sum += coefficients[coeff_offset + k] * s;
+        }
+        coeff_offset += nc;
+    }
+    sum
+}
+
+// ---------------------------------------------------------------------------
+// Private helper for fregre_lm_multi_cv
+// ---------------------------------------------------------------------------
+
+/// Run one CV fold and accumulate squared errors + OOF predictions.
+///
+/// Returns `(total_se_added, count_added)`. Skips the fold silently on any
+/// fit/prediction failure (consistent with the original behaviour).
+#[allow(clippy::too_many_arguments)]
+fn cv_fold_multi(
+    fold: usize,
+    n: usize,
+    nc: usize,
+    k_preds: usize,
+    predictors: &[(&FdMatrix, &[f64])],
+    y: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+    folds: &[usize],
+    oof_preds: &mut [f64],
+) -> (f64, usize) {
+    let train_idx: Vec<usize> = (0..n).filter(|&i| folds[i] != fold).collect();
+    let test_idx: Vec<usize> = (0..n).filter(|&i| folds[i] == fold).collect();
+    let n_train = train_idx.len();
+    let n_test = test_idx.len();
+    if n_test == 0 || n_train < nc + 2 {
+        return (0.0, 0);
+    }
+
+    let mut train_preds: Vec<(FdMatrix, Vec<f64>, usize)> = Vec::with_capacity(k_preds);
+    let mut test_preds: Vec<FdMatrix> = Vec::with_capacity(k_preds);
+    for &(data_k, argvals_k) in predictors {
+        let train_k = data_k.select_rows(&train_idx);
+        let test_k = data_k.select_rows(&test_idx);
+        train_preds.push((train_k, argvals_k.to_vec(), nc));
+        test_preds.push(test_k);
+    }
+
+    let train_y: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
+    let train_sc = scalar_covariates.map(|sc| sc.select_rows(&train_idx));
+    let test_sc = scalar_covariates.map(|sc| sc.select_rows(&test_idx));
+
+    let pred_refs: Vec<(&FdMatrix, &[f64], usize)> = train_preds
+        .iter()
+        .map(|(d, a, c)| (d, a.as_slice(), *c))
+        .collect();
+
+    let Ok(fit) = fregre_lm_multi(&pred_refs, &train_y, train_sc.as_ref()) else {
+        return (0.0, 0);
+    };
+
+    let test_pred_refs: Vec<&FdMatrix> = test_preds.iter().collect();
+    let Ok(preds) = predict_fregre_lm_multi(&fit, &test_pred_refs, test_sc.as_ref()) else {
+        return (0.0, 0);
+    };
+
+    let mut total_se = 0.0;
+    for (ti, &i) in test_idx.iter().enumerate() {
+        oof_preds[i] = preds[ti];
+        total_se += (y[i] - preds[ti]).powi(2);
+    }
+    (total_se, n_test)
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 /// Scalar-on-function regression with multiple functional predictors.
 ///
 /// Runs FPCA on each functional predictor separately, concatenates score
@@ -80,7 +309,6 @@ pub fn fregre_lm_multi(
     y: &[f64],
     scalar_covariates: Option<&FdMatrix>,
 ) -> Result<MultiFregreLmResult, FdarError> {
-    // --- Validate inputs ---
     if predictors.is_empty() {
         return Err(FdarError::InvalidParameter {
             parameter: "predictors",
@@ -96,92 +324,24 @@ pub fn fregre_lm_multi(
             actual: format!("{n}"),
         });
     }
-    if y.len() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y",
-            expected: format!("{n}"),
-            actual: format!("{}", y.len()),
-        });
-    }
 
-    for (k, &(data_k, argvals_k, _)) in predictors.iter().enumerate() {
-        if data_k.nrows() != n {
-            return Err(FdarError::InvalidDimension {
-                parameter: "predictors",
-                expected: format!("{n} rows for predictor {k}"),
-                actual: format!("{} rows", data_k.nrows()),
-            });
-        }
-        if argvals_k.len() != data_k.ncols() {
-            return Err(FdarError::InvalidDimension {
-                parameter: "argvals",
-                expected: format!("{} elements for predictor {k}", data_k.ncols()),
-                actual: format!("{} elements", argvals_k.len()),
-            });
-        }
-    }
+    validate_multi_inputs(predictors, y, scalar_covariates, n)?;
 
-    if let Some(sc) = scalar_covariates {
-        if sc.nrows() != n {
-            return Err(FdarError::InvalidDimension {
-                parameter: "scalar_covariates",
-                expected: format!("{n} rows"),
-                actual: format!("{} rows", sc.nrows()),
-            });
-        }
-    }
-
-    // --- Run FPCA on each predictor ---
-    let k_preds = predictors.len();
-    let mut fpcas: Vec<FpcaResult> = Vec::with_capacity(k_preds);
-    let mut ncomp_vec: Vec<usize> = Vec::with_capacity(k_preds);
-
-    for &(data_k, argvals_k, ncomp_k) in predictors {
-        let nc = ncomp_k.max(1).min(n - 1).min(data_k.ncols());
-        let fpca = fdata_to_pc(data_k, nc, argvals_k)?;
-        ncomp_vec.push(nc);
-        fpcas.push(fpca);
-    }
+    let (fpcas, ncomp_vec) = run_fpca_per_predictor(predictors, n)?;
 
     let total_scores: usize = ncomp_vec.iter().sum();
     let p_scalar = scalar_covariates.map_or(0, FdMatrix::ncols);
     let p_total = 1 + total_scores + p_scalar;
 
-    // --- Build concatenated design matrix: [1, scores_1, ..., scores_K, scalars] ---
-    // Use projected scores (weighted inner product with eigenfunctions) rather
-    // than SVD-derived scores so that training and prediction follow the same
-    // computational path, guaranteeing exact agreement on training data.
-    let mut design = FdMatrix::zeros(n, p_total);
-    for i in 0..n {
-        design[(i, 0)] = 1.0;
-    }
+    let design = build_multi_design(
+        n,
+        p_total,
+        predictors,
+        &fpcas,
+        &ncomp_vec,
+        scalar_covariates,
+    );
 
-    let mut col_offset = 1;
-    for (idx, fpca) in fpcas.iter().enumerate() {
-        let nc = ncomp_vec[idx];
-        let m_k = fpca.mean.len();
-        let data_k = predictors[idx].0;
-        for i in 0..n {
-            for k in 0..nc {
-                let mut s = 0.0;
-                for j in 0..m_k {
-                    s += (data_k[(i, j)] - fpca.mean[j]) * fpca.rotation[(j, k)] * fpca.weights[j];
-                }
-                design[(i, col_offset + k)] = s;
-            }
-        }
-        col_offset += nc;
-    }
-
-    if let Some(sc) = scalar_covariates {
-        for i in 0..n {
-            for j in 0..p_scalar {
-                design[(i, col_offset + j)] = sc[(i, j)];
-            }
-        }
-    }
-
-    // --- OLS ---
     let (coeffs, _hat_diag) = ols_solve(&design, y)?;
 
     let fitted_values = compute_fitted(&design, &coeffs);
@@ -200,24 +360,7 @@ pub fn fregre_lm_multi(
     let aic = nf * (ss_res / nf).ln() + 2.0 * p_total as f64;
     let bic = nf * (ss_res / nf).ln() + nf.ln() * p_total as f64;
 
-    // --- Recover β_k(t) for each predictor ---
-    let mut beta_t: Vec<Vec<f64>> = Vec::with_capacity(k_preds);
-    let mut coeff_offset = 1;
-    for (idx, fpca) in fpcas.iter().enumerate() {
-        let nc = ncomp_vec[idx];
-        let m_k = fpca.rotation.nrows();
-        let fpc_coeffs = &coeffs[coeff_offset..coeff_offset + nc];
-        let mut beta_k = vec![0.0; m_k];
-        for k in 0..nc {
-            for j in 0..m_k {
-                beta_k[j] += fpc_coeffs[k] * fpca.rotation[(j, k)];
-            }
-        }
-        beta_t.push(beta_k);
-        coeff_offset += nc;
-    }
-
-    // Scalar coefficients
+    let beta_t = recover_beta_t_multi(&fpcas, &ncomp_vec, &coeffs);
     let gamma: Vec<f64> = coeffs[1 + total_scores..].to_vec();
 
     Ok(MultiFregreLmResult {
@@ -319,38 +462,18 @@ pub fn predict_fregre_lm_multi(
         }
     }
 
-    // Compute predictions directly via manual projection (matching the
-    // approach used by predict_fregre_lm to ensure numerical consistency
-    // between fitted values and training-data predictions).
     let p_scalar = fit.gamma.len();
 
     let mut predictions = vec![0.0; n_new];
     for i in 0..n_new {
         let mut yhat = fit.intercept;
-
-        // Score-coefficient contributions from each functional predictor
-        let mut coeff_offset = 1;
-        for (idx, &pred) in new_predictors.iter().enumerate() {
-            let fpca = &fit.fpcas[idx];
-            let nc = fit.ncomp[idx];
-            let m_k = fpca.mean.len();
-            for k in 0..nc {
-                let mut s = 0.0;
-                for j in 0..m_k {
-                    s += (pred[(i, j)] - fpca.mean[j]) * fpca.rotation[(j, k)] * fpca.weights[j];
-                }
-                yhat += fit.coefficients[coeff_offset + k] * s;
-            }
-            coeff_offset += nc;
-        }
-
-        // Scalar covariate contributions
+        yhat +=
+            predict_func_contribution(i, new_predictors, &fit.fpcas, &fit.ncomp, &fit.coefficients);
         if let Some(sc) = new_scalar {
             for j in 0..p_scalar {
                 yhat += fit.gamma[j] * sc[(i, j)];
             }
         }
-
         predictions[i] = yhat;
     }
 
@@ -415,48 +538,19 @@ pub fn fregre_lm_multi_cv(
         let mut count = 0;
 
         for fold in 0..n_folds {
-            let train_idx: Vec<usize> = (0..n).filter(|&i| folds[i] != fold).collect();
-            let test_idx: Vec<usize> = (0..n).filter(|&i| folds[i] == fold).collect();
-            let n_train = train_idx.len();
-            let n_test = test_idx.len();
-            if n_test == 0 || n_train < nc + 2 {
-                continue;
-            }
-
-            // Build train/test splits for each predictor
-            let mut train_preds: Vec<(FdMatrix, Vec<f64>, usize)> = Vec::with_capacity(k_preds);
-            let mut test_preds: Vec<FdMatrix> = Vec::with_capacity(k_preds);
-
-            for &(data_k, argvals_k) in predictors {
-                let train_k = data_k.select_rows(&train_idx);
-                let test_k = data_k.select_rows(&test_idx);
-                train_preds.push((train_k, argvals_k.to_vec(), nc));
-                test_preds.push(test_k);
-            }
-
-            let train_y: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
-            let train_sc = scalar_covariates.map(|sc| sc.select_rows(&train_idx));
-            let test_sc = scalar_covariates.map(|sc| sc.select_rows(&test_idx));
-
-            let pred_refs: Vec<(&FdMatrix, &[f64], usize)> = train_preds
-                .iter()
-                .map(|(d, a, c)| (d, a.as_slice(), *c))
-                .collect();
-
-            let Ok(fit) = fregre_lm_multi(&pred_refs, &train_y, train_sc.as_ref()) else {
-                continue;
-            };
-
-            let test_pred_refs: Vec<&FdMatrix> = test_preds.iter().collect();
-            let Ok(preds) = predict_fregre_lm_multi(&fit, &test_pred_refs, test_sc.as_ref()) else {
-                continue;
-            };
-
-            for (ti, &i) in test_idx.iter().enumerate() {
-                oof_preds[i] = preds[ti];
-                total_se += (y[i] - preds[ti]).powi(2);
-                count += 1;
-            }
+            let (se, cnt) = cv_fold_multi(
+                fold,
+                n,
+                nc,
+                k_preds,
+                predictors,
+                y,
+                scalar_covariates,
+                &folds,
+                &mut oof_preds,
+            );
+            total_se += se;
+            count += cnt;
         }
 
         let mse = if count > 0 {
