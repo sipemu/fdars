@@ -903,18 +903,7 @@ pub fn gradient_nonuniform(y: &[f64], t: &[f64]) -> Vec<f64> {
     }
 
     // Interior: 3-point Lagrange central formula
-    for i in 1..n - 1 {
-        let h_l = t[i] - t[i - 1];
-        let h_r = t[i + 1] - t[i];
-        let h_sum = h_l + h_r;
-        if h_l.abs() < 1e-15 || h_r.abs() < 1e-15 || h_sum.abs() < 1e-15 {
-            g[i] = 0.0;
-            continue;
-        }
-        g[i] = -y[i - 1] * h_r / (h_l * h_sum)
-            + y[i] * (h_r - h_l) / (h_l * h_r)
-            + y[i + 1] * h_l / (h_r * h_sum);
-    }
+    gradient_nonuniform_interior(y, t, n, &mut g);
 
     // Right boundary: 3-point backward Lagrange derivative
     let h_last = t[n - 1] - t[n - 2];
@@ -928,6 +917,27 @@ pub fn gradient_nonuniform(y: &[f64], t: &[f64]) -> Vec<f64> {
     }
 
     g
+}
+
+/// Interior 3-point Lagrange central finite-difference loop for non-uniform grids.
+///
+/// Fills `g[1..n-1]` using:
+///   `g[i] = -y[i-1]*h_r/(h_l*h_sum) + y[i]*(h_r-h_l)/(h_l*h_r) + y[i+1]*h_l/(h_r*h_sum)`
+/// Degenerate intervals (h_l, h_r, or h_sum near zero) get `g[i] = 0`.
+/// FP-accumulation order verbatim.
+fn gradient_nonuniform_interior(y: &[f64], t: &[f64], n: usize, g: &mut [f64]) {
+    for i in 1..n - 1 {
+        let h_l = t[i] - t[i - 1];
+        let h_r = t[i + 1] - t[i];
+        let h_sum = h_l + h_r;
+        if h_l.abs() < 1e-15 || h_r.abs() < 1e-15 || h_sum.abs() < 1e-15 {
+            g[i] = 0.0;
+            continue;
+        }
+        g[i] = -y[i - 1] * h_r / (h_l * h_sum)
+            + y[i] * (h_r - h_l) / (h_l * h_r)
+            + y[i + 1] * h_l / (h_r * h_sum);
+    }
 }
 
 /// Numerical gradient that auto-detects uniform vs non-uniform grids.
@@ -1041,45 +1051,92 @@ pub fn fdata_interpolate_with_policy(
     let mut result = crate::matrix::FdMatrix::zeros(n, m_new);
     for i in 0..n {
         let y: Vec<f64> = (0..m).map(|j| data[(i, j)]).collect();
-        for (j, &t) in new_argvals.iter().enumerate() {
-            let in_range = t >= t_min && t <= t_max;
-            result[(i, j)] = if in_range {
-                match method {
-                    InterpolationMethod::Linear => linear_interp(argvals, &y, t),
-                    InterpolationMethod::CubicHermite => cubic_hermite_interp(argvals, &y, t),
-                }
-            } else {
-                match &policy {
-                    ExtrapolationPolicy::Boundary => {
-                        let t_clamped = t.clamp(t_min, t_max);
-                        match method {
-                            InterpolationMethod::Linear => linear_interp(argvals, &y, t_clamped),
-                            InterpolationMethod::CubicHermite => {
-                                cubic_hermite_interp(argvals, &y, t_clamped)
-                            }
-                        }
-                    }
-                    ExtrapolationPolicy::Exception => {
-                        return Err(crate::FdarError::InvalidParameter {
-                            parameter: "new_argvals",
-                            message: format!("query {t} is outside domain [{t_min}, {t_max}]"),
-                        });
-                    }
-                    ExtrapolationPolicy::Fill(v) => *v,
-                    ExtrapolationPolicy::Periodic => {
-                        let wrapped = t_min + ((t - t_min) % domain_len + domain_len) % domain_len;
-                        match method {
-                            InterpolationMethod::Linear => linear_interp(argvals, &y, wrapped),
-                            InterpolationMethod::CubicHermite => {
-                                cubic_hermite_interp(argvals, &y, wrapped)
-                            }
-                        }
-                    }
-                }
-            };
-        }
+        interp_curve_with_policy(
+            &y,
+            argvals,
+            new_argvals,
+            m_new,
+            t_min,
+            t_max,
+            domain_len,
+            method,
+            &policy,
+            i,
+            &mut result,
+        )?;
     }
     Ok(result)
+}
+
+/// Interpolate a single pre-gathered curve `y` over all new query points, applying the
+/// extrapolation policy for out-of-range values.  Writes into row `curve_idx` of `result`.
+///
+/// Returns `Err` only for `ExtrapolationPolicy::Exception` with an OOB query point.
+/// FP-accumulation order verbatim.
+fn interp_curve_with_policy(
+    y: &[f64],
+    argvals: &[f64],
+    new_argvals: &[f64],
+    m_new: usize,
+    t_min: f64,
+    t_max: f64,
+    domain_len: f64,
+    method: InterpolationMethod,
+    policy: &ExtrapolationPolicy,
+    curve_idx: usize,
+    result: &mut crate::matrix::FdMatrix,
+) -> Result<(), crate::FdarError> {
+    for (j, &t) in new_argvals.iter().enumerate() {
+        result[(curve_idx, j)] =
+            interp_at_point(y, argvals, t, t_min, t_max, domain_len, method, policy)?;
+    }
+    let _ = m_new; // used by caller for matrix sizing; not needed here
+    Ok(())
+}
+
+/// Compute the interpolated value at a single query point `t`, applying the extrapolation
+/// policy when `t` is outside `[t_min, t_max]`.
+///
+/// Returns `Err(InvalidParameter)` only for `ExtrapolationPolicy::Exception` with OOB `t`.
+/// FP-accumulation order verbatim.
+fn interp_at_point(
+    y: &[f64],
+    argvals: &[f64],
+    t: f64,
+    t_min: f64,
+    t_max: f64,
+    domain_len: f64,
+    method: InterpolationMethod,
+    policy: &ExtrapolationPolicy,
+) -> Result<f64, crate::FdarError> {
+    let in_range = t >= t_min && t <= t_max;
+    if in_range {
+        return Ok(match method {
+            InterpolationMethod::Linear => linear_interp(argvals, y, t),
+            InterpolationMethod::CubicHermite => cubic_hermite_interp(argvals, y, t),
+        });
+    }
+    match policy {
+        ExtrapolationPolicy::Boundary => {
+            let t_clamped = t.clamp(t_min, t_max);
+            Ok(match method {
+                InterpolationMethod::Linear => linear_interp(argvals, y, t_clamped),
+                InterpolationMethod::CubicHermite => cubic_hermite_interp(argvals, y, t_clamped),
+            })
+        }
+        ExtrapolationPolicy::Exception => Err(crate::FdarError::InvalidParameter {
+            parameter: "new_argvals",
+            message: format!("query {t} is outside domain [{t_min}, {t_max}]"),
+        }),
+        ExtrapolationPolicy::Fill(v) => Ok(*v),
+        ExtrapolationPolicy::Periodic => {
+            let wrapped = t_min + ((t - t_min) % domain_len + domain_len) % domain_len;
+            Ok(match method {
+                InterpolationMethod::Linear => linear_interp(argvals, y, wrapped),
+                InterpolationMethod::CubicHermite => cubic_hermite_interp(argvals, y, wrapped),
+            })
+        }
+    }
 }
 
 // ── FEAT-03: NaN imputation ────────────────────────────────────────────────
