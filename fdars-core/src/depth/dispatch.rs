@@ -73,6 +73,58 @@ pub enum DepthMethod {
     TotalVariation,
 }
 
+/// Enforce a minimum-n requirement; returns an error if `n < min_n`.
+#[inline]
+fn require_n(n: usize, min_n: usize, name: &'static str) -> Result<(), FdarError> {
+    if n < min_n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("at least {min_n} curves for {name}"),
+            actual: format!("{n}"),
+        });
+    }
+    Ok(())
+}
+
+/// Dispatch the depth method for all measures that require exactly n >= 2.
+fn depth_dispatch_n2(
+    data: &FdMatrix,
+    method: DepthMethod,
+    n: usize,
+) -> Result<Vec<f64>, FdarError> {
+    match method {
+        DepthMethod::Band => {
+            require_n(n, 2, "band depth")?;
+            Ok(band_1d(data, data))
+        }
+        DepthMethod::ModifiedBand => {
+            require_n(n, 2, "modified band depth")?;
+            Ok(modified_band_1d(data, data))
+        }
+        DepthMethod::HypographIndex => {
+            require_n(n, 2, "hypograph index")?;
+            Ok(hypograph_index_1d(data, data)?)
+        }
+        DepthMethod::EpigraphIndex => {
+            require_n(n, 2, "epigraph index")?;
+            Ok(epigraph_index_1d(data, data)?)
+        }
+        DepthMethod::HalfRegion => {
+            require_n(n, 2, "half-region depth")?;
+            Ok(half_region_depth_1d(data, data)?)
+        }
+        DepthMethod::ModifiedHalfRegion => {
+            require_n(n, 2, "modified half-region depth")?;
+            Ok(modified_half_region_depth_1d(data, data)?)
+        }
+        DepthMethod::ExtremeRankLength => {
+            require_n(n, 2, "extreme-rank-length depth")?;
+            Ok(extreme_rank_length_depth_1d(data, data)?)
+        }
+        _ => unreachable!("depth_dispatch_n2 called with non-n2 variant"),
+    }
+}
+
 /// Compute the **self-depth** of every curve in `data` w.r.t. the sample.
 ///
 /// Passes `data` as both the object and reference matrix and dispatches to the
@@ -96,26 +148,6 @@ pub fn functional_depth(data: &FdMatrix, method: DepthMethod) -> Result<Vec<f64>
 
     let depths = match method {
         DepthMethod::FraimanMuniz { scale } => fraiman_muniz_1d(data, data, scale),
-        DepthMethod::Band => {
-            if n < 2 {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "data",
-                    expected: "at least 2 curves for band depth".to_string(),
-                    actual: format!("{n}"),
-                });
-            }
-            band_1d(data, data)
-        }
-        DepthMethod::ModifiedBand => {
-            if n < 2 {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "data",
-                    expected: "at least 2 curves for modified band depth".to_string(),
-                    actual: format!("{n}"),
-                });
-            }
-            modified_band_1d(data, data)
-        }
         DepthMethod::RandomProjection { nproj, seed } => {
             if nproj == 0 {
                 return Err(FdarError::InvalidParameter {
@@ -125,78 +157,17 @@ pub fn functional_depth(data: &FdMatrix, method: DepthMethod) -> Result<Vec<f64>
             }
             random_projection_1d_seeded(data, data, nproj, Some(seed))
         }
-        DepthMethod::HypographIndex => {
-            if n < 2 {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "data",
-                    expected: "at least 2 curves for hypograph index".to_string(),
-                    actual: format!("{n}"),
-                });
-            }
-            hypograph_index_1d(data, data)?
-        }
         DepthMethod::ModifiedHypographIndex => modified_hypograph_index_1d(data, data)?,
-        DepthMethod::EpigraphIndex => {
-            if n < 2 {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "data",
-                    expected: "at least 2 curves for epigraph index".to_string(),
-                    actual: format!("{n}"),
-                });
-            }
-            epigraph_index_1d(data, data)?
-        }
-        DepthMethod::HalfRegion => {
-            if n < 2 {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "data",
-                    expected: "at least 2 curves for half-region depth".to_string(),
-                    actual: format!("{n}"),
-                });
-            }
-            half_region_depth_1d(data, data)?
-        }
-        DepthMethod::ModifiedHalfRegion => {
-            if n < 2 {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "data",
-                    expected: "at least 2 curves for modified half-region depth".to_string(),
-                    actual: format!("{n}"),
-                });
-            }
-            modified_half_region_depth_1d(data, data)?
-        }
+        DepthMethod::LInfinity => linfinity_depth_1d(data, data)?,
         DepthMethod::Extremal => {
-            if n < 3 {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "data",
-                    expected: "at least 3 curves for extremal depth".to_string(),
-                    actual: format!("{n}"),
-                });
-            }
+            require_n(n, 3, "extremal depth")?;
             extremal_depth_1d(data, data)?
         }
-        DepthMethod::ExtremeRankLength => {
-            if n < 2 {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "data",
-                    expected: "at least 2 curves for extreme-rank-length depth".to_string(),
-                    actual: format!("{n}"),
-                });
-            }
-            extreme_rank_length_depth_1d(data, data)?
-        }
-        DepthMethod::LInfinity => linfinity_depth_1d(data, data)?,
         DepthMethod::TotalVariation => {
-            if n < 3 {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "data",
-                    expected: "at least 3 curves for total variation depth".to_string(),
-                    actual: format!("{n}"),
-                });
-            }
+            require_n(n, 3, "total variation depth")?;
             total_variation_depth_1d(data, data)?.tvd
         }
+        other => depth_dispatch_n2(data, other, n)?,
     };
 
     Ok(depths)
@@ -224,6 +195,79 @@ pub struct FunctionalBoxplotResult {
     pub outliers: Vec<usize>,
     /// Per-curve self-depth used to rank curves.
     pub depths: Vec<f64>,
+}
+
+/// Compute the median curve, depth-ordered rows, and 50% central region.
+///
+/// Returns `(median_row, ordered_indices, central_lower, central_upper)`.
+/// The central region is the pointwise envelope of the deepest `ceil(n/2)` curves.
+fn boxplot_central_region(
+    data: &FdMatrix,
+    depths: &[f64],
+    n: usize,
+    m: usize,
+) -> (usize, Vec<f64>, Vec<f64>) {
+    let mut median_row = 0usize;
+    for i in 1..n {
+        if depths[i] > depths[median_row] {
+            median_row = i;
+        }
+    }
+    let half = n.div_ceil(2);
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&a, &b| {
+        depths[b]
+            .partial_cmp(&depths[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.cmp(&b))
+    });
+    let central_rows = &order[..half];
+    let mut central_lower = vec![f64::INFINITY; m];
+    let mut central_upper = vec![f64::NEG_INFINITY; m];
+    for &i in central_rows {
+        for t in 0..m {
+            let v = data[(i, t)];
+            if v < central_lower[t] {
+                central_lower[t] = v;
+            }
+            if v > central_upper[t] {
+                central_upper[t] = v;
+            }
+        }
+    }
+    (median_row, central_lower, central_upper)
+}
+
+/// Compute whiskers and flag outlier row indices.
+///
+/// Whiskers = central region inflated by `factor × width` at each point.
+/// Outliers = any curve that exceeds the fence at any evaluation point.
+fn boxplot_fences_and_outliers(
+    data: &FdMatrix,
+    central_lower: &[f64],
+    central_upper: &[f64],
+    factor: f64,
+    n: usize,
+    m: usize,
+) -> (Vec<f64>, Vec<f64>, Vec<usize>) {
+    let mut whisker_lower = vec![0.0; m];
+    let mut whisker_upper = vec![0.0; m];
+    for t in 0..m {
+        let width = central_upper[t] - central_lower[t];
+        whisker_lower[t] = central_lower[t] - factor * width;
+        whisker_upper[t] = central_upper[t] + factor * width;
+    }
+    let mut outliers = Vec::new();
+    for i in 0..n {
+        let flagged = (0..m).any(|t| {
+            let v = data[(i, t)];
+            v < whisker_lower[t] || v > whisker_upper[t]
+        });
+        if flagged {
+            outliers.push(i);
+        }
+    }
+    (whisker_lower, whisker_upper, outliers)
 }
 
 /// Canonical López-Pintado–Romo depth-fence functional boxplot (numeric only).
@@ -268,66 +312,10 @@ pub fn functional_boxplot(
     }
 
     let depths = functional_depth(data, method)?;
-
-    // Median = deepest curve (argmax of depth; ties broken by lowest index).
-    let mut median_row = 0usize;
-    for i in 1..n {
-        if depths[i] > depths[median_row] {
-            median_row = i;
-        }
-    }
+    let (median_row, central_lower, central_upper) = boxplot_central_region(data, &depths, n, m);
     let median: Vec<f64> = (0..m).map(|t| data[(median_row, t)]).collect();
-
-    // Select the deepest ceil(n/2) rows; index order provides a stable tiebreak.
-    let half = n.div_ceil(2);
-    let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&a, &b| {
-        depths[b]
-            .partial_cmp(&depths[a])
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then(a.cmp(&b))
-    });
-    let central_rows = &order[..half];
-
-    // Central region = pointwise min/max over the deepest-half rows.
-    let mut central_lower = vec![f64::INFINITY; m];
-    let mut central_upper = vec![f64::NEG_INFINITY; m];
-    for &i in central_rows {
-        for t in 0..m {
-            let v = data[(i, t)];
-            if v < central_lower[t] {
-                central_lower[t] = v;
-            }
-            if v > central_upper[t] {
-                central_upper[t] = v;
-            }
-        }
-    }
-
-    // Whiskers = central region inflated by factor × width at each t.
-    let mut whisker_lower = vec![0.0; m];
-    let mut whisker_upper = vec![0.0; m];
-    for t in 0..m {
-        let width = central_upper[t] - central_lower[t];
-        whisker_lower[t] = central_lower[t] - factor * width;
-        whisker_upper[t] = central_upper[t] + factor * width;
-    }
-
-    // Outliers = any curve exceeding the fence at any evaluation point.
-    let mut outliers = Vec::new();
-    for i in 0..n {
-        let mut flagged = false;
-        for t in 0..m {
-            let v = data[(i, t)];
-            if v < whisker_lower[t] || v > whisker_upper[t] {
-                flagged = true;
-                break;
-            }
-        }
-        if flagged {
-            outliers.push(i);
-        }
-    }
+    let (whisker_lower, whisker_upper, outliers) =
+        boxplot_fences_and_outliers(data, &central_lower, &central_upper, factor, n, m);
 
     Ok(FunctionalBoxplotResult {
         median,
