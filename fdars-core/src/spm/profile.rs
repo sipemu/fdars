@@ -194,59 +194,7 @@ pub fn profile_phase1(
     argvals: &[f64],
     config: &ProfileMonitorConfig,
 ) -> Result<ProfileChart, FdarError> {
-    let (n, m) = y_curves.shape();
-    if predictors.nrows() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "predictors",
-            expected: format!("{n} rows"),
-            actual: format!("{} rows", predictors.nrows()),
-        });
-    }
-    if argvals.len() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "argvals",
-            expected: format!("{m}"),
-            actual: format!("{}", argvals.len()),
-        });
-    }
-    if config.step_size == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "step_size",
-            message: "step_size must be at least 1".to_string(),
-        });
-    }
-    if config.window_size < 3 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "window_size",
-            message: format!("window_size must be >= 3, got {}", config.window_size),
-        });
-    }
-    if config.window_size > n {
-        return Err(FdarError::InvalidParameter {
-            parameter: "window_size",
-            message: format!(
-                "window_size ({}) exceeds data size ({n})",
-                config.window_size
-            ),
-        });
-    }
-
-    // Early check: ensure enough windows before expensive FOSR fitting.
-    let expected_n_windows = if n >= config.window_size {
-        (n - config.window_size) / config.step_size + 1
-    } else {
-        0
-    };
-    if expected_n_windows < 4 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "enough data for at least 4 windows".to_string(),
-            actual: format!(
-                "{expected_n_windows} windows (n={n}, window_size={}, step_size={})",
-                config.window_size, config.step_size
-            ),
-        });
-    }
+    let (n, _m, _expected_n_windows) = profile_validate(y_curves, predictors, argvals, config)?;
 
     // Fit reference FOSR on full data
     let reference_fosr = fosr(y_curves, predictors, config.fosr_lambda)?;
@@ -282,51 +230,13 @@ pub fn profile_phase1(
 
     // Compute Phase I T² for autocorrelation diagnostic
     let phase1_t2 = hotelling_t2(&beta_fpca.scores, &eigenvalues)?;
-    // Lag-1 autocorrelation using unbiased sample variance (n-1 denominator).
-    // Both variance and covariance use the (n-1) denominator. The ratio
-    // ρ₁ = cov/var is invariant to this choice, but (n-1) gives the unbiased
-    // sample variance.
-    let lag1_autocorrelation = if phase1_t2.len() > 2 {
-        let n_t2 = phase1_t2.len();
-        let mean_t2 = phase1_t2.iter().sum::<f64>() / n_t2 as f64;
-        let var_t2: f64 = phase1_t2
-            .iter()
-            .map(|&v| (v - mean_t2).powi(2))
-            .sum::<f64>()
-            / (n_t2 - 1) as f64;
-        if var_t2 > 0.0 {
-            let cov1: f64 = (0..n_t2 - 1)
-                .map(|i| (phase1_t2[i] - mean_t2) * (phase1_t2[i + 1] - mean_t2))
-                .sum::<f64>()
-                / (n_t2 - 1) as f64;
-            (cov1 / var_t2).clamp(-1.0, 1.0)
-        } else {
-            0.0
-        }
-    } else {
-        0.0
-    };
-
-    // Bartlett (1946) effective sample size: n_eff = n / (1 + 2|ρ₁|).
-    // See Bartlett, M.S. (1946), Section 3.
-    // The Bartlett (1946) formula n_eff = n/(1 + 2ρ₁) is derived for
-    // AR(1) processes and provides a first-order correction for general
-    // stationary processes. For rolling-window statistics with overlap
-    // fraction f = 1 - step_size/window_size, the lag-1 autocorrelation
-    // is approximately f, so n_eff ≈ n/(1 + 2f). This is conservative
-    // (underestimates n_eff) for non-AR(1) dependence structures.
-    let effective_n_windows = if lag1_autocorrelation.abs() > 0.01 {
-        // Use absolute value: both positive (overlapping windows) and negative
-        // (anti-correlated) autocorrelation reduce the effective degrees of freedom.
-        let bartlett_factor = (1.0 + 2.0 * lag1_autocorrelation.abs()).max(1.0);
-        (n_windows as f64 / bartlett_factor).max(2.0)
-    } else {
-        n_windows as f64
-    };
+    let lag1_autocorrelation = profile_lag1_autocorr(&phase1_t2);
+    let effective_n_windows = profile_effective_n(n_windows, lag1_autocorrelation);
 
     // Control limit
     let t2_limit = t2_control_limit(actual_ncomp, config.alpha)?;
 
+    let _ = n; // n captured in profile_validate; unused after rolling window check
     Ok(ProfileChart {
         reference_fosr,
         beta_fpca,
@@ -336,6 +246,128 @@ pub fn profile_phase1(
         effective_n_windows,
         config: config.clone(),
     })
+}
+
+/// Validate profile_phase1 inputs.
+/// Returns `(n, m, expected_n_windows)` on success.
+fn profile_validate(
+    y_curves: &FdMatrix,
+    predictors: &FdMatrix,
+    argvals: &[f64],
+    config: &ProfileMonitorConfig,
+) -> Result<(usize, usize, usize), FdarError> {
+    let (n, m) = y_curves.shape();
+    if predictors.nrows() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "predictors",
+            expected: format!("{n} rows"),
+            actual: format!("{} rows", predictors.nrows()),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    if config.step_size == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "step_size",
+            message: "step_size must be at least 1".to_string(),
+        });
+    }
+    profile_validate_windows(n, config)?;
+    // Early check: ensure enough windows before expensive FOSR fitting.
+    let expected_n_windows = if n >= config.window_size {
+        (n - config.window_size) / config.step_size + 1
+    } else {
+        0
+    };
+    if expected_n_windows < 4 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "enough data for at least 4 windows".to_string(),
+            actual: format!(
+                "{expected_n_windows} windows (n={n}, window_size={}, step_size={})",
+                config.window_size, config.step_size
+            ),
+        });
+    }
+    Ok((n, m, expected_n_windows))
+}
+
+/// Validate window-size guards (window_size < 3, window_size > n).
+fn profile_validate_windows(n: usize, config: &ProfileMonitorConfig) -> Result<(), FdarError> {
+    if config.window_size < 3 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "window_size",
+            message: format!("window_size must be >= 3, got {}", config.window_size),
+        });
+    }
+    if config.window_size > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "window_size",
+            message: format!(
+                "window_size ({}) exceeds data size ({n})",
+                config.window_size
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Lag-1 autocorrelation of the T² sequence via unbiased sample variance (n-1 denominator).
+/// Returns 0.0 when the sequence is too short (≤ 2) or has zero variance.
+fn profile_lag1_autocorr(phase1_t2: &[f64]) -> f64 {
+    if phase1_t2.len() <= 2 {
+        return 0.0;
+    }
+    // Lag-1 autocorrelation using unbiased sample variance (n-1 denominator).
+    // Both variance and covariance use the (n-1) denominator. The ratio
+    // ρ₁ = cov/var is invariant to this choice, but (n-1) gives the unbiased
+    // sample variance.
+    let n_t2 = phase1_t2.len();
+    let mean_t2 = phase1_t2.iter().sum::<f64>() / n_t2 as f64;
+    let var_t2: f64 = phase1_t2
+        .iter()
+        .map(|&v| (v - mean_t2).powi(2))
+        .sum::<f64>()
+        / (n_t2 - 1) as f64;
+    if var_t2 > 0.0 {
+        let cov1: f64 = (0..n_t2 - 1)
+            .map(|i| (phase1_t2[i] - mean_t2) * (phase1_t2[i + 1] - mean_t2))
+            .sum::<f64>()
+            / (n_t2 - 1) as f64;
+        (cov1 / var_t2).clamp(-1.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+/// Bartlett (1946) effective sample size: n_eff = n_windows / (1 + 2|ρ₁|).
+///
+/// See Bartlett, M.S. (1946), Section 3. The formula is derived for AR(1)
+/// processes and provides a first-order correction for general stationary
+/// processes. Uses absolute value because both positive (overlapping windows)
+/// and negative (anti-correlated) autocorrelation reduce effective degrees of freedom.
+fn profile_effective_n(n_windows: usize, lag1: f64) -> f64 {
+    // Bartlett (1946) effective sample size: n_eff = n / (1 + 2|ρ₁|).
+    // See Bartlett, M.S. (1946), Section 3.
+    // The Bartlett (1946) formula n_eff = n/(1 + 2ρ₁) is derived for
+    // AR(1) processes and provides a first-order correction for general
+    // stationary processes. For rolling-window statistics with overlap
+    // fraction f = 1 - step_size/window_size, the lag-1 autocorrelation
+    // is approximately f, so n_eff ≈ n/(1 + 2f). This is conservative
+    // (underestimates n_eff) for non-AR(1) dependence structures.
+    if lag1.abs() > 0.01 {
+        // Use absolute value: both positive (overlapping windows) and negative
+        // (anti-correlated) autocorrelation reduce the effective degrees of freedom.
+        let bartlett_factor = (1.0 + 2.0 * lag1.abs()).max(1.0);
+        (n_windows as f64 / bartlett_factor).max(2.0)
+    } else {
+        n_windows as f64
+    }
 }
 
 /// Monitor new data against a Phase I profile chart.
