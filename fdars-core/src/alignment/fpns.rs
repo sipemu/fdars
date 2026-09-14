@@ -29,6 +29,46 @@ pub struct FpnsResult {
 
 // ─── Power Iteration ────────────────────────────────────────────────────────
 
+/// Perform one power-iteration step: compute `V^T (V u)` and normalize.
+///
+/// Returns `(u_new, converged)` where `converged` indicates `|1 - |u·u_new|| < tol`.
+#[inline]
+fn power_iteration_step(mat: &FdMatrix, u: &[f64], n: usize, p: usize) -> (Vec<f64>, bool) {
+    // Compute w = V u (length n)
+    let mut w = vec![0.0; n];
+    for i in 0..n {
+        let mut s = 0.0;
+        for j in 0..p {
+            s += mat[(i, j)] * u[j];
+        }
+        w[i] = s;
+    }
+
+    // Compute u_new = V^T w (length p)
+    let mut u_new = vec![0.0; p];
+    for j in 0..p {
+        let mut s = 0.0;
+        for i in 0..n {
+            s += mat[(i, j)] * w[i];
+        }
+        u_new[j] = s;
+    }
+
+    // Normalize
+    let new_norm = u_new.iter().map(|&v| v * v).sum::<f64>().sqrt();
+    if new_norm < 1e-15 {
+        return (u.to_vec(), true);
+    }
+    for v in &mut u_new {
+        *v /= new_norm;
+    }
+
+    // Check convergence: |1 - |u . u_new|| < tol
+    let dot: f64 = u.iter().zip(u_new.iter()).map(|(&a, &b)| a * b).sum();
+    let converged = (1.0 - dot.abs()) < 1e-10;
+    (u_new, converged)
+}
+
 /// Find the top right singular vector of an (n x p) matrix via power iteration.
 ///
 /// Computes the top eigenvector of V^T V without forming the full matrix.
@@ -45,44 +85,57 @@ fn top_singular_vector(mat: &FdMatrix, n: usize, p: usize) -> Vec<f64> {
 
     // Power iteration: u <- V^T (V u) / ||...||
     for _ in 0..200 {
-        // Compute w = V u (length n)
-        let mut w = vec![0.0; n];
-        for i in 0..n {
-            let mut s = 0.0;
-            for j in 0..p {
-                s += mat[(i, j)] * u[j];
-            }
-            w[i] = s;
-        }
-
-        // Compute u_new = V^T w (length p)
-        let mut u_new = vec![0.0; p];
-        for j in 0..p {
-            let mut s = 0.0;
-            for i in 0..n {
-                s += mat[(i, j)] * w[i];
-            }
-            u_new[j] = s;
-        }
-
-        // Normalize
-        let new_norm = u_new.iter().map(|&v| v * v).sum::<f64>().sqrt();
-        if new_norm < 1e-15 {
-            break;
-        }
-        for v in &mut u_new {
-            *v /= new_norm;
-        }
-
-        // Check convergence: |1 - |u . u_new|| < tol
-        let dot: f64 = u.iter().zip(u_new.iter()).map(|(&a, &b)| a * b).sum();
+        let (u_new, converged) = power_iteration_step(mat, &u, n, p);
         u = u_new;
-        if (1.0 - dot.abs()) < 1e-10 {
+        if converged {
             break;
         }
     }
 
     u
+}
+
+// ─── FPNS Subsphere Projection ───────────────────────────────────────────────
+
+/// Project all current psis onto the subsphere by removing the component along `e_k`,
+/// then recompute the Karcher mean on the projected subsphere.
+///
+/// Returns `(new_psis, new_mu)`.
+fn project_to_subsphere(
+    shooting: &FdMatrix,
+    score_vec: &[f64],
+    e_k: &[f64],
+    mu: &[f64],
+    time: &[f64],
+    n: usize,
+    m: usize,
+) -> (Vec<Vec<f64>>, Vec<f64>) {
+    let mut new_psis = Vec::with_capacity(n);
+    for i in 0..n {
+        let v_i: Vec<f64> = (0..m).map(|j| shooting[(i, j)]).collect();
+        // Remove component along e_k: v_perp = v_i - <v_i, e_k> * e_k
+        let s = score_vec[i];
+        let v_perp: Vec<f64> = v_i
+            .iter()
+            .zip(e_k.iter())
+            .map(|(&v, &e)| v - s * e)
+            .collect();
+        // Map back to sphere from current mean
+        let psi_new = exp_map_sphere(mu, &v_perp, time);
+        new_psis.push(psi_new);
+    }
+
+    // Compute new Karcher mean on the subsphere
+    let mut new_mu = sphere_karcher_mean(&new_psis, time, 50);
+    // Normalize mu to unit sphere
+    let mu_norm = l2_norm_l2(&new_mu, time);
+    if mu_norm > 1e-10 {
+        for v in &mut new_mu {
+            *v /= mu_norm;
+        }
+    }
+
+    (new_psis, new_mu)
 }
 
 // ─── Horizontal FPNS ────────────────────────────────────────────────────────
@@ -173,33 +226,9 @@ pub fn horiz_fpns(
         // Step 4f-j: Project onto subsphere (remove component along e_k)
         // Only needed if there are more components to extract
         if k + 1 < ncomp {
-            // For each psi_i, compute the perpendicular shooting vector
-            // then map back to sphere for next iteration
-            let mut new_psis = Vec::with_capacity(n);
-            for i in 0..n {
-                let v_i: Vec<f64> = (0..m).map(|j| shooting[(i, j)]).collect();
-                // Remove component along e_k: v_perp = v_i - <v_i, e_k> * e_k
-                let s = score_vec[i];
-                let v_perp: Vec<f64> = v_i
-                    .iter()
-                    .zip(e_k.iter())
-                    .map(|(&v, &e)| v - s * e)
-                    .collect();
-                // Map back to sphere from current mean
-                let psi_new = exp_map_sphere(&mu, &v_perp, &time);
-                new_psis.push(psi_new);
-            }
-
-            // Compute new Karcher mean on the subsphere
-            mu = sphere_karcher_mean(&new_psis, &time, 50);
-            // Normalize mu to unit sphere
-            let mu_norm = l2_norm_l2(&mu, &time);
-            if mu_norm > 1e-10 {
-                for v in &mut mu {
-                    *v /= mu_norm;
-                }
-            }
-
+            let (new_psis, new_mu) =
+                project_to_subsphere(&shooting, &score_vec, &e_k, &mu, &time, n, m);
+            mu = new_mu;
             current_psis = new_psis;
         }
     }
