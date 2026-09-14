@@ -417,7 +417,12 @@ fn pace_fpca_validate_config(config: &PaceFpcaConfig) -> Result<(), FdarError> {
         });
     }
 
-    for (idx, &t) in config.work_grid.iter().enumerate() {
+    pace_fpca_validate_work_grid(&config.work_grid)
+}
+
+/// Validate that `work_grid` contains only finite values and is strictly increasing.
+fn pace_fpca_validate_work_grid(work_grid: &[f64]) -> Result<(), FdarError> {
+    for (idx, &t) in work_grid.iter().enumerate() {
         if !t.is_finite() {
             return Err(FdarError::InvalidParameter {
                 parameter: "work_grid",
@@ -425,7 +430,7 @@ fn pace_fpca_validate_config(config: &PaceFpcaConfig) -> Result<(), FdarError> {
             });
         }
     }
-    for w in config.work_grid.windows(2) {
+    for w in work_grid.windows(2) {
         if w[0] >= w[1] {
             return Err(FdarError::InvalidParameter {
                 parameter: "work_grid",
@@ -434,7 +439,6 @@ fn pace_fpca_validate_config(config: &PaceFpcaConfig) -> Result<(), FdarError> {
             });
         }
     }
-
     Ok(())
 }
 
