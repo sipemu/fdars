@@ -277,6 +277,37 @@ pub fn spe_multivariate(
     reconstructed_vars: &[&FdMatrix],
     argvals_list: &[&[f64]],
 ) -> Result<Vec<f64>, FdarError> {
+    let p = spe_mv_validate(standardized_vars, reconstructed_vars, argvals_list)?;
+
+    if p == 0 {
+        return Ok(Vec::new());
+    }
+
+    let n = standardized_vars[0].nrows();
+    let mut spe = vec![0.0; n];
+
+    for v in 0..p {
+        let std_v = standardized_vars[v];
+        let rec_v = reconstructed_vars[v];
+        let argvals = argvals_list[v];
+
+        let m_v = spe_mv_var_check(std_v, rec_v, argvals, n, v)?;
+        let weights = simpsons_weights(argvals);
+        let var_contributions = spe_mv_compute_var(std_v, rec_v, &weights, n, m_v);
+        for i in 0..n {
+            spe[i] += var_contributions[i];
+        }
+    }
+
+    Ok(spe)
+}
+
+/// Validate top-level dimension consistency for `spe_multivariate`, returning `p`.
+fn spe_mv_validate(
+    standardized_vars: &[&FdMatrix],
+    reconstructed_vars: &[&FdMatrix],
+    argvals_list: &[&[f64]],
+) -> Result<usize, FdarError> {
     let p = standardized_vars.len();
     if reconstructed_vars.len() != p || argvals_list.len() != p {
         return Err(FdarError::InvalidDimension {
@@ -290,52 +321,58 @@ pub fn spe_multivariate(
             ),
         });
     }
+    Ok(p)
+}
 
-    if p == 0 {
-        return Ok(Vec::new());
+/// Validate per-variable shape consistency, returning `m_v` (number of grid points).
+fn spe_mv_var_check(
+    std_v: &FdMatrix,
+    rec_v: &FdMatrix,
+    argvals: &[f64],
+    n: usize,
+    v: usize,
+) -> Result<usize, FdarError> {
+    if std_v.nrows() != n || rec_v.nrows() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "variables",
+            expected: format!("{n} rows for variable {v}"),
+            actual: format!("std={}, recon={}", std_v.nrows(), rec_v.nrows()),
+        });
     }
-
-    let n = standardized_vars[0].nrows();
-
-    let mut spe = vec![0.0; n];
-
-    for v in 0..p {
-        let std_v = standardized_vars[v];
-        let rec_v = reconstructed_vars[v];
-        let argvals = argvals_list[v];
-
-        if std_v.nrows() != n || rec_v.nrows() != n {
-            return Err(FdarError::InvalidDimension {
-                parameter: "variables",
-                expected: format!("{n} rows for variable {v}"),
-                actual: format!("std={}, recon={}", std_v.nrows(), rec_v.nrows()),
-            });
-        }
-
-        let m_v = std_v.ncols();
-        if rec_v.ncols() != m_v || argvals.len() != m_v {
-            return Err(FdarError::InvalidDimension {
-                parameter: "argvals_list",
-                expected: format!("{m_v} for variable {v}"),
-                actual: format!(
-                    "recon_cols={}, argvals_len={}",
-                    rec_v.ncols(),
-                    argvals.len()
-                ),
-            });
-        }
-
-        let weights = simpsons_weights(argvals);
-
-        for i in 0..n {
-            let mut var_spe = 0.0;
-            for j in 0..m_v {
-                let diff = std_v[(i, j)] - rec_v[(i, j)];
-                var_spe += diff * diff * weights[j];
-            }
-            spe[i] += var_spe;
-        }
+    let m_v = std_v.ncols();
+    if rec_v.ncols() != m_v || argvals.len() != m_v {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals_list",
+            expected: format!("{m_v} for variable {v}"),
+            actual: format!(
+                "recon_cols={}, argvals_len={}",
+                rec_v.ncols(),
+                argvals.len()
+            ),
+        });
     }
+    Ok(m_v)
+}
 
-    Ok(spe)
+/// Compute per-observation SPE contributions for one variable.
+///
+/// Returns a Vec of length `n` where each entry is the integrated squared
+/// difference for that observation and variable.
+fn spe_mv_compute_var(
+    std_v: &FdMatrix,
+    rec_v: &FdMatrix,
+    weights: &[f64],
+    n: usize,
+    m_v: usize,
+) -> Vec<f64> {
+    let mut contributions = vec![0.0; n];
+    for i in 0..n {
+        let mut var_spe = 0.0;
+        for j in 0..m_v {
+            let diff = std_v[(i, j)] - rec_v[(i, j)];
+            var_spe += diff * diff * weights[j];
+        }
+        contributions[i] = var_spe;
+    }
+    contributions
 }
