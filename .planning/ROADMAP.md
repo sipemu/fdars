@@ -24,7 +24,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 - Integer phases (106, 107, …): Planned milestone work (continues from v0.45.0 — no reset)
 - Decimal phases (106.1, 106.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 106: Top-Level Complexity Hotspots** - Decompose the 8 worst-ranked functions under pmat thresholds (QUAL-01)
+- [x] **Phase 106: Top-Level Complexity Hotspots** - Decompose the 8 worst-ranked functions under pmat thresholds (QUAL-01) (completed 2026-09-14)
 - [ ] **Phase 107: SPM Complexity Cluster** - Decompose the dense `src/spm/` cluster under pmat thresholds (QUAL-02)
 - [ ] **Phase 108: Entropy Extraction & SATD/Unwrap Cleanup** - Extract repeated patterns; reword SATD false-positives; fix the critical unwrap (QUAL-04 + QUAL-05)
 - [ ] **Phase 109: Complexity Tail & Quality-Gate Green** - Clear all remaining complexity violations so `pmat quality-gate` reports 0 findings (QUAL-03)
@@ -128,7 +128,7 @@ Phases 106, 107, and 108 are independent and may run in parallel (or in any orde
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 106. Top-Level Complexity Hotspots | 0/TBD | Not started | - |
+| 106. Top-Level Complexity Hotspots | 4/4 | Complete    | 2026-09-14 |
 | 107. SPM Complexity Cluster | 0/TBD | Not started | - |
 | 108. Entropy Extraction & SATD/Unwrap Cleanup | 0/TBD | Not started | - |
 | 109. Complexity Tail & Quality-Gate Green | 0/TBD | Not started | - |

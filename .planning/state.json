@@ -1,38 +1,43 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.45.0",
+  "milestone": "v0.46.0 — Quality Hardening — pmat Complexity Pass & CI Guardrail",
   "phases": [
     {
-      "number": "101",
-      "name": "In-Crate L-BFGS Barycenter Optimizer",
+      "number": "106",
+      "name": "Top-Level Complexity Hotspots",
       "status": "complete"
     },
     {
-      "number": "102",
-      "name": "Deterministic Multi-Restart Wrapper",
-      "status": "complete"
+      "number": "107",
+      "name": "SPM Complexity Cluster",
+      "status": "pending"
     },
     {
-      "number": "103",
-      "name": "`SoftDtwBarycenterConfig` API & Legacy Wrapper",
-      "status": "complete"
+      "number": "108",
+      "name": "Entropy Extraction & SATD/Unwrap Cleanup",
+      "status": "pending"
     },
     {
-      "number": "104",
-      "name": "Quality Evidence — Escapes-Local-Minimum & f64 Parity",
-      "status": "complete"
+      "number": "109",
+      "name": "Complexity Tail & Quality-Gate Green",
+      "status": "pending"
     },
     {
-      "number": "105",
+      "number": "110",
+      "name": "pmat CI Guardrail",
+      "status": "pending"
+    },
+    {
+      "number": "111",
       "name": "Release Preparation & Verification",
-      "status": "complete"
+      "status": "pending"
     }
   ],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 107)",
+    "reason": "Phase 107 of 6 — needs a plan"
   },
-  "updated_at": "2026-09-13T12:44:27.024Z"
+  "updated_at": "2026-09-14T06:39:16.709Z"
 }
