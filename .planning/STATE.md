@@ -4,17 +4,17 @@ milestone: v0.46.0
 milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
 current_phase: 107
 current_phase_name: SPM Complexity Cluster
-status: planning
-stopped_at: Phase 106 complete, ready to plan Phase 107
-last_updated: "2026-09-14T06:39:16.698Z"
+status: executing
+stopped_at: Completed Phase 107 Plan 01 (107-01-PLAN.md)
+last_updated: "2026-09-14T07:09:52.758Z"
 last_activity: 2026-09-14
-last_activity_desc: Phase 106 complete, transitioned to Phase 107
-state_head: 586ddcd8916c82b5116deec44ba6b014c86a4abf
+last_activity_desc: Phase 107 execution started
+state_head: 58c678b172620375c05fee8ee890a0b3a5227b70
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 8
+  completed_plans: 5
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-13)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps on the road to a deliberate 1.0 cut.
-**Current focus:** Phase 106 — Top-Level Complexity Hotspots
+**Current focus:** Phase 107 — SPM Complexity Cluster
 
 ## Current Position
 
-Phase: 107 — SPM Complexity Cluster
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-14 — Phase 106 complete, transitioned to Phase 107
+Phase: 107 (SPM Complexity Cluster) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-09-14 — Phase 107 execution started
 
 ## Milestone Roadmap (v0.46.0)
 
@@ -89,6 +89,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 106-top-level-complexity-hotspots P02 | 15 | 2 tasks | 1 files |
 | Phase 106 P03 | 21 | 2 tasks | 2 files |
 | Phase 106 P04 | 18 | 2 tasks | 1 files |
+| Phase 107 P01 | 408 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,8 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 106]: boost_fofr: 3-way validate split (predictors + dims + config) needed because dims alone scored cog 26 after extraction; extra level brings dims to cog 15
 - [Phase 106]: bayesian_fosr_precompute returns xtx (not xbar) to avoid redundant compute_xtx in parent; RNG draw order preserved via unchanged outer iter loop with per-kk gibbs_step calls
 - [Phase 106]: [Phase 106-04]: pace_fpca BLUP closure extracted as named fn with all captures as explicit Send parameters (11 params); split-validate pattern applied for validators (dims + config)
+- [Phase 107]: Split-validate applied to amewma_validate (7 guards): split into amewma_validate_lambda_range + amewma_validate_params to keep each helper below cog 25
+- [Phase 107]: iterative_check_removal_budget returns bool covering both max_removal_fraction and n_after<4 guards; called before iterative_update_state to replicate original break ordering
 
 ### Pending Todos
 
@@ -139,8 +142,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T06:22:05.025Z
-Stopped at: Phase 106 complete, ready to plan Phase 107
+Last session: 2026-09-14T07:09:52.733Z
+Stopped at: Completed Phase 107 Plan 01 (107-01-PLAN.md)
 Resume file: None
 
 ## Operator Next Steps
