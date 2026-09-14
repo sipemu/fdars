@@ -4,17 +4,17 @@ milestone: v0.46.0
 milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
 current_phase: 107
 current_phase_name: SPM Complexity Cluster
-status: executing
-stopped_at: Completed 107-03-PLAN.md
-last_updated: "2026-09-14T09:21:48.732Z"
+status: verifying
+stopped_at: Completed 107-04-PLAN.md
+last_updated: "2026-09-14T09:31:16.116Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 107 execution started
-state_head: f7dedb87b9e8de9e876bc8ca3d46775e999904eb
+state_head: 759e35321320ffa2af1c7b98f9fa28eb1feef454
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-09-13)
 
 Phase: 107 (SPM Complexity Cluster) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-14 — Phase 107 execution started
 
 ## Milestone Roadmap (v0.46.0)
@@ -92,6 +92,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 107 P01 | 408 | 2 tasks | 2 files |
 | Phase 107 P02 | 360 | 3 tasks | 3 files |
 | Phase 107-spm-complexity-cluster P03 | 25 | 3 tasks | 4 files |
+| Phase 107 P04 | 1800 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,8 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 107]: iterative_check_removal_budget returns bool covering both max_removal_fraction and n_after<4 guards; called before iterative_update_state to replicate original break ordering
 - [Phase 107]: mfpca_build_stacked takes &mut [f64] for scales — propagates scales[p]=1.0 mutation back to caller (clippy ptr_arg fix)
 - [Phase 107]: 107-03: extract validate-and-call helpers in ewma/mewma/stats/phase — mewma_validate returns ncomp, spe_mv_compute_var returns Vec per-obs, monitor_fields_validate consolidates 5 guards (cog 15, no split-validate needed)
+- [Phase 107]: cond_exp_build_m_matrix returns (m_matrix, diag_max) tuple where diag_max is from ORIGINAL pre-regularization matrix to preserve Tikhonov retry sequence
+- [Phase 107]: profile_validate_windows split-validate keeps profile_validate under threshold (7 guards total)
 
 ### Pending Todos
 
@@ -146,8 +149,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T09:21:48.710Z
-Stopped at: Completed 107-03-PLAN.md
+Last session: 2026-09-14T09:31:16.093Z
+Stopped at: Completed 107-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
