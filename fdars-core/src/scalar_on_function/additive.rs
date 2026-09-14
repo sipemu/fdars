@@ -521,6 +521,177 @@ pub fn fam(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Private helpers for fregre_gkam
+// ---------------------------------------------------------------------------
+
+/// Validate per-predictor shapes for fregre_gkam.
+fn gkam_validate_predictors(
+    predictors: &[&FdMatrix],
+    argvals_list: &[&[f64]],
+    n: usize,
+) -> Result<(), FdarError> {
+    for (k, pred) in predictors.iter().enumerate() {
+        if pred.nrows() != n {
+            return Err(FdarError::InvalidDimension {
+                parameter: "predictors[k].nrows()",
+                expected: format!("{n} (y.len())"),
+                actual: format!("{} for predictor {k}", pred.nrows()),
+            });
+        }
+        if argvals_list[k].len() != pred.ncols() {
+            return Err(FdarError::InvalidDimension {
+                parameter: "argvals_list[k]",
+                expected: format!("{} (predictors[k].ncols())", pred.ncols()),
+                actual: format!("{} for predictor {k}", argvals_list[k].len()),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Validate inputs for fregre_gkam. Returns (n, q, p_scalar, total_comp).
+fn gkam_validate(
+    predictors: &[&FdMatrix],
+    y: &[f64],
+    argvals_list: &[&[f64]],
+    scalar_covariates: Option<&FdMatrix>,
+) -> Result<(usize, usize, usize, usize), FdarError> {
+    let n = y.len();
+    if n == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: "at least 1 observation".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    if predictors.is_empty() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "predictors",
+            expected: "at least 1 functional predictor".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    if predictors.len() != argvals_list.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals_list",
+            expected: format!("{} (matching predictors.len())", predictors.len()),
+            actual: format!("{}", argvals_list.len()),
+        });
+    }
+    gkam_validate_predictors(predictors, argvals_list, n)?;
+    if let Some(sc) = scalar_covariates {
+        if sc.nrows() != n {
+            return Err(FdarError::InvalidDimension {
+                parameter: "scalar_covariates",
+                expected: format!("{n} rows"),
+                actual: format!("{} rows", sc.nrows()),
+            });
+        }
+    }
+    let q = predictors.len();
+    let p_scalar = scalar_covariates.map_or(0, FdMatrix::ncols);
+    let total_comp = q + p_scalar;
+    Ok((n, q, p_scalar, total_comp))
+}
+
+/// Compute Euclidean distance matrix (n×n flat) for one column j of scalar covariates.
+fn gkam_scalar_dist_col(sc: &FdMatrix, n: usize, j: usize) -> Vec<f64> {
+    let mut d = vec![0.0_f64; n * n];
+    for i in 0..n {
+        for jj in (i + 1)..n {
+            let dist = (sc[(i, j)] - sc[(jj, j)]).abs();
+            d[i * n + jj] = dist;
+            d[jj * n + i] = dist;
+        }
+    }
+    d
+}
+
+/// Compute adjusted response for component `k`: y[i] - mu_y - Σ_{j≠k} f_j[i].
+fn gkam_adjusted(
+    y: &[f64],
+    mu_y: f64,
+    component_fits: &[Vec<f64>],
+    k: usize,
+    n: usize,
+    total_comp: usize,
+) -> Vec<f64> {
+    (0..n)
+        .map(|i| {
+            let others: f64 = (0..total_comp)
+                .filter(|&j| j != k)
+                .map(|j| component_fits[j][i])
+                .sum();
+            y[i] - mu_y - others
+        })
+        .collect()
+}
+
+/// Apply NW smoother using an n×n flat distance matrix (Gaussian kernel).
+/// Returns the new component fit vector (length n).
+fn gkam_nw_from_dists(dists: &[f64], adjusted: &[f64], h: f64, n: usize) -> Vec<f64> {
+    (0..n)
+        .map(|i| {
+            let mut num = 0.0_f64;
+            let mut den = 0.0_f64;
+            for j in 0..n {
+                let w = gaussian_kernel(dists[i * n + j], h);
+                num += w * adjusted[j];
+                den += w;
+            }
+            if den > 1e-15 {
+                num / den
+            } else {
+                adjusted[i]
+            }
+        })
+        .collect()
+}
+
+/// Max absolute delta between old and new component fit vectors.
+fn gkam_max_delta(old: &[f64], new: &[f64]) -> f64 {
+    old.iter()
+        .zip(new)
+        .map(|(o, &n)| (o - n).abs())
+        .fold(0.0_f64, f64::max)
+}
+
+/// One full backfitting sweep over all components. Returns max_delta across the sweep.
+fn gkam_backfit_sweep(
+    y: &[f64],
+    mu_y: f64,
+    component_fits: &mut Vec<Vec<f64>>,
+    n: usize,
+    q: usize,
+    p_scalar: usize,
+    total_comp: usize,
+    dist_matrices: &[Vec<f64>],
+    scalar_dists: &[Vec<f64>],
+    all_bandwidths: &[f64],
+) -> f64 {
+    let mut max_delta = 0.0_f64;
+
+    // Update functional predictor components
+    for k in 0..q {
+        let adjusted = gkam_adjusted(y, mu_y, component_fits, k, n, total_comp);
+        let new_fk = gkam_nw_from_dists(&dist_matrices[k], &adjusted, all_bandwidths[k], n);
+        max_delta = max_delta.max(gkam_max_delta(&component_fits[k], &new_fk));
+        component_fits[k] = new_fk;
+    }
+
+    // Update scalar covariate components
+    for s_idx in 0..p_scalar {
+        let k = q + s_idx;
+        let adjusted = gkam_adjusted(y, mu_y, component_fits, k, n, total_comp);
+        let new_fk = gkam_nw_from_dists(&scalar_dists[s_idx], &adjusted, all_bandwidths[k], n);
+        max_delta = max_delta.max(gkam_max_delta(&component_fits[k], &new_fk));
+        component_fits[k] = new_fk;
+    }
+
+    max_delta
+}
+
 /// Generalized Kernel Additive Model (GKAM).
 ///
 /// Fits `ŷ = μ + Σ_k f_k(X^k)` by iterative backfitting where each `f_k` is a
@@ -568,59 +739,8 @@ pub fn fregre_gkam(
     scalar_covariates: Option<&FdMatrix>,
     config: &GkamConfig,
 ) -> Result<GkamResult, FdarError> {
-    let n = y.len();
-
-    // Validate inputs
-    if n == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y",
-            expected: "at least 1 observation".to_string(),
-            actual: "0".to_string(),
-        });
-    }
-    if predictors.is_empty() {
-        return Err(FdarError::InvalidDimension {
-            parameter: "predictors",
-            expected: "at least 1 functional predictor".to_string(),
-            actual: "0".to_string(),
-        });
-    }
-    if predictors.len() != argvals_list.len() {
-        return Err(FdarError::InvalidDimension {
-            parameter: "argvals_list",
-            expected: format!("{} (matching predictors.len())", predictors.len()),
-            actual: format!("{}", argvals_list.len()),
-        });
-    }
-    for (k, pred) in predictors.iter().enumerate() {
-        if pred.nrows() != n {
-            return Err(FdarError::InvalidDimension {
-                parameter: "predictors[k].nrows()",
-                expected: format!("{n} (y.len())"),
-                actual: format!("{} for predictor {k}", pred.nrows()),
-            });
-        }
-        if argvals_list[k].len() != pred.ncols() {
-            return Err(FdarError::InvalidDimension {
-                parameter: "argvals_list[k]",
-                expected: format!("{} (predictors[k].ncols())", pred.ncols()),
-                actual: format!("{} for predictor {k}", argvals_list[k].len()),
-            });
-        }
-    }
-    if let Some(sc) = scalar_covariates {
-        if sc.nrows() != n {
-            return Err(FdarError::InvalidDimension {
-                parameter: "scalar_covariates",
-                expected: format!("{n} rows"),
-                actual: format!("{} rows", sc.nrows()),
-            });
-        }
-    }
-
-    let q = predictors.len();
-    let p_scalar = scalar_covariates.map_or(0, FdMatrix::ncols);
-    let total_comp = q + p_scalar;
+    let (n, q, p_scalar, total_comp) =
+        gkam_validate(predictors, y, argvals_list, scalar_covariates)?;
 
     let mu_y = y.iter().sum::<f64>() / n as f64;
 
@@ -644,18 +764,7 @@ pub fn fregre_gkam(
     // For scalar covariates, compute Euclidean distances and bandwidths
     let scalar_dists: Vec<Vec<f64>> = if let Some(sc) = scalar_covariates {
         (0..p_scalar)
-            .map(|j| {
-                let mut d = vec![0.0_f64; n * n];
-                for i in 0..n {
-                    for jj in (i + 1)..n {
-                        let diff = sc[(i, j)] - sc[(jj, j)];
-                        let dist = diff.abs();
-                        d[i * n + jj] = dist;
-                        d[jj * n + i] = dist;
-                    }
-                }
-                d
-            })
+            .map(|j| gkam_scalar_dist_col(sc, n, j))
             .collect()
     } else {
         Vec::new()
@@ -685,94 +794,18 @@ pub fn fregre_gkam(
 
     // Iterative backfitting loop (bounded by max_iter)
     for iter in 0..config.max_iter {
-        let mut max_delta = 0.0_f64;
-
-        // Update functional predictor components
-        for k in 0..q {
-            let h_k = all_bandwidths[k];
-            let dists_k = &dist_matrices[k];
-
-            // Compute adjusted response: y - mu - sum_{j != k} f_j
-            let adjusted: Vec<f64> = (0..n)
-                .map(|i| {
-                    let others: f64 = (0..total_comp)
-                        .filter(|&j| j != k)
-                        .map(|j| component_fits[j][i])
-                        .sum();
-                    y[i] - mu_y - others
-                })
-                .collect();
-
-            // Apply NW smoother on L2 distance kernel (O(n) per point)
-            let new_fk: Vec<f64> = (0..n)
-                .map(|i| {
-                    let mut num = 0.0_f64;
-                    let mut den = 0.0_f64;
-                    for j in 0..n {
-                        let w = gaussian_kernel(dists_k[i * n + j], h_k);
-                        num += w * adjusted[j];
-                        den += w;
-                    }
-                    if den > 1e-15 {
-                        num / den
-                    } else {
-                        adjusted[i]
-                    }
-                })
-                .collect();
-
-            // Track max change across all observations
-            let delta = component_fits[k]
-                .iter()
-                .zip(&new_fk)
-                .map(|(old, &new)| (old - new).abs())
-                .fold(0.0_f64, f64::max);
-            max_delta = max_delta.max(delta);
-            component_fits[k] = new_fk;
-        }
-
-        // Update scalar covariate components
-        for s_idx in 0..p_scalar {
-            let k = q + s_idx;
-            let h_k = all_bandwidths[k];
-            let dists_k = &scalar_dists[s_idx];
-
-            let adjusted: Vec<f64> = (0..n)
-                .map(|i| {
-                    let others: f64 = (0..total_comp)
-                        .filter(|&j| j != k)
-                        .map(|j| component_fits[j][i])
-                        .sum();
-                    y[i] - mu_y - others
-                })
-                .collect();
-
-            let new_fk: Vec<f64> = (0..n)
-                .map(|i| {
-                    let mut num = 0.0_f64;
-                    let mut den = 0.0_f64;
-                    for j in 0..n {
-                        let w = gaussian_kernel(dists_k[i * n + j], h_k);
-                        num += w * adjusted[j];
-                        den += w;
-                    }
-                    if den > 1e-15 {
-                        num / den
-                    } else {
-                        adjusted[i]
-                    }
-                })
-                .collect();
-
-            let delta = component_fits[k]
-                .iter()
-                .zip(&new_fk)
-                .map(|(old, &new)| (old - new).abs())
-                .fold(0.0_f64, f64::max);
-            max_delta = max_delta.max(delta);
-            component_fits[k] = new_fk;
-        }
-
+        let max_delta = gkam_backfit_sweep(
+            y,
+            mu_y,
+            &mut component_fits,
+            n,
+            q,
+            p_scalar,
+            total_comp,
+            &dist_matrices,
+            &scalar_dists,
+            &all_bandwidths,
+        );
         iterations = iter + 1;
         if max_delta < config.epsilon {
             converged = true;
@@ -1475,6 +1508,104 @@ fn compute_varselect_fitted(
         .collect()
 }
 
+// ---------------------------------------------------------------------------
+// Private helpers for select_group_lasso_lambda
+// ---------------------------------------------------------------------------
+
+/// Build training score_groups restricted to `train_idx` rows.
+fn gl_build_train_scores(
+    score_groups: &[Vec<Vec<f64>>],
+    train_idx: &[usize],
+) -> Vec<Vec<Vec<f64>>> {
+    score_groups
+        .iter()
+        .map(|grp| {
+            grp.iter()
+                .map(|col| train_idx.iter().map(|&i| col[i]).collect())
+                .collect()
+        })
+        .collect()
+}
+
+/// Build scalar_covariates restricted to `train_idx` rows (column-major FdMatrix).
+fn gl_build_train_sc(sc: &FdMatrix, train_idx: &[usize], n_tr: usize) -> Option<FdMatrix> {
+    let p_sc = sc.ncols();
+    let mut cm = vec![0.0_f64; n_tr * p_sc];
+    for (row, &orig_i) in train_idx.iter().enumerate() {
+        for j in 0..p_sc {
+            cm[j * n_tr + row] = sc[(orig_i, j)];
+        }
+    }
+    FdMatrix::from_column_major(cm, n_tr, p_sc).ok()
+}
+
+/// Evaluate squared prediction error for a single CV fold at a given lambda.
+/// Returns `(sq_err_sum, count)` added to the caller's running totals.
+#[allow(clippy::too_many_arguments)]
+fn eval_lambda_cv_fold(
+    y: &[f64],
+    n: usize,
+    big_p: usize,
+    score_groups: &[Vec<Vec<f64>>],
+    scalar_covariates: Option<&FdMatrix>,
+    fold_of: &[usize],
+    fold: usize,
+    lam: f64,
+    max_iter: usize,
+    epsilon: f64,
+) -> (f64, usize) {
+    let train_idx: Vec<usize> = (0..n).filter(|&i| fold_of[i] != fold).collect();
+    let val_idx: Vec<usize> = (0..n).filter(|&i| fold_of[i] == fold).collect();
+    if train_idx.is_empty() || val_idx.is_empty() {
+        return (0.0, 0);
+    }
+
+    let n_tr = train_idx.len();
+    let mu_tr = train_idx.iter().map(|&i| y[i]).sum::<f64>() / n_tr as f64;
+    let y_tr_centered: Vec<f64> = train_idx.iter().map(|&i| y[i] - mu_tr).collect();
+    let y_tr: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
+    let sg_tr = gl_build_train_scores(score_groups, &train_idx);
+    let sc_tr_mat = scalar_covariates.and_then(|sc| gl_build_train_sc(sc, &train_idx, n_tr));
+    let k_sizes_tr: Vec<usize> = sg_tr.iter().map(|g| g.len()).collect();
+
+    let fit_result = group_lasso_cd(
+        &y_tr,
+        &y_tr_centered,
+        mu_tr,
+        n_tr,
+        &sg_tr,
+        &k_sizes_tr,
+        lam,
+        max_iter,
+        epsilon,
+        sc_tr_mat.as_ref(),
+    );
+
+    let Ok((coeffs_tr, _, _)) = fit_result else {
+        return (0.0, 0);
+    };
+
+    let mut sq_err = 0.0_f64;
+    let mut count = 0usize;
+    for &i in &val_idx {
+        let mut yhat = mu_tr;
+        for p in 0..big_p {
+            for (k, col) in score_groups[p].iter().enumerate() {
+                yhat += coeffs_tr[p][k] * col[i];
+            }
+        }
+        if let Some(sc) = scalar_covariates {
+            for j in 0..sc.ncols() {
+                yhat += coeffs_tr[big_p][j] * sc[(i, j)];
+            }
+        }
+        let err = y[i] - yhat;
+        sq_err += err * err;
+        count += 1;
+    }
+    (sq_err, count)
+}
+
 /// Select lambda via 5-fold cross-validation for group lasso.
 ///
 /// Evaluates a geometric grid of lambda values from `0.01·lambda_max` to `lambda_max`
@@ -1518,75 +1649,20 @@ fn select_group_lasso_lambda(
         let mut cv_count = 0usize;
 
         for fold in 0..n_folds {
-            // Split indices into train / validation
-            let train_idx: Vec<usize> = (0..n).filter(|&i| fold_of[i] != fold).collect();
-            let val_idx: Vec<usize> = (0..n).filter(|&i| fold_of[i] == fold).collect();
-            if train_idx.is_empty() || val_idx.is_empty() {
-                continue;
-            }
-
-            let n_tr = train_idx.len();
-            let mu_tr = train_idx.iter().map(|&i| y[i]).sum::<f64>() / n_tr as f64;
-            let y_tr_centered: Vec<f64> = train_idx.iter().map(|&i| y[i] - mu_tr).collect();
-            let y_tr: Vec<f64> = train_idx.iter().map(|&i| y[i]).collect();
-
-            // Build score_groups restricted to train rows
-            let sg_tr: Vec<Vec<Vec<f64>>> = score_groups
-                .iter()
-                .map(|grp| {
-                    grp.iter()
-                        .map(|col| train_idx.iter().map(|&i| col[i]).collect())
-                        .collect()
-                })
-                .collect();
-
-            // Build scalar_covariates restricted to train rows (column-major FdMatrix)
-            let sc_tr_mat: Option<FdMatrix> = scalar_covariates.and_then(|sc| {
-                let p_sc = sc.ncols();
-                let mut cm = vec![0.0_f64; n_tr * p_sc];
-                for (row, &orig_i) in train_idx.iter().enumerate() {
-                    for j in 0..p_sc {
-                        cm[j * n_tr + row] = sc[(orig_i, j)];
-                    }
-                }
-                FdMatrix::from_column_major(cm, n_tr, p_sc).ok()
-            });
-
-            let k_sizes_tr: Vec<usize> = sg_tr.iter().map(|g| g.len()).collect();
-
-            let fit_result = group_lasso_cd(
-                &y_tr,
-                &y_tr_centered,
-                mu_tr,
-                n_tr,
-                &sg_tr,
-                &k_sizes_tr,
+            let (sq, cnt) = eval_lambda_cv_fold(
+                y,
+                n,
+                big_p,
+                score_groups,
+                scalar_covariates,
+                &fold_of,
+                fold,
                 lam,
                 max_iter,
                 epsilon,
-                sc_tr_mat.as_ref(),
             );
-
-            if let Ok((coeffs_tr, _, _)) = fit_result {
-                // Predict on validation fold using train-fold coefficients
-                for &i in &val_idx {
-                    let mut yhat = mu_tr;
-                    for p in 0..big_p {
-                        for (k, col) in score_groups[p].iter().enumerate() {
-                            yhat += coeffs_tr[p][k] * col[i];
-                        }
-                    }
-                    if let Some(sc) = scalar_covariates {
-                        let p_sc = sc.ncols();
-                        for j in 0..p_sc {
-                            yhat += coeffs_tr[big_p][j] * sc[(i, j)];
-                        }
-                    }
-                    let err = y[i] - yhat;
-                    cv_sq_err += err * err;
-                    cv_count += 1;
-                }
-            }
+            cv_sq_err += sq;
+            cv_count += cnt;
         }
 
         if cv_count > 0 {
@@ -1598,6 +1674,110 @@ fn select_group_lasso_lambda(
         }
     }
     best_lambda
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers for group_lasso_cd
+// ---------------------------------------------------------------------------
+
+/// Partial residual for group `p`: y_centered - Σ_{q≠p} X_q β_q - Z β_z.
+fn cd_group_partial(
+    y_centered: &[f64],
+    n: usize,
+    big_p: usize,
+    score_groups: &[Vec<Vec<f64>>],
+    beta_groups: &[Vec<f64>],
+    beta_scalar: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+    p: usize,
+    p_scalar: usize,
+) -> Vec<f64> {
+    (0..n)
+        .map(|i| {
+            let mut res = y_centered[i];
+            for q in 0..big_p {
+                if q != p {
+                    for (k, col) in score_groups[q].iter().enumerate() {
+                        res -= beta_groups[q][k] * col[i];
+                    }
+                }
+            }
+            if let Some(sc) = scalar_covariates {
+                for j in 0..p_scalar {
+                    res -= beta_scalar[j] * sc[(i, j)];
+                }
+            }
+            res
+        })
+        .collect()
+}
+
+/// OLS solve for group `p` with ridge fallback, then apply group-lasso soft threshold.
+/// Returns the new β_g vector.
+fn cd_group_ols_soft(group: &[Vec<f64>], partial: &[f64], k_g: usize, lambda: f64) -> Vec<f64> {
+    let mut xtx_g = vec![0.0_f64; k_g * k_g];
+    let mut xty_g = vec![0.0_f64; k_g];
+    for a in 0..k_g {
+        for b in 0..k_g {
+            xtx_g[a * k_g + b] = group[a]
+                .iter()
+                .zip(&group[b])
+                .map(|(&xa, &xb)| xa * xb)
+                .sum();
+        }
+        xty_g[a] = group[a].iter().zip(partial).map(|(&xa, &pa)| xa * pa).sum();
+    }
+
+    let beta_ols = crate::linalg::cholesky_solve(&xtx_g, &xty_g, k_g).unwrap_or_else(|_| {
+        // Ridge fallback when X_g'X_g is near-singular
+        let diag_sum: f64 = (0..k_g).map(|d| xtx_g[d * k_g + d].abs()).sum();
+        let delta = (1e-6 * diag_sum / k_g as f64).max(1e-8);
+        let mut xtx_ridge = xtx_g.clone();
+        for d in 0..k_g {
+            xtx_ridge[d * k_g + d] += delta;
+        }
+        crate::linalg::cholesky_solve(&xtx_ridge, &xty_g, k_g).unwrap_or_else(|_| vec![0.0; k_g])
+    });
+
+    // Group-lasso soft threshold
+    let norm_ols: f64 = beta_ols.iter().map(|&b| b * b).sum::<f64>().sqrt();
+    let threshold = lambda * (k_g as f64).sqrt();
+    let scale = if norm_ols > 1e-15 {
+        (1.0 - threshold / norm_ols).max(0.0)
+    } else {
+        0.0
+    };
+    beta_ols.iter().map(|&b| b * scale).collect()
+}
+
+/// Partial residual for scalar covariate `j`: y_centered - Σ_p X_p β_p - Σ_{jj≠j} z_jj β_jj.
+fn cd_scalar_partial_j(
+    y_centered: &[f64],
+    n: usize,
+    big_p: usize,
+    score_groups: &[Vec<Vec<f64>>],
+    beta_groups: &[Vec<f64>],
+    beta_scalar: &[f64],
+    sc: &FdMatrix,
+    p_scalar: usize,
+    j: usize,
+) -> Vec<f64> {
+    (0..n)
+        .map(|i| {
+            let mut res = y_centered[i];
+            for p in 0..big_p {
+                for (k, col) in score_groups[p].iter().enumerate() {
+                    res -= beta_groups[p][k] * col[i];
+                }
+            }
+            for jj in 0..p_scalar {
+                if jj != j {
+                    res -= beta_scalar[jj] * sc[(i, jj)];
+                }
+            }
+            res
+        })
+        .collect()
 }
 
 /// Group-lasso coordinate descent.
@@ -1637,75 +1817,18 @@ fn group_lasso_cd(
         // Update each functional predictor group
         for p in 0..big_p {
             let k_g = k_sizes[p];
-            let group = &score_groups[p];
-
-            // Build partial residual: y - mu_y - sum_{q != p} X_q beta_q - Z beta_z
-            let partial: Vec<f64> = (0..n)
-                .map(|i| {
-                    let mut res = y_centered[i];
-                    for q in 0..big_p {
-                        if q != p {
-                            for (k, col) in score_groups[q].iter().enumerate() {
-                                res -= beta_groups[q][k] * col[i];
-                            }
-                        }
-                    }
-                    if let Some(sc) = scalar_covariates {
-                        for j in 0..p_scalar {
-                            res -= beta_scalar[j] * sc[(i, j)];
-                        }
-                    }
-                    res
-                })
-                .collect();
-
-            // OLS update for this group: beta_g_ols = (X_g'X_g)^{-1} X_g' partial
-            // Build X_g'X_g (k_g × k_g) and X_g'partial
-            let mut xtx_g = vec![0.0_f64; k_g * k_g];
-            let mut xty_g = vec![0.0_f64; k_g];
-            for a in 0..k_g {
-                for b in 0..k_g {
-                    let dot: f64 = group[a]
-                        .iter()
-                        .zip(&group[b])
-                        .map(|(&xa, &xb)| xa * xb)
-                        .sum();
-                    xtx_g[a * k_g + b] = dot;
-                }
-                xty_g[a] = group[a]
-                    .iter()
-                    .zip(&partial)
-                    .map(|(&xa, &pa)| xa * pa)
-                    .sum();
-            }
-
-            let beta_ols =
-                crate::linalg::cholesky_solve(&xtx_g, &xty_g, k_g).unwrap_or_else(|_| {
-                    // Cholesky failed: X_g'X_g is (near-)singular.
-                    // Add ridge regularization: solve (X_g'X_g + δI) β = X_g' partial.
-                    // δ is 1e-6 × (mean diagonal) to keep the scale relative to the data.
-                    let diag_sum: f64 = (0..k_g).map(|d| xtx_g[d * k_g + d].abs()).sum();
-                    let delta = (1e-6 * diag_sum / k_g as f64).max(1e-8);
-                    let mut xtx_ridge = xtx_g.clone();
-                    for d in 0..k_g {
-                        xtx_ridge[d * k_g + d] += delta;
-                    }
-                    crate::linalg::cholesky_solve(&xtx_ridge, &xty_g, k_g)
-                        .unwrap_or_else(|_| vec![0.0; k_g]) // final fallback: zero-out group
-                });
-
-            // Group-lasso soft threshold
-            let norm_ols: f64 = beta_ols.iter().map(|&b| b * b).sum::<f64>().sqrt();
-            let threshold = lambda * (k_g as f64).sqrt();
-            let scale = if norm_ols > 1e-15 {
-                (1.0 - threshold / norm_ols).max(0.0)
-            } else {
-                0.0
-            };
-
-            let new_beta: Vec<f64> = beta_ols.iter().map(|&b| b * scale).collect();
-
-            // Track max change
+            let partial = cd_group_partial(
+                y_centered,
+                n,
+                big_p,
+                score_groups,
+                &beta_groups,
+                &beta_scalar,
+                scalar_covariates,
+                p,
+                p_scalar,
+            );
+            let new_beta = cd_group_ols_soft(&score_groups[p], &partial, k_g, lambda);
             let delta = new_beta
                 .iter()
                 .zip(&beta_groups[p])
@@ -1718,22 +1841,17 @@ fn group_lasso_cd(
         // Update scalar covariate coefficients (no group penalty — standard OLS)
         if let Some(sc) = scalar_covariates {
             for j in 0..p_scalar {
-                let partial_j: Vec<f64> = (0..n)
-                    .map(|i| {
-                        let mut res = y_centered[i];
-                        for p in 0..big_p {
-                            for (k, col) in score_groups[p].iter().enumerate() {
-                                res -= beta_groups[p][k] * col[i];
-                            }
-                        }
-                        for jj in 0..p_scalar {
-                            if jj != j {
-                                res -= beta_scalar[jj] * sc[(i, jj)];
-                            }
-                        }
-                        res
-                    })
-                    .collect();
+                let partial_j = cd_scalar_partial_j(
+                    y_centered,
+                    n,
+                    big_p,
+                    score_groups,
+                    &beta_groups,
+                    &beta_scalar,
+                    sc,
+                    p_scalar,
+                    j,
+                );
                 let col_j: Vec<f64> = (0..n).map(|i| sc[(i, j)]).collect();
                 let xjxj: f64 = col_j.iter().map(|&v| v * v).sum();
                 let xjy: f64 = col_j.iter().zip(&partial_j).map(|(&x, &p)| x * p).sum();
