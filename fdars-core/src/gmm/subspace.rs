@@ -288,6 +288,190 @@ fn per_group_svd(
     Some((u_k_flat, a_k))
 }
 
+/// Initialise EM parameters (means, weights, subspaces, noise vars) from hard assignments.
+///
+/// Computes group means/counts, then runs per-group SVD to initialise subspaces
+/// and noise variances. Preserves the exact draw order from `init_assignments`.
+fn init_em_params(
+    data_rows: &[Vec<f64>],
+    init_assignments: &[usize],
+    k: usize,
+    m: usize,
+    d_k_req: usize,
+    reg: f64,
+) -> (
+    Vec<Vec<f64>>, // means
+    Vec<f64>,      // weights
+    Vec<Vec<f64>>, // subspaces
+    Vec<Vec<f64>>, // within_vars
+    Vec<f64>,      // noise_vars
+) {
+    let n = data_rows.len();
+    let mut means: Vec<Vec<f64>> = vec![vec![0.0_f64; m]; k];
+    let mut counts = vec![0usize; k];
+    for (i, &c) in init_assignments.iter().enumerate() {
+        counts[c] += 1;
+        for j in 0..m {
+            means[c][j] += data_rows[i][j];
+        }
+    }
+    for c in 0..k {
+        let nc = counts[c].max(1);
+        for j in 0..m {
+            means[c][j] /= nc as f64;
+        }
+    }
+    let weights: Vec<f64> = counts.iter().map(|&c| c.max(1) as f64 / n as f64).collect();
+
+    let mut subspaces: Vec<Vec<f64>> = vec![vec![0.0_f64; m * d_k_req.min(m)]; k];
+    let mut within_vars: Vec<Vec<f64>> = vec![vec![reg; d_k_req.min(m)]; k];
+    let mut noise_vars: Vec<f64> = vec![reg; k];
+
+    for c in 0..k {
+        let member_rows: Vec<Vec<f64>> = (0..n)
+            .filter(|&i| init_assignments[i] == c)
+            .map(|i| {
+                data_rows[i]
+                    .iter()
+                    .zip(means[c].iter())
+                    .map(|(&x, &mu)| x - mu)
+                    .collect()
+            })
+            .collect();
+
+        if let Some((u_k, a_k)) = per_group_svd(&member_rows, d_k_req, m, reg) {
+            let d_k_eff = a_k.len();
+            subspaces[c] = u_k;
+            within_vars[c] = a_k.clone();
+            let total_var: f64 = member_rows
+                .iter()
+                .flat_map(|r| r.iter())
+                .map(|v| v * v)
+                .sum::<f64>()
+                / member_rows.len().max(1) as f64;
+            let subspace_var: f64 = a_k.iter().sum();
+            let complement_var = (total_var - subspace_var).max(0.0);
+            let m_minus_dk = (m - d_k_eff) as f64;
+            noise_vars[c] = if m_minus_dk > 0.0 {
+                (complement_var / m_minus_dk).max(reg)
+            } else {
+                reg
+            };
+        }
+    }
+
+    (means, weights, subspaces, within_vars, noise_vars)
+}
+
+/// M-step: update means and weights from responsibilities.
+///
+/// Returns `(new_means, nk_vec, new_weights)`.
+fn m_step_means_weights(
+    data_rows: &[Vec<f64>],
+    resp: &[f64],
+    k: usize,
+    m: usize,
+) -> (Vec<Vec<f64>>, Vec<f64>, Vec<f64>) {
+    let n = data_rows.len();
+    let mut new_means = vec![vec![0.0_f64; m]; k];
+    let mut nk_vec = vec![0.0_f64; k];
+    for i in 0..n {
+        for c in 0..k {
+            let r = resp[i * k + c];
+            nk_vec[c] += r;
+            for j in 0..m {
+                new_means[c][j] += r * data_rows[i][j];
+            }
+        }
+    }
+    for c in 0..k {
+        let nk = nk_vec[c];
+        if nk > 1e-15 {
+            for j in 0..m {
+                new_means[c][j] /= nk;
+            }
+        }
+    }
+    let n_f = n as f64;
+    let weights: Vec<f64> = nk_vec.iter().map(|&nk| nk / n_f).collect();
+    (new_means, nk_vec, weights)
+}
+
+/// M-step: update subspace and noise variance for one cluster from weighted rows.
+///
+/// Builds sqrt-weighted centered rows, runs per-group SVD, and computes the
+/// rescaled within-subspace and noise variances. Returns `(subspace, within_vars,
+/// noise_var)` for the cluster, or falls back to identity-like defaults for empty clusters.
+fn m_step_update_subspace(
+    data_rows: &[Vec<f64>],
+    resp: &[f64],
+    means: &[Vec<f64>],
+    k: usize,
+    m: usize,
+    c: usize,
+    nk: f64,
+    d_k_req: usize,
+    reg: f64,
+) -> (Vec<f64>, Vec<f64>, f64) {
+    let n = data_rows.len();
+    let d_k_eff_fallback = d_k_req.min(m);
+    if nk < 1e-15 {
+        return (
+            vec![0.0_f64; m * d_k_eff_fallback],
+            vec![reg; d_k_eff_fallback],
+            reg,
+        );
+    }
+
+    // Build weighted centered rows (weight = sqrt(resp))
+    let mut w_rows: Vec<Vec<f64>> = Vec::with_capacity(n);
+    for i in 0..n {
+        let sqrt_r = resp[i * k + c].sqrt();
+        if sqrt_r > 1e-15 {
+            let row: Vec<f64> = data_rows[i]
+                .iter()
+                .zip(means[c].iter())
+                .map(|(&x, &mu)| sqrt_r * (x - mu))
+                .collect();
+            w_rows.push(row);
+        }
+    }
+
+    if w_rows.is_empty() {
+        return (
+            vec![0.0_f64; m * d_k_eff_fallback],
+            vec![reg; d_k_eff_fallback],
+            reg,
+        );
+    }
+
+    if let Some((u_k, a_k)) = per_group_svd(&w_rows, d_k_req, m, reg) {
+        let d_k_eff = a_k.len();
+        let a_k_rescaled: Vec<f64> = a_k.iter().map(|&a| a.max(reg)).collect();
+        let total_wvar: f64 = w_rows
+            .iter()
+            .flat_map(|r| r.iter())
+            .map(|v| v * v)
+            .sum::<f64>()
+            / w_rows.len() as f64;
+        let subspace_var: f64 = a_k_rescaled.iter().sum();
+        let complement_var = (total_wvar - subspace_var).max(0.0);
+        let m_minus_dk = (m - d_k_eff) as f64;
+        let noise_var = if m_minus_dk > 0.0 {
+            (complement_var / m_minus_dk).max(reg)
+        } else {
+            reg
+        };
+        (u_k, a_k_rescaled, noise_var)
+    } else {
+        (
+            vec![0.0_f64; m * d_k_eff_fallback],
+            vec![reg; d_k_eff_fallback],
+            reg,
+        )
+    }
+}
+
 /// Run one EM for funHDDC from a given initialisation.
 #[allow(clippy::too_many_arguments)]
 fn run_one_em(
@@ -310,66 +494,10 @@ fn run_one_em(
     usize,         // iterations
     bool,          // converged
 )> {
-    let n = data_rows.len();
+    let (mut means, mut weights, mut subspaces, mut within_vars, mut noise_vars) =
+        init_em_params(data_rows, init_assignments, k, m, d_k_req, reg);
 
-    // Initialise means, weights from hard assignments
-    let mut means: Vec<Vec<f64>> = vec![vec![0.0_f64; m]; k];
-    let mut counts = vec![0usize; k];
-    for (i, &c) in init_assignments.iter().enumerate() {
-        counts[c] += 1;
-        for j in 0..m {
-            means[c][j] += data_rows[i][j];
-        }
-    }
-    for c in 0..k {
-        let nc = counts[c].max(1);
-        for j in 0..m {
-            means[c][j] /= nc as f64;
-        }
-    }
-    let mut weights: Vec<f64> = counts.iter().map(|&c| c.max(1) as f64 / n as f64).collect();
-
-    // Initialise subspaces and noise vars to identity-like fallback
-    let mut subspaces: Vec<Vec<f64>> = vec![vec![0.0_f64; m * d_k_req.min(m)]; k];
-    let mut within_vars: Vec<Vec<f64>> = vec![vec![reg; d_k_req.min(m)]; k];
-    let mut noise_vars: Vec<f64> = vec![reg; k];
-
-    // Initialise subspaces from group data
-    for c in 0..k {
-        let member_rows: Vec<Vec<f64>> = (0..n)
-            .filter(|&i| init_assignments[i] == c)
-            .map(|i| {
-                data_rows[i]
-                    .iter()
-                    .zip(means[c].iter())
-                    .map(|(&x, &mu)| x - mu)
-                    .collect()
-            })
-            .collect();
-
-        if let Some((u_k, a_k)) = per_group_svd(&member_rows, d_k_req, m, reg) {
-            let d_k_eff = a_k.len();
-            subspaces[c] = u_k;
-            within_vars[c] = a_k.clone();
-            // Noise var from total variance minus within-subspace variance
-            let total_var: f64 = member_rows
-                .iter()
-                .flat_map(|r| r.iter())
-                .map(|v| v * v)
-                .sum::<f64>()
-                / member_rows.len().max(1) as f64;
-            let subspace_var: f64 = a_k.iter().sum();
-            let complement_var = (total_var - subspace_var).max(0.0);
-            let m_minus_dk = (m - d_k_eff) as f64;
-            noise_vars[c] = if m_minus_dk > 0.0 {
-                (complement_var / m_minus_dk).max(reg)
-            } else {
-                reg
-            };
-        }
-    }
-
-    let mut resp = vec![0.0_f64; n * k];
+    let mut resp = vec![0.0_f64; data_rows.len() * k];
     let mut prev_ll = f64::NEG_INFINITY;
     let mut converged = false;
     let mut iterations = 0usize;
@@ -396,88 +524,17 @@ fn run_one_em(
         }
         prev_ll = ll;
 
-        // M-step
-        // --- Update means and weights ---
-        let mut new_means = vec![vec![0.0_f64; m]; k];
-        let mut nk_vec = vec![0.0_f64; k];
-        for i in 0..n {
-            for c in 0..k {
-                let r = resp[i * k + c];
-                nk_vec[c] += r;
-                for j in 0..m {
-                    new_means[c][j] += r * data_rows[i][j];
-                }
-            }
-        }
-        for c in 0..k {
-            let nk = nk_vec[c];
-            if nk > 1e-15 {
-                for j in 0..m {
-                    new_means[c][j] /= nk;
-                }
-            }
-        }
-        let n_f = n as f64;
-        weights = nk_vec.iter().map(|&nk| nk / n_f).collect();
+        // M-step: update means, weights, then subspaces
+        let (new_means, nk_vec, new_weights) = m_step_means_weights(data_rows, &resp, k, m);
         means = new_means;
+        weights = new_weights;
 
-        // --- Update subspaces: weighted SVD per group ---
         for c in 0..k {
-            let nk = nk_vec[c];
-            if nk < 1e-15 {
-                // Empty cluster fallback: keep identity-like subspace
-                let d_k_eff = d_k_req.min(m);
-                subspaces[c] = vec![0.0_f64; m * d_k_eff];
-                within_vars[c] = vec![reg; d_k_eff];
-                noise_vars[c] = reg;
-                continue;
-            }
-
-            // Build weighted centered rows (weight = sqrt(resp))
-            let mut w_rows: Vec<Vec<f64>> = Vec::with_capacity(n);
-            for i in 0..n {
-                let sqrt_r = resp[i * k + c].sqrt();
-                if sqrt_r > 1e-15 {
-                    let row: Vec<f64> = data_rows[i]
-                        .iter()
-                        .zip(means[c].iter())
-                        .map(|(&x, &mu)| sqrt_r * (x - mu))
-                        .collect();
-                    w_rows.push(row);
-                }
-            }
-
-            if w_rows.is_empty() {
-                let d_k_eff = d_k_req.min(m);
-                subspaces[c] = vec![0.0_f64; m * d_k_eff];
-                within_vars[c] = vec![reg; d_k_eff];
-                noise_vars[c] = reg;
-                continue;
-            }
-
-            if let Some((u_k, a_k)) = per_group_svd(&w_rows, d_k_req, m, reg) {
-                let d_k_eff = a_k.len();
-                // Rescale a_k back from weighted rows (SVD of sqrt(r)*diff → a = sigma^2 / nk)
-                let a_k_rescaled: Vec<f64> = a_k.iter().map(|&a| a.max(reg)).collect();
-                subspaces[c] = u_k;
-                within_vars[c] = a_k_rescaled.clone();
-
-                // Noise variance: (total weighted variance - subspace variance) / (m - d_k_eff)
-                let total_wvar: f64 = w_rows
-                    .iter()
-                    .flat_map(|r| r.iter())
-                    .map(|v| v * v)
-                    .sum::<f64>()
-                    / w_rows.len() as f64;
-                let subspace_var: f64 = a_k_rescaled.iter().sum();
-                let complement_var = (total_wvar - subspace_var).max(0.0);
-                let m_minus_dk = (m - d_k_eff) as f64;
-                noise_vars[c] = if m_minus_dk > 0.0 {
-                    (complement_var / m_minus_dk).max(reg)
-                } else {
-                    reg
-                };
-            }
+            let (sub, wv, nv) =
+                m_step_update_subspace(data_rows, &resp, &means, k, m, c, nk_vec[c], d_k_req, reg);
+            subspaces[c] = sub;
+            within_vars[c] = wv;
+            noise_vars[c] = nv;
         }
     }
 
@@ -509,6 +566,54 @@ fn run_one_em(
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+/// Validate inputs for `fun_hddc_cluster`.
+fn validate_hddc_inputs(
+    n: usize,
+    m: usize,
+    argvals_len: usize,
+    config: &FunHddcConfig,
+) -> Result<(), FdarError> {
+    if n == 0 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "non-empty matrix".to_string(),
+            actual: format!("{n}x{m}"),
+        });
+    }
+    if argvals_len != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m} elements"),
+            actual: format!("{argvals_len} elements"),
+        });
+    }
+    if config.k == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if config.k > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k",
+            message: format!("must be <= n ({n}), got {}", config.k),
+        });
+    }
+    if config.d_k == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "d_k",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if config.d_k >= m {
+        return Err(FdarError::InvalidParameter {
+            parameter: "d_k",
+            message: format!("must be < m ({m}), got {}", config.d_k),
+        });
+    }
+    Ok(())
+}
 
 /// Cluster functional data using the funHDDC `AkBk` subspace covariance model.
 ///
@@ -557,46 +662,7 @@ pub fn fun_hddc_cluster(
     config: &FunHddcConfig,
 ) -> Result<FunHddcResult, FdarError> {
     let (n, m) = data.shape();
-
-    // Input validation
-    if n == 0 || m == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "non-empty matrix".to_string(),
-            actual: format!("{n}x{m}"),
-        });
-    }
-    if argvals.len() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "argvals",
-            expected: format!("{m} elements"),
-            actual: format!("{} elements", argvals.len()),
-        });
-    }
-    if config.k == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "k",
-            message: "must be >= 1".to_string(),
-        });
-    }
-    if config.k > n {
-        return Err(FdarError::InvalidParameter {
-            parameter: "k",
-            message: format!("must be <= n ({n}), got {}", config.k),
-        });
-    }
-    if config.d_k == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "d_k",
-            message: "must be >= 1".to_string(),
-        });
-    }
-    if config.d_k >= m {
-        return Err(FdarError::InvalidParameter {
-            parameter: "d_k",
-            message: format!("must be < m ({m}), got {}", config.d_k),
-        });
-    }
+    validate_hddc_inputs(n, m, argvals.len(), config)?;
 
     // Build row-major data buffer for efficient per-row access
     let data_rm = data.to_row_major();
