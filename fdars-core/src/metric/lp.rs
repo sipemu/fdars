@@ -171,8 +171,8 @@ fn lp_self_1d_impl(data: &FdMatrix, argvals: &[f64], p: f64, user_weights: &[f64
     }
 
     let weights = merge_weights(simpsons_weights(argvals), user_weights);
-    // Inline the self-distance pattern rather than going through self_distance_matrix
-    // to ensure LLVM can fully optimize the tight p=2 inner loop.
+    // Inline the self-distance loop rather than delegating to self_distance_matrix;
+    // the p=2 path stays in a single tight loop without an extra function call.
     let upper_vals: Vec<f64> = iter_maybe_parallel!(0..n)
         .flat_map(|i| {
             ((i + 1)..n)

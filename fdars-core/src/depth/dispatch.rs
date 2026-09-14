@@ -278,7 +278,7 @@ pub fn functional_boxplot(
     }
     let median: Vec<f64> = (0..m).map(|t| data[(median_row, t)]).collect();
 
-    // Deepest 50% of rows (ceil(n/2)), ties broken by index for determinism.
+    // Select the deepest ceil(n/2) rows; index order provides a stable tiebreak.
     let half = n.div_ceil(2);
     let mut order: Vec<usize> = (0..n).collect();
     order.sort_by(|&a, &b| {
