@@ -5,16 +5,16 @@ milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
 current_phase: 106
 current_phase_name: Top-Level Complexity Hotspots
 status: executing
-stopped_at: "Completed 106-01 (tracer): elastic_net_cd/wnet_cv_lambda/wnet decomposed; all below pmat thresholds; full suite green"
-last_updated: "2026-09-13T21:23:50.482Z"
+stopped_at: Completed 106-02-PLAN.md
+last_updated: "2026-09-14T05:47:40.413Z"
 last_activity: 2026-09-13
 last_activity_desc: Phase 106 execution started
-state_head: da7cc8ef74fee0131956d6683da2900c2afdfe7f
+state_head: 6ef8d107f815536c3353137bd885b98cede81609
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-13)
 ## Current Position
 
 Phase: 106 (Top-Level Complexity Hotspots) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-09-13 — Phase 106 execution started
 
@@ -86,6 +86,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 |------|----------|-------|-------|
 | (none yet — v0.46.0) | — | — | — |
 | Phase 106 P01 | 7 | 3 tasks | 1 files |
+| Phase 106-top-level-complexity-hotspots P02 | 15 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,7 @@ Decisions relevant to current work (v0.46.0):
 - **REL-01 lands last (Phase 111)** — bump/CHANGELOG/gates are the final proof; the full-suite `cargo test` + `pmat quality-gate` are the end-to-end milestone proof. The `git tag v0.46.0` → crates.io publish is the DEFERRED operator step (GSD `git.create_tag` is off because `release.yml` couples tag-push to publish) — never tagged/published inside a phase.
 - [Phase 106]: elastic_net_cd needed 4 private helpers (not 3 per RESEARCH.md): sweep fn itself scored cog 34 after extraction; added elastic_net_cd_update (single-column update, #[inline]) to bring sweep to cog 8
 - [Phase 106]: Split-validate pattern established: when extracted validate fn exceeds cog 25, split along natural dimension boundary (data shape guards vs. config param guards)
+- [Phase 106]: funfem_cluster and kcfc_cluster decomposed into 11 private helpers; both below pmat cognitive 25 / cyclomatic 30 thresholds; RNG draw order preserved for seeded numeric identity
 
 ### Pending Todos
 
@@ -132,8 +134,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-13T21:23:50.466Z
-Stopped at: Completed 106-01 (tracer): elastic_net_cd/wnet_cv_lambda/wnet decomposed; all below pmat thresholds; full suite green
+Last session: 2026-09-14T05:47:40.393Z
+Stopped at: Completed 106-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
