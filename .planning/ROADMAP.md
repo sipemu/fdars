@@ -102,7 +102,21 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
   3. `pmat quality-gate` reports 0 violations overall (0 complexity + 0 entropy + 0 SATD + 0 defect) — the gate PASSES.
   4. The full `cargo test` suite passes with identical numeric output; clippy `--all-targets` and fmt stay clean; the public API surface is unchanged.
 
-**Plans**: TBD
+**Plans**: 14 plans
+- [ ] 109-01-PLAN.md — TRACER: alignment fpns/closed/bayesian (4 fns) — prove extract→pmat→commit loop
+- [ ] 109-02-PLAN.md — alignment clustering/nd/generative (8 fns)
+- [ ] 109-03-PLAN.md — peer.rs (3 fns, heaviest cognitive scores)
+- [ ] 109-04-PLAN.md — clustering_advanced.rs (5 fns, incl. funfem_cluster residual)
+- [ ] 109-05-PLAN.md — coclustering/kernel_kmeans/kshape (6 fns)
+- [ ] 109-06-PLAN.md — helpers.rs shared infra (4 fns)
+- [ ] 109-07-PLAN.md — scalar_on_function multi/additive/fregre_lm (7 fns)
+- [ ] 109-08-PLAN.md — fpca_variants/famm/pace_fpca (7 fns, incl. pace_fpca_validate_config residual)
+- [ ] 109-09-PLAN.md — fof_regression + boosting gamlss/boost_fosr (5 fns)
+- [ ] 109-10-PLAN.md — gmm/subspace, density_fda, conformal/cv (6 fns)
+- [ ] 109-11-PLAN.md — smooth_basis, soft_dtw, fts/spectral, depth/dispatch (8 fns)
+- [ ] 109-12-PLAN.md — alignment singletons geodesic/lambda_cv/mod/multires/phase_boxplot/warp_stats (6 fns)
+- [ ] 109-13-PLAN.md — regression/depth/cv/2D-FOSR singleton batch (9 fns)
+- [ ] 109-14-PLAN.md — FINAL: explainability/shapelet/simulation/etc. singleton batch (15 fns) + whole-crate `pmat quality-gate` → 0
 
 ### Phase 110: pmat CI Guardrail
 
