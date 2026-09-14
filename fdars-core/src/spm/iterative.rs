@@ -152,7 +152,85 @@ pub fn spm_phase1_iterative(
     argvals: &[f64],
     config: &IterativePhase1Config,
 ) -> Result<IterativePhase1Result, FdarError> {
-    // Validate iterative-specific parameters.
+    iterative_validate(config)?;
+
+    let n_original = data.nrows();
+    let mut remaining_indices: Vec<usize> = (0..n_original).collect();
+    let mut all_removed: Vec<usize> = vec![];
+    let mut removal_history: Vec<Vec<usize>> = vec![];
+    let mut removal_rates: Vec<f64> = vec![];
+
+    let mut chart = None;
+
+    for _ in 0..config.max_iterations {
+        // Build chart from current data
+        let current_data = crate::cv::subset_rows(data, &remaining_indices);
+        let current_chart = spm_phase1(&current_data, argvals, &config.spm)?;
+
+        // Monitor the same data against the chart
+        let monitor = spm_monitor(&current_chart, &current_data, argvals)?;
+
+        // Identify out-of-control observations
+        let n_current = remaining_indices.len();
+        let flagged_local = iterative_identify_flagged(&monitor, config, n_current);
+
+        // Converged: no observations flagged
+        if flagged_local.is_empty() {
+            chart = Some(current_chart);
+            break;
+        }
+
+        // Check cumulative removal: total removed so far (including this batch)
+        // against the maximum allowed fraction of the ORIGINAL dataset.
+        // The 0.5 removal rate threshold is a practical heuristic: if more
+        // than half the remaining data is flagged in one iteration, the
+        // in-control model is likely misspecified rather than there being
+        // individual outliers. This aligns with the breakdown point of
+        // classical outlier detection methods (Rousseeuw & Leroy, 1987).
+        if iterative_check_removal_budget(
+            all_removed.len(),
+            flagged_local.len(),
+            n_current,
+            n_original,
+            config,
+        ) {
+            chart = Some(current_chart);
+            break;
+        }
+
+        iterative_update_state(
+            &mut remaining_indices,
+            &mut all_removed,
+            &mut removal_history,
+            &mut removal_rates,
+            &flagged_local,
+            n_current,
+        );
+    }
+
+    // Build the final chart if we exhausted iterations without converging
+    let final_chart = match chart {
+        Some(c) => c,
+        None => {
+            let final_data = crate::cv::subset_rows(data, &remaining_indices);
+            spm_phase1(&final_data, argvals, &config.spm)?
+        }
+    };
+
+    Ok(IterativePhase1Result {
+        chart: final_chart,
+        n_iterations: removal_history.len(),
+        removed_indices: all_removed,
+        n_remaining: remaining_indices.len(),
+        removal_history,
+        removal_rates,
+    })
+}
+
+/// Validate iterative-specific parameters for `spm_phase1_iterative`.
+///
+/// Checks alpha, max_iterations, and max_removal_fraction ranges.
+fn iterative_validate(config: &IterativePhase1Config) -> Result<(), FdarError> {
     // alpha must be in (0, 1). Smaller alpha values (e.g., 0.01) produce wider
     // control limits and remove fewer observations per iteration, yielding a more
     // conservative procedure. Larger alpha (e.g., 0.10) is more aggressive and
@@ -183,96 +261,81 @@ pub fn spm_phase1_iterative(
             ),
         });
     }
+    Ok(())
+}
 
-    let n_original = data.nrows();
-    let mut remaining_indices: Vec<usize> = (0..n_original).collect();
-    let mut all_removed: Vec<usize> = vec![];
-    let mut removal_history: Vec<Vec<usize>> = vec![];
-    let mut removal_rates: Vec<f64> = vec![];
-
-    let mut chart = None;
-
-    for _ in 0..config.max_iterations {
-        // Build chart from current data
-        let current_data = crate::cv::subset_rows(data, &remaining_indices);
-        let current_chart = spm_phase1(&current_data, argvals, &config.spm)?;
-
-        // Monitor the same data against the chart
-        let monitor = spm_monitor(&current_chart, &current_data, argvals)?;
-
-        // Identify out-of-control observations
-        let n_current = remaining_indices.len();
-        let mut flagged_local: Vec<usize> = Vec::new();
-        for i in 0..n_current {
-            let is_flagged = (config.remove_t2_outliers && monitor.t2_alarm[i])
-                || (config.remove_spe_outliers && monitor.spe_alarm[i]);
-            if is_flagged {
-                flagged_local.push(i);
-            }
+/// Identify locally-indexed flagged observations for `spm_phase1_iterative`.
+///
+/// Returns local indices (relative to `remaining_indices`) of observations
+/// that exceed the T-squared or SPE control limits per the config flags.
+/// Pure scan with no side effects.
+fn iterative_identify_flagged(
+    monitor: &super::phase::SpmMonitorResult,
+    config: &IterativePhase1Config,
+    n_current: usize,
+) -> Vec<usize> {
+    let mut flagged_local: Vec<usize> = Vec::new();
+    for i in 0..n_current {
+        let is_flagged = (config.remove_t2_outliers && monitor.t2_alarm[i])
+            || (config.remove_spe_outliers && monitor.spe_alarm[i]);
+        if is_flagged {
+            flagged_local.push(i);
         }
-
-        // Converged: no observations flagged
-        if flagged_local.is_empty() {
-            chart = Some(current_chart);
-            break;
-        }
-
-        // Check cumulative removal: total removed so far (including this batch)
-        // against the maximum allowed fraction of the ORIGINAL dataset.
-        // The 0.5 removal rate threshold is a practical heuristic: if more
-        // than half the remaining data is flagged in one iteration, the
-        // in-control model is likely misspecified rather than there being
-        // individual outliers. This aligns with the breakdown point of
-        // classical outlier detection methods (Rousseeuw & Leroy, 1987).
-        let total_removed = all_removed.len() + flagged_local.len();
-        if total_removed as f64 / n_original as f64 > config.max_removal_fraction {
-            chart = Some(current_chart);
-            break;
-        }
-
-        // Check if remaining after removal would be too few
-        let n_after = n_current - flagged_local.len();
-        if n_after < 4 {
-            chart = Some(current_chart);
-            break;
-        }
-
-        // Map flagged local indices back to original indices
-        let flagged_original: Vec<usize> = flagged_local
-            .iter()
-            .map(|&i| remaining_indices[i])
-            .collect();
-
-        // Update remaining_indices by removing flagged ones
-        let flagged_set: std::collections::HashSet<usize> = flagged_local.iter().copied().collect();
-        remaining_indices = remaining_indices
-            .iter()
-            .enumerate()
-            .filter(|(local_i, _)| !flagged_set.contains(local_i))
-            .map(|(_, &orig_i)| orig_i)
-            .collect();
-
-        let removal_rate = flagged_original.len() as f64 / n_current as f64;
-        removal_rates.push(removal_rate);
-        all_removed.extend_from_slice(&flagged_original);
-        removal_history.push(flagged_original);
     }
+    flagged_local
+}
 
-    // Build the final chart if we exhausted iterations without converging
-    let final_chart = match chart {
-        Some(c) => c,
-        None => {
-            let final_data = crate::cv::subset_rows(data, &remaining_indices);
-            spm_phase1(&final_data, argvals, &config.spm)?
-        }
-    };
+/// Check whether the cumulative removal budget has been reached.
+///
+/// Returns `true` (should stop) when the total removed fraction would exceed
+/// `max_removal_fraction` of the original dataset, or when fewer than 4
+/// observations would remain after this batch.
+fn iterative_check_removal_budget(
+    all_removed_len: usize,
+    flagged_len: usize,
+    n_current: usize,
+    n_original: usize,
+    config: &IterativePhase1Config,
+) -> bool {
+    let total_removed = all_removed_len + flagged_len;
+    if total_removed as f64 / n_original as f64 > config.max_removal_fraction {
+        return true;
+    }
+    // Check if remaining after removal would be too few
+    let n_after = n_current - flagged_len;
+    n_after < 4
+}
 
-    Ok(IterativePhase1Result {
-        chart: final_chart,
-        n_iterations: removal_history.len(),
-        removed_indices: all_removed,
-        n_remaining: remaining_indices.len(),
-        removal_history,
-        removal_rates,
-    })
+/// Apply one removal step: map flagged local indices to original and update all state.
+///
+/// Updates `remaining_indices`, `all_removed`, `removal_history`, and `removal_rates`
+/// in place. The flagged-set construction and `remaining_indices` filter preserve
+/// the exact original order.
+fn iterative_update_state(
+    remaining_indices: &mut Vec<usize>,
+    all_removed: &mut Vec<usize>,
+    removal_history: &mut Vec<Vec<usize>>,
+    removal_rates: &mut Vec<f64>,
+    flagged_local: &[usize],
+    n_current: usize,
+) {
+    // Map flagged local indices back to original indices
+    let flagged_original: Vec<usize> = flagged_local
+        .iter()
+        .map(|&i| remaining_indices[i])
+        .collect();
+
+    // Update remaining_indices by removing flagged ones
+    let flagged_set: std::collections::HashSet<usize> = flagged_local.iter().copied().collect();
+    *remaining_indices = remaining_indices
+        .iter()
+        .enumerate()
+        .filter(|(local_i, _)| !flagged_set.contains(local_i))
+        .map(|(_, &orig_i)| orig_i)
+        .collect();
+
+    let removal_rate = flagged_original.len() as f64 / n_current as f64;
+    removal_rates.push(removal_rate);
+    all_removed.extend_from_slice(&flagged_original);
+    removal_history.push(flagged_original);
 }
