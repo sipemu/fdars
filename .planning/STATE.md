@@ -5,16 +5,16 @@ milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
 current_phase: 106
 current_phase_name: Top-Level Complexity Hotspots
 status: executing
-stopped_at: Completed 106-02-PLAN.md
-last_updated: "2026-09-14T05:47:40.413Z"
+stopped_at: Completed 106-03-PLAN.md
+last_updated: "2026-09-14T06:12:30.852Z"
 last_activity: 2026-09-13
 last_activity_desc: Phase 106 execution started
-state_head: 6ef8d107f815536c3353137bd885b98cede81609
+state_head: b2451db89f757091a760e46ca7b5414860d21484
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-13)
 ## Current Position
 
 Phase: 106 (Top-Level Complexity Hotspots) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-09-13 — Phase 106 execution started
 
@@ -87,6 +87,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | (none yet — v0.46.0) | — | — | — |
 | Phase 106 P01 | 7 | 3 tasks | 1 files |
 | Phase 106-top-level-complexity-hotspots P02 | 15 | 2 tasks | 1 files |
+| Phase 106 P03 | 21 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,8 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 106]: elastic_net_cd needed 4 private helpers (not 3 per RESEARCH.md): sweep fn itself scored cog 34 after extraction; added elastic_net_cd_update (single-column update, #[inline]) to bring sweep to cog 8
 - [Phase 106]: Split-validate pattern established: when extracted validate fn exceeds cog 25, split along natural dimension boundary (data shape guards vs. config param guards)
 - [Phase 106]: funfem_cluster and kcfc_cluster decomposed into 11 private helpers; both below pmat cognitive 25 / cyclomatic 30 thresholds; RNG draw order preserved for seeded numeric identity
+- [Phase 106]: boost_fofr: 3-way validate split (predictors + dims + config) needed because dims alone scored cog 26 after extraction; extra level brings dims to cog 15
+- [Phase 106]: bayesian_fosr_precompute returns xtx (not xbar) to avoid redundant compute_xtx in parent; RNG draw order preserved via unchanged outer iter loop with per-kk gibbs_step calls
 
 ### Pending Todos
 
@@ -134,8 +137,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T05:47:40.393Z
-Stopped at: Completed 106-02-PLAN.md
+Last session: 2026-09-14T06:12:30.835Z
+Stopped at: Completed 106-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
