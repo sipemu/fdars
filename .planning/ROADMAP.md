@@ -83,7 +83,11 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
   3. The critical `.unwrap()` at `depth/rpd.rs:229` is replaced with proper error handling (`?` or `.expect()` with a descriptive message), and `pmat analyze defects` reports 0 violations.
   4. The full `cargo test` suite passes with identical numeric output; clippy `--all-targets` and fmt stay clean; the public API surface is unchanged.
 
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 108-01-PLAN.md — TRACER: reword 2 SATD doc-comment false-positives + fix the critical `.unwrap()` at rpd.rs:229 (satd→0, defects→0)
+- [ ] 108-02-PLAN.md — entropy in `#[cfg(test)]` modules: shared `#[cfg(test)]` helpers in test_helpers.rs + call-site substitutions
+- [ ] 108-03-PLAN.md — entropy in production files: private per-file helpers (fem_smoothing, friedman, soft_dtw, scalar_on_shape, classification/fit)
+- [ ] 108-04-PLAN.md — entropy in `///` doc-comment examples + STABLE 3× entropy 0 confirmation / escalation
 
 ### Phase 109: Complexity Tail & Quality-Gate Green
 
@@ -135,7 +139,7 @@ Phases 106, 107, and 108 are independent and may run in parallel (or in any orde
 |-------|----------------|--------|-----------|
 | 106. Top-Level Complexity Hotspots | 4/4 | Complete    | 2026-09-14 |
 | 107. SPM Complexity Cluster | 4/4 | Complete    | 2026-09-14 |
-| 108. Entropy Extraction & SATD/Unwrap Cleanup | 0/TBD | Not started | - |
+| 108. Entropy Extraction & SATD/Unwrap Cleanup | 0/4 | Planned | - |
 | 109. Complexity Tail & Quality-Gate Green | 0/TBD | Not started | - |
 | 110. pmat CI Guardrail | 0/TBD | Not started | - |
 | 111. Release Preparation & Verification | 0/TBD | Not started | - |
