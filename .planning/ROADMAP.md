@@ -50,7 +50,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 - [x] 106-01-PLAN.md — TRACER: decompose wavelet/regression.rs hotspots (elastic_net_cd, wnet_cv_lambda, wnet) below pmat thresholds
 - [x] 106-02-PLAN.md — decompose clustering_advanced.rs hotspots (funfem_cluster, kcfc_cluster) below pmat thresholds
 - [x] 106-03-PLAN.md — decompose boosting_regression hotspots (boost_fofr, bayesian_fosr) below pmat thresholds
-- [ ] 106-04-PLAN.md — decompose pace_fpca (BLUP closure extraction) below pmat thresholds
+- [x] 106-04-PLAN.md — decompose pace_fpca (BLUP closure extraction) below pmat thresholds
 
 ### Phase 107: SPM Complexity Cluster
 
