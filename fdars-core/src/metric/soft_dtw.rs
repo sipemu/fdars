@@ -248,7 +248,7 @@ pub(crate) fn soft_dtw_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
     if n == 0 || data.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
     }
-    let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
+    let rows: Vec<Vec<f64>> = crate::helpers::extract_curves(data);
     let mut dist = self_distance_matrix(n, |i, j| soft_dtw_distance(&rows[i], &rows[j], gamma));
     // Fill diagonal: sdtw(x, x) is typically negative for finite gamma
     for i in 0..n {
@@ -264,8 +264,8 @@ pub(crate) fn soft_dtw_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f64) 
     if n1 == 0 || n2 == 0 || data1.ncols() == 0 || data2.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
     }
-    let rows1: Vec<Vec<f64>> = (0..n1).map(|i| data1.row(i)).collect();
-    let rows2: Vec<Vec<f64>> = (0..n2).map(|i| data2.row(i)).collect();
+    let rows1: Vec<Vec<f64>> = crate::helpers::extract_curves(data1);
+    let rows2: Vec<Vec<f64>> = crate::helpers::extract_curves(data2);
     cross_distance_matrix(n1, n2, |i, j| {
         soft_dtw_distance(&rows1[i], &rows2[j], gamma)
     })
@@ -277,7 +277,7 @@ pub(crate) fn soft_dtw_div_self_1d(data: &FdMatrix, gamma: f64) -> FdMatrix {
     if n == 0 || data.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
     }
-    let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
+    let rows: Vec<Vec<f64>> = crate::helpers::extract_curves(data);
     // Pre-compute self-distances for divergence
     let self_dists: Vec<f64> = iter_maybe_parallel!(0..n)
         .map(|i| soft_dtw_distance(&rows[i], &rows[i], gamma))
@@ -295,8 +295,8 @@ pub(crate) fn soft_dtw_div_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f
     if n1 == 0 || n2 == 0 || data1.ncols() == 0 || data2.ncols() == 0 {
         return FdMatrix::zeros(0, 0);
     }
-    let rows1: Vec<Vec<f64>> = (0..n1).map(|i| data1.row(i)).collect();
-    let rows2: Vec<Vec<f64>> = (0..n2).map(|i| data2.row(i)).collect();
+    let rows1: Vec<Vec<f64>> = crate::helpers::extract_curves(data1);
+    let rows2: Vec<Vec<f64>> = crate::helpers::extract_curves(data2);
     let self1: Vec<f64> = iter_maybe_parallel!(0..n1)
         .map(|i| soft_dtw_distance(&rows1[i], &rows1[i], gamma))
         .collect();
@@ -819,7 +819,7 @@ pub(crate) fn soft_dtw_barycenter_multirestart(
         };
     }
 
-    let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
+    let rows: Vec<Vec<f64>> = crate::helpers::extract_curves(data);
 
     // Guard: gamma must be strictly positive and finite — same fallback as the 4-arg entry.
     if !gamma.is_finite() || gamma <= 0.0 {

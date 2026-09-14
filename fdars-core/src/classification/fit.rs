@@ -454,6 +454,15 @@ impl FpcPredictor for ClassifFit {
 }
 
 // ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+/// Extract row `i` of a score matrix as an owned Vec (d-dimensional score vector).
+fn extract_score_row(scores: &FdMatrix, i: usize, d: usize) -> Vec<f64> {
+    (0..d).map(|j| scores[(i, j)]).collect()
+}
+
+// ---------------------------------------------------------------------------
 // Class probability vectors (for conformal prediction sets)
 // ---------------------------------------------------------------------------
 
@@ -474,7 +483,7 @@ pub(crate) fn classif_predict_probs(fit: &ClassifFit, scores: &FdMatrix) -> Vec<
             let g = *n_classes;
             (0..n)
                 .map(|i| {
-                    let x: Vec<f64> = (0..d).map(|j| scores[(i, j)]).collect();
+                    let x: Vec<f64> = extract_score_row(scores, i, d);
                     let disc: Vec<f64> = (0..g)
                         .map(|c| {
                             priors[c].max(1e-15).ln()
@@ -495,7 +504,7 @@ pub(crate) fn classif_predict_probs(fit: &ClassifFit, scores: &FdMatrix) -> Vec<
             let g = *n_classes;
             (0..n)
                 .map(|i| {
-                    let x: Vec<f64> = (0..d).map(|j| scores[(i, j)]).collect();
+                    let x: Vec<f64> = extract_score_row(scores, i, d);
                     let disc: Vec<f64> = (0..g)
                         .map(|c| {
                             priors[c].max(1e-15).ln()
@@ -519,7 +528,7 @@ pub(crate) fn classif_predict_probs(fit: &ClassifFit, scores: &FdMatrix) -> Vec<
             let k_nn = (*k).min(n_train);
             (0..n)
                 .map(|i| {
-                    let x: Vec<f64> = (0..d).map(|j| scores[(i, j)]).collect();
+                    let x: Vec<f64> = extract_score_row(scores, i, d);
                     let mut dists: Vec<(f64, usize)> = (0..n_train)
                         .map(|j| {
                             let d_sq: f64 = (0..d)
