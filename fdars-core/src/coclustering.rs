@@ -463,6 +463,37 @@ fn classification_log_likelihood(
     ll
 }
 
+/// Classification log-score for curve i under row-cluster k.
+///
+/// `score = ln(π_k) + Σ_l [ln(cp_l) + Σ_comp log_gaussian(bs[i,l,comp])]`
+fn row_cluster_score(
+    block_scores: &[f64],
+    col_props: &[f64],
+    block_params: &[BlockParams],
+    i: usize,
+    k: usize,
+    rp: f64,
+    l_blocks: usize,
+    eff_ncomp: usize,
+) -> f64 {
+    let mut score = rp.ln();
+    for l in 0..l_blocks {
+        let cp = col_props[l];
+        if cp < 1e-15 {
+            continue;
+        }
+        let bp = &block_params[k * l_blocks + l];
+        let base = (i * l_blocks + l) * eff_ncomp;
+        let mut block_ld = 0.0_f64;
+        for comp in 0..eff_ncomp {
+            block_ld +=
+                log_gaussian_1d(block_scores[base + comp], bp.mean[comp], bp.variance[comp]);
+        }
+        score += cp.ln() + block_ld;
+    }
+    score
+}
+
 /// E-row: for each curve i, pick argmax_k classification log-density.
 fn e_row_step(
     block_scores: &[f64],
@@ -483,24 +514,16 @@ fn e_row_step(
             if rp < 1e-15 {
                 continue;
             }
-            let mut score = rp.ln();
-            for l in 0..l_blocks {
-                let cp = col_props[l];
-                if cp < 1e-15 {
-                    continue;
-                }
-                let bp = &block_params[k * l_blocks + l];
-                let base = (i * l_blocks + l) * eff_ncomp;
-                let mut block_ld = 0.0_f64;
-                for comp in 0..eff_ncomp {
-                    block_ld += log_gaussian_1d(
-                        block_scores[base + comp],
-                        bp.mean[comp],
-                        bp.variance[comp],
-                    );
-                }
-                score += cp.ln() + block_ld;
-            }
+            let score = row_cluster_score(
+                block_scores,
+                col_props,
+                block_params,
+                i,
+                k,
+                rp,
+                l_blocks,
+                eff_ncomp,
+            );
             if score > best_score {
                 best_score = score;
                 best_k = k;
@@ -509,6 +532,82 @@ fn e_row_step(
         row_labels[i] = best_k;
     }
     row_labels
+}
+
+/// Build the per-point, per-component incremental score buffer for argument point j.
+///
+/// `s[i * eff_ncomp + comp] = w_j * (data[(i,j)] - mean_j) * rotation[(j, comp)]`
+fn build_point_scores(
+    data: &FdMatrix,
+    rotation: &FdMatrix,
+    j: usize,
+    w_j: f64,
+    mean_j: f64,
+    n: usize,
+    eff_ncomp: usize,
+) -> Vec<f64> {
+    let mut s = vec![0.0_f64; n * eff_ncomp];
+    for i in 0..n {
+        let val = w_j * (data[(i, j)] - mean_j);
+        for comp in 0..eff_ncomp {
+            s[i * eff_ncomp + comp] = val * rotation[(j, comp)];
+        }
+    }
+    s
+}
+
+/// Marginal LL gain from assigning argument point j to column-cluster `l_cand`.
+///
+/// Sums over all curves i; subtracts the current-label contribution when
+/// `l_cand != l_curr`. FP accumulation order preserved verbatim.
+fn col_candidate_gain(
+    s: &[f64],
+    row_labels: &[usize],
+    row_props: &[f64],
+    col_props: &[f64],
+    block_params: &[BlockParams],
+    l_cand: usize,
+    l_curr: usize,
+    n: usize,
+    l_blocks: usize,
+    eff_ncomp: usize,
+) -> f64 {
+    let cp = col_props[l_cand];
+    let mut gain = 0.0_f64;
+    for i in 0..n {
+        let k = row_labels[i];
+        let rp = row_props[k];
+        if rp < 1e-15 {
+            continue;
+        }
+        let bp_cand = &block_params[k * l_blocks + l_cand];
+        let mut ld_cand = 0.0_f64;
+        for comp in 0..eff_ncomp {
+            ld_cand += log_gaussian_1d(
+                s[i * eff_ncomp + comp],
+                bp_cand.mean[comp],
+                bp_cand.variance[comp],
+            );
+        }
+        gain += cp.ln() + ld_cand;
+
+        if l_curr != l_cand {
+            let bp_curr = &block_params[k * l_blocks + l_curr];
+            let mut ld_curr = 0.0_f64;
+            for comp in 0..eff_ncomp {
+                ld_curr += log_gaussian_1d(
+                    s[i * eff_ncomp + comp],
+                    bp_curr.mean[comp],
+                    bp_curr.variance[comp],
+                );
+            }
+            let cp_curr = col_props[l_curr];
+            if cp_curr >= 1e-15 {
+                gain -= cp_curr.ln() + ld_curr;
+            }
+        }
+    }
+    gain
 }
 
 /// E-col: for each argument point j, pick argmax_l of the classification log-density gain.
@@ -546,78 +645,29 @@ fn e_col_step(
 ) -> Vec<usize> {
     let mut new_col_labels = col_labels.to_vec();
 
-    // For each argument point j, compute the incremental block-score contribution
-    // from point j to each possible column-cluster l_cand, then pick argmax_l_cand
-    // of the sum (over curves i) of the resulting log-density gain.
     for j in 0..m {
-        let w_j = weights[j];
-        let mean_j = mean[j];
-
-        // Precompute for each curve i and FPC component: the weighted centered value at j
-        // s[i][comp] = weights[j] * (data[(i,j)] - mean[j]) * rotation[(j, comp)]
-        let mut s = vec![0.0_f64; n * eff_ncomp];
-        for i in 0..n {
-            let val = w_j * (data[(i, j)] - mean_j);
-            for comp in 0..eff_ncomp {
-                s[i * eff_ncomp + comp] = val * rotation[(j, comp)];
-            }
-        }
+        let s = build_point_scores(data, rotation, j, weights[j], mean[j], n, eff_ncomp);
+        let l_curr = col_labels[j];
 
         let mut best_l = 0usize;
         let mut best_gain = f64::NEG_INFINITY;
 
         for l_cand in 0..l_blocks {
-            let cp = col_props[l_cand];
-            if cp < 1e-15 {
+            if col_props[l_cand] < 1e-15 {
                 continue;
             }
-            // Compute the gain from assigning j → l_cand.
-            // For each curve i: the block score for (i, l_cand) gains s[i][·].
-            // We compute the log-density gain vs. the current assignment.
-            let l_curr = col_labels[j];
-            let mut gain = 0.0_f64;
-
-            for i in 0..n {
-                let k = row_labels[i];
-                let rp = row_props[k];
-                if rp < 1e-15 {
-                    continue;
-                }
-
-                let bp_cand = &block_params[k * l_blocks + l_cand];
-
-                // Log-density for l_cand: use the marginal contribution of point j
-                // (s[i][comp] = weights[j]*(data[(i,j)]-mean[j])*rotation[(j,comp)]) as a
-                // proxy for the gain from assigning j to l_cand. Terms constant across l_cand
-                // choices cancel in the argmax.
-                let mut ld_cand_new = 0.0_f64;
-                for comp in 0..eff_ncomp {
-                    ld_cand_new += log_gaussian_1d(
-                        s[i * eff_ncomp + comp],
-                        bp_cand.mean[comp],
-                        bp_cand.variance[comp],
-                    );
-                }
-                gain += cp.ln() + ld_cand_new;
-
-                // Subtract the current assignment's contribution for l_curr
-                if l_curr != l_cand {
-                    let bp_curr = &block_params[k * l_blocks + l_curr];
-                    let mut ld_curr = 0.0_f64;
-                    for comp in 0..eff_ncomp {
-                        ld_curr += log_gaussian_1d(
-                            s[i * eff_ncomp + comp],
-                            bp_curr.mean[comp],
-                            bp_curr.variance[comp],
-                        );
-                    }
-                    let cp_curr = col_props[l_curr];
-                    if cp_curr >= 1e-15 {
-                        gain -= cp_curr.ln() + ld_curr;
-                    }
-                }
-            }
-
+            let gain = col_candidate_gain(
+                &s,
+                row_labels,
+                row_props,
+                col_props,
+                block_params,
+                l_cand,
+                l_curr,
+                n,
+                l_blocks,
+                eff_ncomp,
+            );
             if gain > best_gain {
                 best_gain = gain;
                 best_l = l_cand;
