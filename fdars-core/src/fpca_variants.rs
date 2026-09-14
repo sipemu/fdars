@@ -276,6 +276,52 @@ pub fn dynamical_correlation(
 ) -> Result<f64, FdarError> {
     let (nx, mx) = x.shape();
     let (ny, my) = y.shape();
+    dyncorr_validate_dims(nx, ny, mx, my, argvals)?;
+    let m = mx;
+    let n = nx;
+    let domain_length = argvals[m - 1] - argvals[0];
+    if domain_length <= 0.0 || domain_length.is_nan() {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "argvals must be increasing with positive domain length".to_string(),
+        });
+    }
+    let w = simpsons_weights(argvals);
+
+    // Step 1: per-curve integrated-mean centering.
+    let mut xc1 = x.clone();
+    let mut yc1 = y.clone();
+    dyncorr_center_integrated_mean(&mut xc1, x, n, m, &w, domain_length);
+    dyncorr_center_integrated_mean(&mut yc1, y, n, m, &w, domain_length);
+
+    // Step 2: population (pointwise) centering.
+    dyncorr_center_population(&mut xc1, n, m);
+    dyncorr_center_population(&mut yc1, n, m);
+
+    // Step 3: functional L2 standardization per curve.
+    dyncorr_standardize(&mut xc1, n, m, &w, domain_length);
+    dyncorr_standardize(&mut yc1, n, m, &w, domain_length);
+
+    // Step 4: per-subject integrated inner product / domain_length, averaged.
+    let total: f64 = (0..n)
+        .map(|i| {
+            (0..m)
+                .map(|j| xc1[(i, j)] * yc1[(i, j)] * w[j])
+                .sum::<f64>()
+                / domain_length
+        })
+        .sum();
+    Ok(total / n as f64)
+}
+
+/// Validate dimension / argvals guards for `dynamical_correlation`.
+fn dyncorr_validate_dims(
+    nx: usize,
+    ny: usize,
+    mx: usize,
+    my: usize,
+    argvals: &[f64],
+) -> Result<(), FdarError> {
     if nx != ny {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
@@ -304,72 +350,51 @@ pub fn dynamical_correlation(
             actual: nx.to_string(),
         });
     }
-    let m = mx;
-    let n = nx;
-    let domain_length = argvals[m - 1] - argvals[0];
-    if domain_length <= 0.0 || domain_length.is_nan() {
-        return Err(FdarError::InvalidParameter {
-            parameter: "argvals",
-            message: "argvals must be increasing with positive domain length".to_string(),
-        });
-    }
-    let w = simpsons_weights(argvals);
+    Ok(())
+}
 
-    // Step 1: per-curve integrated-mean centering.
-    let mut xc1 = x.clone();
-    let mut yc1 = y.clone();
-    for (src, dst) in [(x, &mut xc1), (y, &mut yc1)] {
-        for i in 0..n {
-            let aver: f64 = (0..m).map(|j| src[(i, j)] * w[j]).sum::<f64>() / domain_length;
-            for j in 0..m {
-                dst[(i, j)] -= aver;
-            }
-        }
-    }
-
-    // Step 2: population (pointwise) centering.
-    let center_pop = |mat: &mut FdMatrix| {
+/// Per-curve integrated-mean centering step for `dynamical_correlation`.
+fn dyncorr_center_integrated_mean(
+    dst: &mut FdMatrix,
+    src: &FdMatrix,
+    n: usize,
+    m: usize,
+    w: &[f64],
+    domain_length: f64,
+) {
+    for i in 0..n {
+        let aver: f64 = (0..m).map(|j| src[(i, j)] * w[j]).sum::<f64>() / domain_length;
         for j in 0..m {
-            let mean_j: f64 = (0..n).map(|i| mat[(i, j)]).sum::<f64>() / n as f64;
-            for i in 0..n {
-                mat[(i, j)] -= mean_j;
-            }
+            dst[(i, j)] -= aver;
         }
-    };
-    center_pop(&mut xc1);
-    center_pop(&mut yc1);
+    }
+}
 
-    // Step 3: functional L2 standardization per curve.
-    let standardize = |mat: &mut FdMatrix| {
+/// Pointwise population-mean centering step for `dynamical_correlation`.
+fn dyncorr_center_population(mat: &mut FdMatrix, n: usize, m: usize) {
+    for j in 0..m {
+        let mean_j: f64 = (0..n).map(|i| mat[(i, j)]).sum::<f64>() / n as f64;
         for i in 0..n {
-            let norm_sq: f64 =
-                (0..m).map(|j| mat[(i, j)].powi(2) * w[j]).sum::<f64>() / domain_length;
-            let norm = norm_sq.sqrt();
-            if norm < 1e-15 {
-                for j in 0..m {
-                    mat[(i, j)] = 0.0;
-                }
-            } else {
-                for j in 0..m {
-                    mat[(i, j)] /= norm;
-                }
+            mat[(i, j)] -= mean_j;
+        }
+    }
+}
+
+/// Functional L2 standardization per curve for `dynamical_correlation`.
+fn dyncorr_standardize(mat: &mut FdMatrix, n: usize, m: usize, w: &[f64], domain_length: f64) {
+    for i in 0..n {
+        let norm_sq: f64 = (0..m).map(|j| mat[(i, j)].powi(2) * w[j]).sum::<f64>() / domain_length;
+        let norm = norm_sq.sqrt();
+        if norm < 1e-15 {
+            for j in 0..m {
+                mat[(i, j)] = 0.0;
+            }
+        } else {
+            for j in 0..m {
+                mat[(i, j)] /= norm;
             }
         }
-    };
-    standardize(&mut xc1);
-    standardize(&mut yc1);
-
-    // Step 4: per-subject integrated inner product / domain_length, averaged.
-    let total: f64 = (0..n)
-        .map(|i| {
-            let z: f64 = (0..m)
-                .map(|j| xc1[(i, j)] * yc1[(i, j)] * w[j])
-                .sum::<f64>()
-                / domain_length;
-            z
-        })
-        .sum();
-    Ok(total / n as f64)
+    }
 }
 
 /// Functional SVD / cross-FPCA between two paired functional samples.
@@ -414,6 +439,57 @@ pub fn fsvd(
 ) -> Result<FsvdResult, FdarError> {
     let (nx, p) = x.shape();
     let (ny, q) = y.shape();
+    fsvd_validate(nx, ny, p, q, argvals_x, argvals_y, ncomp)?;
+    let k = ncomp.min(p).min(q);
+
+    // 1. Empirical cross-covariance (p×q).
+    let c = cross_covariance(x, y)?;
+
+    // 2. Integration weights and their square roots on each grid.
+    let wx = simpsons_weights(argvals_x);
+    let wy = simpsons_weights(argvals_y);
+    let sqrt_wx: Vec<f64> = wx.iter().map(|v| v.sqrt()).collect();
+    let sqrt_wy: Vec<f64> = wy.iter().map(|v| v.sqrt()).collect();
+
+    // 3. Weighted cross-covariance Cw[(s,t)] = sqrt_wx[s]·C[(s,t)]·sqrt_wy[t].
+    let mut cw = FdMatrix::zeros(p, q);
+    for s in 0..p {
+        for t in 0..q {
+            cw[(s, t)] = sqrt_wx[s] * c[(s, t)] * sqrt_wy[t];
+        }
+    }
+
+    // 4–5. SVD of Cw via symmetric eigendecomposition of the smaller Gram matrix,
+    //      followed by recovery of singular values and singular functions at unit L2 norm.
+    let (singular_values, mut left, mut right) =
+        fsvd_gram_eigen_and_recover(&cw, p, q, k, &sqrt_wx, &sqrt_wy);
+
+    // 6. Deterministic sign convention: flip left AND right together.
+    fsvd_fix_signs(&mut left, &mut right, p, q, k);
+
+    // 7. Per-sample scores from centered samples.
+    let (left_scores, right_scores) =
+        fsvd_compute_scores(x, y, &left, &right, &wx, &wy, nx, p, q, k);
+
+    Ok(FsvdResult {
+        singular_values,
+        left_functions: left,
+        right_functions: right,
+        left_scores,
+        right_scores,
+    })
+}
+
+/// Validate all inputs for `fsvd`.
+fn fsvd_validate(
+    nx: usize,
+    ny: usize,
+    p: usize,
+    q: usize,
+    argvals_x: &[f64],
+    argvals_y: &[f64],
+    ncomp: usize,
+) -> Result<(), FdarError> {
     if nx != ny {
         return Err(FdarError::InvalidDimension {
             parameter: "y",
@@ -448,98 +524,120 @@ pub fn fsvd(
             message: format!("ncomp must be >= 1, got {ncomp}"),
         });
     }
-    let k = ncomp.min(p).min(q);
+    Ok(())
+}
 
-    // 1. Empirical cross-covariance (p×q).
-    let c = cross_covariance(x, y)?;
-
-    // 2. Integration weights and their square roots on each grid.
-    let wx = simpsons_weights(argvals_x);
-    let wy = simpsons_weights(argvals_y);
-    let sqrt_wx: Vec<f64> = wx.iter().map(|v| v.sqrt()).collect();
-    let sqrt_wy: Vec<f64> = wy.iter().map(|v| v.sqrt()).collect();
-
-    // 3. Weighted cross-covariance Cw[(s,t)] = sqrt_wx[s]·C[(s,t)]·sqrt_wy[t].
-    let mut cw = FdMatrix::zeros(p, q);
-    for s in 0..p {
-        for t in 0..q {
-            cw[(s, t)] = sqrt_wx[s] * c[(s, t)] * sqrt_wy[t];
-        }
-    }
-
-    // 4. SVD of Cw via the symmetric eigendecomposition of the smaller Gram
-    //    matrix (robust for rank-deficient Cw; nalgebra's general SVD can fail to
-    //    converge on near-rank-1 inputs). Decompose the smaller of Cw·Cwᵀ / Cwᵀ·Cw.
-    let gram_on_right = q <= p; // eigendecompose the (min×min) Gram matrix
-                                // OPT-B copy removal: build the Gram matrix directly (no `gram` staging Vec). from_fn's
-                                // (row, col) = (a, b) matches the previous column-major `gram[a + b*dim]` fill exactly.
+/// Build and eigendecompose the smaller Gram matrix of `Cw`, then recover
+/// singular values and left/right singular functions (unit functional L2 norm).
+///
+/// Returns `(singular_values, left_p×k, right_q×k)`.
+fn fsvd_gram_eigen_and_recover(
+    cw: &FdMatrix,
+    p: usize,
+    q: usize,
+    k: usize,
+    sqrt_wx: &[f64],
+    sqrt_wy: &[f64],
+) -> (Vec<f64>, FdMatrix, FdMatrix) {
+    // Decompose the smaller of Cw·Cwᵀ (p×p) or Cwᵀ·Cw (q×q).
+    // OPT-B copy removal: build the Gram matrix directly via from_fn.
+    let gram_on_right = q <= p;
     let eigen = if gram_on_right {
-        // Cwᵀ·Cw is q×q: gram[(a,b)] = Σ_s cw[(s,a)]·cw[(s,b)].
         DMatrix::from_fn(q, q, |a, b| {
             (0..p).map(|s| cw[(s, a)] * cw[(s, b)]).sum::<f64>()
         })
     } else {
-        // Cw·Cwᵀ is p×p: gram[(a,b)] = Σ_t cw[(a,t)]·cw[(b,t)].
         DMatrix::from_fn(p, p, |a, b| {
             (0..q).map(|t| cw[(a, t)] * cw[(b, t)]).sum::<f64>()
         })
     }
     .symmetric_eigen();
+
     let mut pairs: Vec<(f64, usize)> = (0..eigen.eigenvalues.len())
         .map(|idx| (eigen.eigenvalues[idx], idx))
         .collect();
     pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     let pairs: Vec<(f64, usize)> = pairs.into_iter().take(k).collect();
 
-    // 5. Recover singular values + both singular vectors, unscaling to unit L2.
     let mut singular_values = Vec::with_capacity(k);
     let mut left = FdMatrix::zeros(p, k);
     let mut right = FdMatrix::zeros(q, k);
     for (comp, &(lam, col_idx)) in pairs.iter().enumerate() {
         let sigma = lam.max(0.0).sqrt();
         singular_values.push(sigma);
-        // Raw (Euclidean-orthonormal) singular vectors of Cw.
-        let mut uk = vec![0.0_f64; p];
-        let mut vk = vec![0.0_f64; q];
-        if gram_on_right {
-            // Eigenvector is the right vector v_k (length q); u_k = Cw·v_k / σ.
-            for t in 0..q {
-                vk[t] = eigen.eigenvectors[(t, col_idx)];
-            }
-            if sigma > 1e-12 {
-                for s in 0..p {
-                    uk[s] = (0..q).map(|t| cw[(s, t)] * vk[t]).sum::<f64>() / sigma;
-                }
-            }
-        } else {
-            // Eigenvector is the left vector u_k (length p); v_k = Cwᵀ·u_k / σ.
-            for s in 0..p {
-                uk[s] = eigen.eigenvectors[(s, col_idx)];
-            }
-            if sigma > 1e-12 {
-                for t in 0..q {
-                    vk[t] = (0..p).map(|s| cw[(s, t)] * uk[s]).sum::<f64>() / sigma;
-                }
-            }
-        }
-        // Unscale to unit functional L2 norm on each grid.
-        for s in 0..p {
-            left[(s, comp)] = if sqrt_wx[s] > 1e-15 {
-                uk[s] / sqrt_wx[s]
-            } else {
-                uk[s]
-            };
-        }
+        fsvd_fill_singular_vecs(
+            &eigen.eigenvectors,
+            cw,
+            p,
+            q,
+            comp,
+            col_idx,
+            sigma,
+            gram_on_right,
+            sqrt_wx,
+            sqrt_wy,
+            &mut left,
+            &mut right,
+        );
+    }
+    (singular_values, left, right)
+}
+
+/// Fill one component of the left/right singular function matrices.
+fn fsvd_fill_singular_vecs(
+    evecs: &nalgebra::DMatrix<f64>,
+    cw: &FdMatrix,
+    p: usize,
+    q: usize,
+    comp: usize,
+    col_idx: usize,
+    sigma: f64,
+    gram_on_right: bool,
+    sqrt_wx: &[f64],
+    sqrt_wy: &[f64],
+    left: &mut FdMatrix,
+    right: &mut FdMatrix,
+) {
+    let mut uk = vec![0.0_f64; p];
+    let mut vk = vec![0.0_f64; q];
+    if gram_on_right {
         for t in 0..q {
-            right[(t, comp)] = if sqrt_wy[t] > 1e-15 {
-                vk[t] / sqrt_wy[t]
-            } else {
-                vk[t]
-            };
+            vk[t] = evecs[(t, col_idx)];
+        }
+        if sigma > 1e-12 {
+            for s in 0..p {
+                uk[s] = (0..q).map(|t| cw[(s, t)] * vk[t]).sum::<f64>() / sigma;
+            }
+        }
+    } else {
+        for s in 0..p {
+            uk[s] = evecs[(s, col_idx)];
+        }
+        if sigma > 1e-12 {
+            for t in 0..q {
+                vk[t] = (0..p).map(|s| cw[(s, t)] * uk[s]).sum::<f64>() / sigma;
+            }
         }
     }
+    for s in 0..p {
+        left[(s, comp)] = if sqrt_wx[s] > 1e-15 {
+            uk[s] / sqrt_wx[s]
+        } else {
+            uk[s]
+        };
+    }
+    for t in 0..q {
+        right[(t, comp)] = if sqrt_wy[t] > 1e-15 {
+            vk[t] / sqrt_wy[t]
+        } else {
+            vk[t]
+        };
+    }
+}
 
-    // 6. Deterministic sign convention: flip left AND right together.
+/// Apply deterministic sign convention: flip left AND right singular functions together
+/// so that the max-|abs| element of each left function is positive.
+fn fsvd_fix_signs(left: &mut FdMatrix, right: &mut FdMatrix, p: usize, q: usize, k: usize) {
     for comp in 0..k {
         let s_max = (0..p)
             .max_by(|&a, &b| {
@@ -558,8 +656,23 @@ pub fn fsvd(
             }
         }
     }
+}
 
-    // 7. Per-sample scores from centered samples.
+/// Compute per-sample scores from centered samples and singular functions.
+///
+/// Returns `(left_scores n×k, right_scores n×k)`.
+fn fsvd_compute_scores(
+    x: &FdMatrix,
+    y: &FdMatrix,
+    left: &FdMatrix,
+    right: &FdMatrix,
+    wx: &[f64],
+    wy: &[f64],
+    nx: usize,
+    p: usize,
+    q: usize,
+    k: usize,
+) -> (FdMatrix, FdMatrix) {
     let xc = fdata::center_1d(x);
     let yc = fdata::center_1d(y);
     let mut left_scores = FdMatrix::zeros(nx, k);
@@ -574,14 +687,87 @@ pub fn fsvd(
                 .sum::<f64>();
         }
     }
+    (left_scores, right_scores)
+}
 
-    Ok(FsvdResult {
-        singular_values,
-        left_functions: left,
-        right_functions: right,
-        left_scores,
-        right_scores,
+/// Eigendecompose `W^{1/2}·Cov·W^{1/2}` and recover loadings for `ssvd`.
+///
+/// Returns `(singular_values, rotation)` where `rotation` is m × actual_ncomp.
+fn ssvd_eigen_and_loadings(
+    smooth_cov: &FdMatrix,
+    w: &[f64],
+    m: usize,
+    n: usize,
+    ncomp: usize,
+) -> (Vec<f64>, FdMatrix) {
+    let sqrt_w: Vec<f64> = w.iter().map(|v| v.sqrt()).collect();
+    // OPT-C copy removal: build the scaled covariance directly (no `c_scaled` staging Vec).
+    let eigen = DMatrix::from_fn(m, m, |row, col| {
+        sqrt_w[row] * smooth_cov[(row, col)] * sqrt_w[col]
     })
+    .symmetric_eigen();
+    let mut pairs: Vec<(f64, usize)> = (0..eigen.eigenvalues.len())
+        .map(|k| (eigen.eigenvalues[k], k))
+        .collect();
+    pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    let pairs: Vec<(f64, usize)> = pairs
+        .into_iter()
+        .filter(|&(lam, _)| lam > 0.0)
+        .take(ncomp)
+        .collect();
+    let actual = pairs.len();
+    let denom = (n - 1) as f64;
+    let mut singular_values = Vec::with_capacity(actual);
+    let mut rotation = FdMatrix::zeros(m, actual);
+    for (comp, &(lam, col_idx)) in pairs.iter().enumerate() {
+        // eigenvalue of W^{1/2}·Cov·W^{1/2} == S^2/(n-1) ⇒ S = sqrt(lam·(n-1)).
+        singular_values.push((lam * denom).sqrt());
+        for j in 0..m {
+            let raw = eigen.eigenvectors[(j, col_idx)];
+            rotation[(j, comp)] = if sqrt_w[j] > 1e-15 {
+                raw / sqrt_w[j]
+            } else {
+                raw
+            };
+        }
+    }
+    // Sign convention: max-|abs| element positive.
+    for comp in 0..actual {
+        let j_max = (0..m)
+            .max_by(|&a, &b| {
+                rotation[(a, comp)]
+                    .abs()
+                    .partial_cmp(&rotation[(b, comp)].abs())
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap_or(0);
+        if rotation[(j_max, comp)] < 0.0 {
+            for j in 0..m {
+                rotation[(j, comp)] = -rotation[(j, comp)];
+            }
+        }
+    }
+    (singular_values, rotation)
+}
+
+/// Compute FPCA scores for `ssvd`: weighted projection of centered data onto eigenfunctions.
+fn ssvd_compute_scores(
+    centered: &FdMatrix,
+    rotation: &FdMatrix,
+    w: &[f64],
+    n: usize,
+    m: usize,
+    actual: usize,
+) -> FdMatrix {
+    let mut scores = FdMatrix::zeros(n, actual);
+    for comp in 0..actual {
+        for i in 0..n {
+            scores[(i, comp)] = (0..m)
+                .map(|j| centered[(i, j)] * rotation[(j, comp)] * w[j])
+                .sum::<f64>();
+        }
+    }
+    scores
 }
 
 /// Separable row-then-column Gaussian smoothing of an m×m covariance surface.
@@ -729,65 +915,11 @@ pub fn ssvd(
 
     // Sandwich eigendecompose: W^{1/2}·Cov·W^{1/2} (inlined pace_fpca pattern).
     let w = simpsons_weights(argvals);
-    let sqrt_w: Vec<f64> = w.iter().map(|v| v.sqrt()).collect();
-    // OPT-C copy removal: build the scaled covariance directly (no `c_scaled` staging Vec).
-    // from_fn's (row, col) matches the previous column-major `c_scaled[row + col*m]` fill.
-    let eigen = DMatrix::from_fn(m, m, |row, col| {
-        sqrt_w[row] * smooth_cov[(row, col)] * sqrt_w[col]
-    })
-    .symmetric_eigen();
-    let mut pairs: Vec<(f64, usize)> = (0..eigen.eigenvalues.len())
-        .map(|k| (eigen.eigenvalues[k], k))
-        .collect();
-    pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    let pairs: Vec<(f64, usize)> = pairs
-        .into_iter()
-        .filter(|&(lam, _)| lam > 0.0)
-        .take(ncomp)
-        .collect();
-    let actual = pairs.len();
-
-    let denom = (n - 1) as f64;
-    let mut singular_values = Vec::with_capacity(actual);
-    let mut rotation = FdMatrix::zeros(m, actual);
-    for (comp, &(lam, col_idx)) in pairs.iter().enumerate() {
-        // eigenvalue of W^{1/2}·Cov·W^{1/2} == S^2/(n-1) ⇒ S = sqrt(lam·(n-1)).
-        singular_values.push((lam * denom).sqrt());
-        for j in 0..m {
-            let raw = eigen.eigenvectors[(j, col_idx)];
-            rotation[(j, comp)] = if sqrt_w[j] > 1e-15 {
-                raw / sqrt_w[j]
-            } else {
-                raw
-            };
-        }
-    }
-    // Sign convention: max-|abs| element positive.
-    for comp in 0..actual {
-        let j_max = (0..m)
-            .max_by(|&a, &b| {
-                rotation[(a, comp)]
-                    .abs()
-                    .partial_cmp(&rotation[(b, comp)].abs())
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .unwrap_or(0);
-        if rotation[(j_max, comp)] < 0.0 {
-            for j in 0..m {
-                rotation[(j, comp)] = -rotation[(j, comp)];
-            }
-        }
-    }
+    let (singular_values, rotation) = ssvd_eigen_and_loadings(&smooth_cov, &w, m, n, ncomp);
+    let actual = rotation.ncols();
 
     // Scores: weighted projection of centered data onto eigenfunctions.
-    let mut scores = FdMatrix::zeros(n, actual);
-    for comp in 0..actual {
-        for i in 0..n {
-            scores[(i, comp)] = (0..m)
-                .map(|j| centered[(i, j)] * rotation[(j, comp)] * w[j])
-                .sum::<f64>();
-        }
-    }
+    let scores = ssvd_compute_scores(&centered, &rotation, &w, n, m, actual);
 
     Ok(FpcaResult {
         singular_values,
