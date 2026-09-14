@@ -255,100 +255,18 @@ pub fn peer(
     let (n, m) = data.shape();
 
     // --- Entry validation ---
-    if n < 2 {
-        // Centering collapses a single observation to β = 0 (all-zero design);
-        // require at least 2 so the fit is not silently degenerate.
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "at least 2 observations".to_string(),
-            actual: format!("{n} rows"),
-        });
-    }
-    if m < 3 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "at least 3 evaluation points (m >= 3)".to_string(),
-            actual: format!("{m} columns"),
-        });
-    }
-    if argvals.len() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "argvals",
-            expected: format!("{m}"),
-            actual: format!("{}", argvals.len()),
-        });
-    }
-    if y.len() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "y",
-            expected: format!("{n}"),
-            actual: format!("{}", y.len()),
-        });
-    }
     // Non-finite inputs would propagate into finite-but-wrong normal equations,
     // bypassing the post-solve β NaN guard — reject them explicitly.
-    if y.iter().any(|v| !v.is_finite()) {
-        return Err(FdarError::InvalidParameter {
-            parameter: "y",
-            message: "response contains non-finite values (NaN/Inf)".to_string(),
-        });
-    }
-    if argvals.iter().any(|v| !v.is_finite()) {
-        return Err(FdarError::InvalidParameter {
-            parameter: "argvals",
-            message: "argvals contains non-finite values (NaN/Inf)".to_string(),
-        });
-    }
-    // Simpson's weights assume a strictly increasing grid; a non-monotone grid
-    // yields negative weights that silently corrupt the design integral.
-    if argvals.windows(2).any(|w| w[1] <= w[0]) {
-        return Err(FdarError::InvalidParameter {
-            parameter: "argvals",
-            message: "argvals must be strictly increasing".to_string(),
-        });
-    }
+    peer_validate_dims(n, m, argvals, y)?;
 
-    // 1. Integration weights w[j]
-    let w = simpsons_weights(argvals);
-
-    // 2. Weighted design: wmat[i,j] = data[i,j] * w[j]
-    let mut wmat = FdMatrix::zeros(n, m);
-    for i in 0..n {
-        for j in 0..m {
-            wmat[(i, j)] = data[(i, j)] * w[j];
-        }
-    }
-
-    // 3. Center response and design
-    let y_bar: f64 = y.iter().sum::<f64>() / n as f64;
-    let yc: Vec<f64> = y.iter().map(|&yi| yi - y_bar).collect();
-
-    let w_bar: Vec<f64> = (0..m)
-        .map(|j| (0..n).map(|i| wmat[(i, j)]).sum::<f64>() / n as f64)
-        .collect();
-
-    let mut wc = FdMatrix::zeros(n, m);
-    for i in 0..n {
-        for j in 0..m {
-            wc[(i, j)] = wmat[(i, j)] - w_bar[j];
-        }
-    }
+    // 1–3. Integration weights, weighted design, centering
+    let (wc, yc, w_bar, y_bar) = peer_build_centered_design(data, y, argvals, n, m);
 
     // 4. Build penalty Q (m×m, row-major)
     let q = build_q(m, &config.penalty)?;
 
     // 5. WtW (m×m, row-major, symmetric) and wty (length m)
-    let mut wtw = vec![0.0_f64; m * m];
-    for j in 0..m {
-        for k in j..m {
-            let s: f64 = (0..n).map(|i| wc[(i, j)] * wc[(i, k)]).sum();
-            wtw[j * m + k] = s;
-            wtw[k * m + j] = s;
-        }
-    }
-    let wty: Vec<f64> = (0..m)
-        .map(|j| (0..n).map(|i| wc[(i, j)] * yc[i]).sum())
-        .collect();
+    let (wtw, wty) = peer_compute_wtw_wty(&wc, &yc, n, m);
 
     // 6. λ selection — dispatch based on config.lambda
     let (lambda, gcv_score, lambda_method) = match &config.lambda {
@@ -728,6 +646,121 @@ impl LocalPeerResult {
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/// Validate dimensions and input invariants for `peer()` and `lpeer()`.
+///
+/// Checks: `n >= 2`, `m >= 3`, `argvals.len() == m`, `y.len() == n`,
+/// y finite, argvals finite, argvals strictly increasing.
+fn peer_validate_dims(n: usize, m: usize, argvals: &[f64], y: &[f64]) -> Result<(), FdarError> {
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 2 observations".to_string(),
+            actual: format!("{n} rows"),
+        });
+    }
+    if m < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 3 evaluation points (m >= 3)".to_string(),
+            actual: format!("{m} columns"),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    if y.len() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "y",
+            expected: format!("{n}"),
+            actual: format!("{}", y.len()),
+        });
+    }
+    peer_validate_argvals(argvals)?;
+    if y.iter().any(|v| !v.is_finite()) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "y",
+            message: "response contains non-finite values (NaN/Inf)".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Validate argvals: finite values and strictly increasing order.
+fn peer_validate_argvals(argvals: &[f64]) -> Result<(), FdarError> {
+    if argvals.iter().any(|v| !v.is_finite()) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "argvals contains non-finite values (NaN/Inf)".to_string(),
+        });
+    }
+    // Simpson's weights assume a strictly increasing grid; a non-monotone grid
+    // yields negative weights that silently corrupt the design integral.
+    if argvals.windows(2).any(|w| w[1] <= w[0]) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "argvals",
+            message: "argvals must be strictly increasing".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Build Simpson-weighted centered design matrix and centered response.
+///
+/// Returns `(wc, yc, w_bar, y_bar)` where:
+/// - `wc[i,j] = data[i,j]*w[j] - w_bar[j]` (centered weighted design, n×m)
+/// - `yc[i] = y[i] - y_bar` (centered response, length n)
+/// - `w_bar[j]` = column mean of weighted design (length m)
+/// - `y_bar` = mean of y
+fn peer_build_centered_design(
+    data: &FdMatrix,
+    y: &[f64],
+    argvals: &[f64],
+    n: usize,
+    m: usize,
+) -> (FdMatrix, Vec<f64>, Vec<f64>, f64) {
+    let w = simpsons_weights(argvals);
+    // Weighted design: wmat[i,j] = data[i,j] * w[j]
+    let mut wmat = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        for j in 0..m {
+            wmat[(i, j)] = data[(i, j)] * w[j];
+        }
+    }
+    let y_bar: f64 = y.iter().sum::<f64>() / n as f64;
+    let yc: Vec<f64> = y.iter().map(|&yi| yi - y_bar).collect();
+    let w_bar: Vec<f64> = (0..m)
+        .map(|j| (0..n).map(|i| wmat[(i, j)]).sum::<f64>() / n as f64)
+        .collect();
+    let mut wc = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        for j in 0..m {
+            wc[(i, j)] = wmat[(i, j)] - w_bar[j];
+        }
+    }
+    (wc, yc, w_bar, y_bar)
+}
+
+/// Compute the cross-product matrices WtW (m×m, row-major) and Wty (length m)
+/// from the centered design `wc` and centered response `yc`.
+fn peer_compute_wtw_wty(wc: &FdMatrix, yc: &[f64], n: usize, m: usize) -> (Vec<f64>, Vec<f64>) {
+    let mut wtw = vec![0.0_f64; m * m];
+    for j in 0..m {
+        for k in j..m {
+            let s: f64 = (0..n).map(|i| wc[(i, j)] * wc[(i, k)]).sum();
+            wtw[j * m + k] = s;
+            wtw[k * m + j] = s;
+        }
+    }
+    let wty: Vec<f64> = (0..m)
+        .map(|j| (0..n).map(|i| wc[(i, j)] * yc[i]).sum())
+        .collect();
+    (wtw, wty)
+}
 
 /// Build the m×m penalty matrix Q (flat row-major) for the given family.
 fn build_q(m: usize, penalty: &PeerPenalty) -> Result<Vec<f64>, FdarError> {
