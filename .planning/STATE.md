@@ -5,16 +5,16 @@ milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
 current_phase: 107
 current_phase_name: SPM Complexity Cluster
 status: executing
-stopped_at: Completed Phase 107 Plan 02 (107-02-PLAN.md)
-last_updated: "2026-09-14T07:21:27.308Z"
+stopped_at: Completed 107-03-PLAN.md
+last_updated: "2026-09-14T09:21:48.732Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 107 execution started
-state_head: 3c07f0d3b3c0779cc9968d98bbe233011ccbd227
+state_head: f7dedb87b9e8de9e876bc8ca3d46775e999904eb
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-13)
 ## Current Position
 
 Phase: 107 (SPM Complexity Cluster) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-09-14 — Phase 107 execution started
 
@@ -91,6 +91,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 106 P04 | 18 | 2 tasks | 1 files |
 | Phase 107 P01 | 408 | 2 tasks | 2 files |
 | Phase 107 P02 | 360 | 3 tasks | 3 files |
+| Phase 107-spm-complexity-cluster P03 | 25 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,7 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 107]: Split-validate applied to amewma_validate (7 guards): split into amewma_validate_lambda_range + amewma_validate_params to keep each helper below cog 25
 - [Phase 107]: iterative_check_removal_budget returns bool covering both max_removal_fraction and n_after<4 guards; called before iterative_update_state to replicate original break ordering
 - [Phase 107]: mfpca_build_stacked takes &mut [f64] for scales — propagates scales[p]=1.0 mutation back to caller (clippy ptr_arg fix)
+- [Phase 107]: 107-03: extract validate-and-call helpers in ewma/mewma/stats/phase — mewma_validate returns ncomp, spe_mv_compute_var returns Vec per-obs, monitor_fields_validate consolidates 5 guards (cog 15, no split-validate needed)
 
 ### Pending Todos
 
@@ -144,8 +146,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T07:21:27.286Z
-Stopped at: Completed Phase 107 Plan 02 (107-02-PLAN.md)
+Last session: 2026-09-14T09:21:48.710Z
+Stopped at: Completed 107-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
