@@ -134,6 +134,40 @@ pub fn spe_contributions(
     reconstructed_vars: &[&FdMatrix],
     argvals_list: &[&[f64]],
 ) -> Result<FdMatrix, FdarError> {
+    let p = spe_contribs_validate(standardized_vars, reconstructed_vars, argvals_list)?;
+
+    if p == 0 {
+        return Ok(FdMatrix::zeros(0, 0));
+    }
+
+    let n = standardized_vars[0].nrows();
+    let mut contrib = FdMatrix::zeros(n, p);
+
+    for v in 0..p {
+        let std_v = standardized_vars[v];
+        let rec_v = reconstructed_vars[v];
+        let argvals = argvals_list[v];
+
+        let m_v = spe_contribs_var_validate(std_v, rec_v, argvals, n, v)?;
+        let weights = simpsons_weights(argvals);
+        let var_spe_vec = spe_contribs_compute_var(std_v, rec_v, &weights, n, m_v);
+
+        for i in 0..n {
+            contrib[(i, v)] = var_spe_vec[i];
+        }
+    }
+
+    Ok(contrib)
+}
+
+/// Validate top-level shape consistency for `spe_contributions`.
+///
+/// Returns `p` (number of variables) or an error if the three slice lengths differ.
+fn spe_contribs_validate(
+    standardized_vars: &[&FdMatrix],
+    reconstructed_vars: &[&FdMatrix],
+    argvals_list: &[&[f64]],
+) -> Result<usize, FdarError> {
     let p = standardized_vars.len();
     if reconstructed_vars.len() != p || argvals_list.len() != p {
         return Err(FdarError::InvalidDimension {
@@ -147,54 +181,63 @@ pub fn spe_contributions(
             ),
         });
     }
+    Ok(p)
+}
 
-    if p == 0 {
-        return Ok(FdMatrix::zeros(0, 0));
+/// Validate per-variable shape for `spe_contributions`.
+///
+/// Returns `m_v` (number of grid points for this variable) or an error.
+fn spe_contribs_var_validate(
+    std_v: &FdMatrix,
+    rec_v: &FdMatrix,
+    argvals: &[f64],
+    n: usize,
+    v: usize,
+) -> Result<usize, FdarError> {
+    if std_v.nrows() != n || rec_v.nrows() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "variables",
+            expected: format!("{n} rows for variable {v}"),
+            actual: format!("std={}, recon={}", std_v.nrows(), rec_v.nrows()),
+        });
     }
-
-    let n = standardized_vars[0].nrows();
-
-    let mut contrib = FdMatrix::zeros(n, p);
-
-    for v in 0..p {
-        let std_v = standardized_vars[v];
-        let rec_v = reconstructed_vars[v];
-        let argvals = argvals_list[v];
-
-        if std_v.nrows() != n || rec_v.nrows() != n {
-            return Err(FdarError::InvalidDimension {
-                parameter: "variables",
-                expected: format!("{n} rows for variable {v}"),
-                actual: format!("std={}, recon={}", std_v.nrows(), rec_v.nrows()),
-            });
-        }
-
-        let m_v = std_v.ncols();
-        if rec_v.ncols() != m_v || argvals.len() != m_v {
-            return Err(FdarError::InvalidDimension {
-                parameter: "argvals_list",
-                expected: format!("{m_v} for variable {v}"),
-                actual: format!(
-                    "recon_cols={}, argvals_len={}",
-                    rec_v.ncols(),
-                    argvals.len()
-                ),
-            });
-        }
-
-        let weights = simpsons_weights(argvals);
-
-        for i in 0..n {
-            let mut var_spe = 0.0;
-            for j in 0..m_v {
-                let diff = std_v[(i, j)] - rec_v[(i, j)];
-                var_spe += diff * diff * weights[j];
-            }
-            contrib[(i, v)] = var_spe;
-        }
+    let m_v = std_v.ncols();
+    if rec_v.ncols() != m_v || argvals.len() != m_v {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals_list",
+            expected: format!("{m_v} for variable {v}"),
+            actual: format!(
+                "recon_cols={}, argvals_len={}",
+                rec_v.ncols(),
+                argvals.len()
+            ),
+        });
     }
+    Ok(m_v)
+}
 
-    Ok(contrib)
+/// Compute the per-observation SPE contribution for one variable.
+///
+/// Returns a `Vec<f64>` of length `n` where each element is the Simpson-weighted
+/// integrated squared reconstruction error for that observation.
+#[inline]
+fn spe_contribs_compute_var(
+    std_v: &FdMatrix,
+    rec_v: &FdMatrix,
+    weights: &[f64],
+    n: usize,
+    m_v: usize,
+) -> Vec<f64> {
+    let mut var_spe = vec![0.0; n];
+    for i in 0..n {
+        let mut acc = 0.0;
+        for j in 0..m_v {
+            let diff = std_v[(i, j)] - rec_v[(i, j)];
+            acc += diff * diff * weights[j];
+        }
+        var_spe[i] = acc;
+    }
+    var_spe
 }
 
 /// Compute per-PC T-squared contributions.
@@ -282,6 +325,35 @@ pub fn t2_contributions_mfpca(
     mfpca: &MfpcaResult,
 ) -> Result<FdMatrix, FdarError> {
     let (n, ncomp) = scores.shape();
+    let (ncomp_validated, p) = t2_mfpca_validate(scores, mfpca)?;
+    let _ = ncomp_validated; // ncomp from scores.shape() is authoritative
+    let eigenvalues = &mfpca.eigenvalues;
+
+    let weights = t2_mfpca_compute_weights(mfpca, ncomp, p);
+
+    // Compute contributions
+    let mut contrib = FdMatrix::zeros(n, p);
+    for i in 0..n {
+        for l in 0..ncomp {
+            if eigenvalues[l] <= 0.0 {
+                continue;
+            }
+            let comp_contrib = scores[(i, l)] * scores[(i, l)] / eigenvalues[l];
+            for v in 0..p {
+                contrib[(i, v)] += comp_contrib * weights[v][l];
+            }
+        }
+    }
+
+    Ok(contrib)
+}
+
+/// Validate inputs for `t2_contributions_mfpca`.
+///
+/// Returns `(ncomp, p)` where `ncomp` is the number of score columns and `p` is
+/// the number of functional variables in the MFPCA result.
+fn t2_mfpca_validate(scores: &FdMatrix, mfpca: &MfpcaResult) -> Result<(usize, usize), FdarError> {
+    let (_, ncomp) = scores.shape();
     let eigenvalues = &mfpca.eigenvalues;
 
     if ncomp > eigenvalues.len() {
@@ -301,8 +373,15 @@ pub fn t2_contributions_mfpca(
         });
     }
 
-    // Compute loading weights: for each PC l and variable v,
-    // weight[v][l] = sum_j (eigenfunction_v[j, l])^2 / sum_v' sum_j (eigenfunction_v'[j, l])^2
+    Ok((ncomp, p))
+}
+
+/// Compute loading weights for `t2_contributions_mfpca`.
+///
+/// For each PC `l` and variable `v`, computes:
+/// `weight[v][l] = ||ψ_l^(v)||² / sum_v' ||ψ_l^(v')||²`
+/// where norms are computed over the variable's eigenfunction block.
+fn t2_mfpca_compute_weights(mfpca: &MfpcaResult, ncomp: usize, p: usize) -> Vec<Vec<f64>> {
     let mut weights = vec![vec![0.0_f64; ncomp]; p];
     for l in 0..ncomp {
         let mut total_norm = 0.0;
@@ -322,22 +401,7 @@ pub fn t2_contributions_mfpca(
             }
         }
     }
-
-    // Compute contributions
-    let mut contrib = FdMatrix::zeros(n, p);
-    for i in 0..n {
-        for l in 0..ncomp {
-            if eigenvalues[l] <= 0.0 {
-                continue;
-            }
-            let comp_contrib = scores[(i, l)] * scores[(i, l)] / eigenvalues[l];
-            for v in 0..p {
-                contrib[(i, v)] += comp_contrib * weights[v][l];
-            }
-        }
-    }
-
-    Ok(contrib)
+    weights
 }
 
 /// Test per-PC T² contributions for Bonferroni-adjusted significance.

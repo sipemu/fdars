@@ -388,7 +388,7 @@ fn mfpca_compute_means_scales(variables: &[&FdMatrix], n: usize) -> (Vec<Vec<f64
 fn mfpca_build_stacked(
     variables: &[&FdMatrix],
     means: &[Vec<f64>],
-    scales: &mut Vec<f64>,
+    scales: &mut [f64],
     grid_sizes: &[usize],
     n: usize,
     total_cols: usize,
