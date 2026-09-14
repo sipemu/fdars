@@ -264,9 +264,91 @@ fn eigendecompose_cov(
 /// - a per-curve Σ_yi Cholesky solve fails even after a single ridge-stabilisation retry.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn pace_fpca(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<PaceFpcaResult, FdarError> {
-    // ------------------------------------------------------------------
-    // 1. Input validation (all checks before any computation)
-    // ------------------------------------------------------------------
+    let n = pace_fpca_validate(data, config)?;
+    let m = config.work_grid.len();
+
+    let (mean, eigenvalues, eigenfunctions) = pace_fpca_smooth_moments(data, config)?;
+    let actual_ncomp = eigenvalues.len();
+
+    // Pre-compute the eigenfunction values on the work grid as column vectors
+    // (one Vec<f64> per component) for interpolation inside the parallel map.
+    let ef_cols: Vec<Vec<f64>> = (0..actual_ncomp)
+        .map(|k| (0..m).map(|j| eigenfunctions[(j, k)]).collect::<Vec<f64>>())
+        .collect();
+
+    // Quantile for confidence bands: z = qnorm(1 - alpha/2)
+    let z = standard_normal_quantile(1.0 - config.alpha / 2.0);
+    let sigma2 = config.sigma2;
+
+    // Per-curve BLUP: collect results via feature-gated rayon.
+    type CurveResult = (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>);
+    let curve_results: Vec<Result<CurveResult, FdarError>> = iter_maybe_parallel!(0..n)
+        .map(|i| {
+            pace_fpca_blup_curve(
+                i,
+                data,
+                &config.work_grid,
+                &mean,
+                &ef_cols,
+                &eigenvalues,
+                &eigenfunctions,
+                actual_ncomp,
+                m,
+                z,
+                sigma2,
+            )
+        })
+        .collect();
+
+    // Assemble results into output matrices
+    let mut scores = FdMatrix::zeros(n, actual_ncomp);
+    let mut fitted = FdMatrix::zeros(n, m);
+    let mut fitted_lower = FdMatrix::zeros(n, m);
+    let mut fitted_upper = FdMatrix::zeros(n, m);
+
+    for (i, res) in curve_results.into_iter().enumerate() {
+        let (scores_row, fitted_row, lower_row, upper_row) = res?;
+        for k in 0..actual_ncomp {
+            scores[(i, k)] = scores_row[k];
+        }
+        for j in 0..m {
+            fitted[(i, j)] = fitted_row[j];
+            fitted_lower[(i, j)] = lower_row[j];
+            fitted_upper[(i, j)] = upper_row[j];
+        }
+    }
+
+    Ok(PaceFpcaResult {
+        mean,
+        eigenvalues,
+        eigenfunctions,
+        scores,
+        fitted,
+        fitted_lower,
+        fitted_upper,
+        argvals: config.work_grid.clone(),
+        sigma2: config.sigma2,
+        ncomp: actual_ncomp,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers for pace_fpca
+// ---------------------------------------------------------------------------
+
+/// Validate all inputs for `pace_fpca`. Returns the number of observations `n`.
+///
+/// Delegates to two sub-validators split along dimension/config axes
+/// (same split-validate pattern used in Phase 106 for boost_fofr and elastic_net_cd).
+fn pace_fpca_validate(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<usize, FdarError> {
+    let n = pace_fpca_validate_dims(data, config)?;
+    pace_fpca_validate_config(config)?;
+    Ok(n)
+}
+
+/// Validate data-dimension guards for `pace_fpca`.
+/// Returns `n` (number of observations) on success.
+fn pace_fpca_validate_dims(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<usize, FdarError> {
     let n = data.n_obs();
     if n == 0 {
         return Err(FdarError::InvalidDimension {
@@ -303,6 +385,11 @@ pub fn pace_fpca(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<PaceFpcaR
         });
     }
 
+    Ok(n)
+}
+
+/// Validate scalar config parameters and work-grid ordering for `pace_fpca`.
+fn pace_fpca_validate_config(config: &PaceFpcaConfig) -> Result<(), FdarError> {
     if !config.bandwidth.is_finite() || config.bandwidth <= 0.0 {
         return Err(FdarError::InvalidParameter {
             parameter: "bandwidth",
@@ -330,7 +417,6 @@ pub fn pace_fpca(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<PaceFpcaR
         });
     }
 
-    // Validate work_grid: all finite and sorted
     for (idx, &t) in config.work_grid.iter().enumerate() {
         if !t.is_finite() {
             return Err(FdarError::InvalidParameter {
@@ -349,9 +435,22 @@ pub fn pace_fpca(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<PaceFpcaR
         }
     }
 
-    // ------------------------------------------------------------------
-    // 2. Step 1: Kernel-smoothed mean on the work grid
-    // ------------------------------------------------------------------
+    Ok(())
+}
+
+/// Compute kernel-smoothed mean, covariance, and eigendecomposition for `pace_fpca`.
+///
+/// Steps 1–3 of the PACE pipeline:
+/// 1. Kernel-smoothed mean µ̂(t) on the work grid.
+/// 2. Kernel-smoothed covariance surface Ĝ(s,t).
+/// 3. Symmetric eigendecomposition → eigenvalues + eigenfunctions (sign-fixed).
+///
+/// Returns `(mean, eigenvalues, eigenfunctions)`.
+fn pace_fpca_smooth_moments(
+    data: &IrregFdata,
+    config: &PaceFpcaConfig,
+) -> Result<(Vec<f64>, Vec<f64>, FdMatrix), FdarError> {
+    // Step 1: Kernel-smoothed mean on the work grid
     let mean = mean_irreg(
         data,
         &config.work_grid,
@@ -377,19 +476,14 @@ pub fn pace_fpca(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<PaceFpcaR
         });
     }
 
-    // ------------------------------------------------------------------
-    // 3. Step 2: Smoothed covariance surface on the work grid (m×m)
-    // ------------------------------------------------------------------
+    // Step 2: Smoothed covariance surface on the work grid (m×m)
     let cov = cov_irreg(data, &config.work_grid, &config.work_grid, config.bandwidth);
 
-    // ------------------------------------------------------------------
-    // 4. Step 3: Symmetric eigendecomposition of W^{1/2} C W^{1/2}
-    //    (Simpson-weighted) → top positive eigenpairs, sign-fixed
-    // ------------------------------------------------------------------
+    // Step 3: Symmetric eigendecomposition of W^{1/2} C W^{1/2}
+    //         (Simpson-weighted) → top positive eigenpairs, sign-fixed
     let (eigenvalues, eigenfunctions) = eigendecompose_cov(&cov, &config.work_grid, config.ncomp);
 
-    let actual_ncomp = eigenvalues.len();
-    if actual_ncomp == 0 {
+    if eigenvalues.is_empty() {
         return Err(FdarError::ComputationFailed {
             operation: "pace_fpca eigendecomposition",
             detail: format!(
@@ -400,219 +494,213 @@ pub fn pace_fpca(data: &IrregFdata, config: &PaceFpcaConfig) -> Result<PaceFpcaR
         });
     }
 
-    // ------------------------------------------------------------------
-    // 5. Steps 4–6: Per-curve BLUP scores, fitted trajectories, bands
-    // ------------------------------------------------------------------
-    // Pre-compute the eigenfunction values on the work grid as column vectors
-    // (one Vec<f64> per component) for interpolation.
-    let ef_cols: Vec<Vec<f64>> = (0..actual_ncomp)
-        .map(|k| (0..m).map(|j| eigenfunctions[(j, k)]).collect::<Vec<f64>>())
+    Ok((mean, eigenvalues, eigenfunctions))
+}
+
+/// Per-curve BLUP computation for `pace_fpca` (Steps 4–6 of the PACE pipeline).
+///
+/// All captured variables are explicit parameters so this function is `Send`
+/// and compatible with the `iter_maybe_parallel!` macro's rayon branch.
+///
+/// Returns `(scores_row, fitted_row, lower_row, upper_row)`, each a `Vec<f64>`.
+fn pace_fpca_blup_curve(
+    i: usize,
+    data: &IrregFdata,
+    work_grid: &[f64],
+    mean: &[f64],
+    ef_cols: &[Vec<f64>],
+    eigenvalues: &[f64],
+    eigenfunctions: &FdMatrix,
+    actual_ncomp: usize,
+    m: usize,
+    z: f64,
+    sigma2: f64,
+) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>), FdarError> {
+    let (obs_t, obs_y) = data.get_obs(i);
+    let n_i = obs_t.len();
+
+    // Interpolate mean to observed times → residual
+    let mu_i: Vec<f64> = obs_t
+        .iter()
+        .map(|&t| linear_interp(work_grid, mean, t))
+        .collect();
+    let resid: Vec<f64> = obs_y
+        .iter()
+        .zip(mu_i.iter())
+        .map(|(&y, &m)| y - m)
         .collect();
 
-    // Quantile for confidence bands: z = qnorm(1 - alpha/2)
-    let z = standard_normal_quantile(1.0 - config.alpha / 2.0);
-
-    let sigma2 = config.sigma2;
-
-    // Per-curve BLUP computation.
-    // For each curve i:
-    //   - Get observed times obs_t (length n_i) and values obs_y
-    //   - Interpolate mean and each eigenfunction to obs_t → residual, Φ_i
-    //   - Assemble Σ_yi = Φ_i diag(λ) Φ_i^T + σ²I (n_i × n_i, row-major)
-    //   - Solve v = Σ_yi^{-1} resid via Cholesky (retry once with ridge if needed)
-    //   - ξ_ik = λ_k · dot(Φ_i[:,k], v)
-    //   - Fitted x̂_i(t) = mean[j] + Σ_k ξ_ik · φ_k(t_j) for each work-grid point j
-    //   - Bands: Ω_i = diag(λ) - diag(λ)Φ_i^T Σ_yi^{-1} Φ_i diag(λ)
-    //            Var(x̂_i(t_j)) = Σ_{k,l} Ω_i[k,l] φ_k(t_j) φ_l(t_j)
-    //            lower/upper = fitted ∓ z * sqrt(max(Var, 0))
-
-    // Collect results per curve and then assign into the matrices.
-    // Using iter_maybe_parallel over curve indices for feature-gated rayon.
-    type CurveResult = (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>);
-    // (scores_row[ncomp], fitted_row[m], lower_row[m], upper_row[m])
-
-    let curve_results: Vec<Result<CurveResult, FdarError>> = iter_maybe_parallel!(0..n)
-        .map(|i| {
-            let (obs_t, obs_y) = data.get_obs(i);
-            let n_i = obs_t.len();
-
-            // Interpolate mean to observed times
-            let mu_i: Vec<f64> = obs_t
-                .iter()
-                .map(|&t| linear_interp(&config.work_grid, &mean, t))
-                .collect();
-
-            // Residual
-            let resid: Vec<f64> = obs_y
-                .iter()
-                .zip(mu_i.iter())
-                .map(|(&y, &m)| y - m)
-                .collect();
-
-            // Build Φ_i (n_i × actual_ncomp, row-major: phi_i[j * ncomp + k])
-            let mut phi_i = vec![0.0_f64; n_i * actual_ncomp];
-            for k in 0..actual_ncomp {
-                for j in 0..n_i {
-                    phi_i[j * actual_ncomp + k] =
-                        linear_interp(&config.work_grid, &ef_cols[k], obs_t[j]);
-                }
-            }
-
-            // Build Σ_yi (n_i × n_i, row-major): Φ_i diag(λ) Φ_i^T + σ²I
-            let mut sigma_yi = vec![0.0_f64; n_i * n_i];
-            for row in 0..n_i {
-                for col in 0..n_i {
-                    let mut s = 0.0_f64;
-                    for k in 0..actual_ncomp {
-                        s += phi_i[row * actual_ncomp + k]
-                            * eigenvalues[k]
-                            * phi_i[col * actual_ncomp + k];
-                    }
-                    sigma_yi[row * n_i + col] = s;
-                }
-                sigma_yi[row * n_i + row] += sigma2;
-            }
-
-            // Resolve sigma_yi once (with optional ridge) so that the BLUP solve
-            // and all subsequent band solves operate on the IDENTICAL linear system.
-            // This prevents the subtle asymmetry where the BLUP uses the unridged
-            // matrix while the band solve (silently) uses a different ridged version.
-            let sigma_yi_resolved = match cholesky_solve(&sigma_yi, &resid, n_i) {
-                Ok(_) => sigma_yi.clone(), // Cholesky succeeds → use as-is
-                Err(_) => {
-                    // Add 1e-8 ridge and check that it's now positive-definite.
-                    let mut r = sigma_yi.clone();
-                    for row in 0..n_i {
-                        r[row * n_i + row] += 1e-8;
-                    }
-                    r
-                }
-            };
-
-            // Solve v = Σ_yi_resolved^{-1} resid
-            let v = cholesky_solve(&sigma_yi_resolved, &resid, n_i).map_err(|_| {
-                FdarError::ComputationFailed {
-                    operation: "pace_fpca BLUP",
-                    detail: format!(
-                        "Cholesky solve for Sigma_yi of curve {i} failed \
-                         even after adding a 1e-8 ridge; sigma2 may be too small \
-                         or curve has nearly collinear eigenfunction values"
-                    ),
-                }
-            })?;
-
-            // BLUP scores: ξ_ik = λ_k · dot(Φ_i[:,k], v)
-            let scores_row: Vec<f64> = (0..actual_ncomp)
-                .map(|k| {
-                    let dot: f64 = (0..n_i).map(|j| phi_i[j * actual_ncomp + k] * v[j]).sum();
-                    eigenvalues[k] * dot
-                })
-                .collect();
-
-            // Fitted trajectories on the work grid
-            let fitted_row: Vec<f64> = (0..m)
-                .map(|j| {
-                    let mut val = mean[j];
-                    for k in 0..actual_ncomp {
-                        val += scores_row[k] * eigenfunctions[(j, k)];
-                    }
-                    val
-                })
-                .collect();
-
-            // Confidence bands via prediction variance.
-            //
-            // Step 1: Compute Σ_yi^{-1} Φ_i diag(λ) column by column.
-            //   For each component k, let c_k = λ_k · (Σ_yi^{-1} · Φ_i[:,k])
-            //   (solve Σ_yi · x = Φ_i[:,k], then scale by λ_k).
-            let mut sigma_inv_phi_lam = vec![0.0_f64; n_i * actual_ncomp];
-            for k in 0..actual_ncomp {
-                let phi_col_k: Vec<f64> = (0..n_i).map(|j| phi_i[j * actual_ncomp + k]).collect();
-                // Use the already-resolved (possibly ridged) sigma_yi for consistency
-                // with the BLUP solve above. Propagate errors rather than zero-filling,
-                // which would silently inflate the confidence bands.
-                let sol = cholesky_solve(&sigma_yi_resolved, &phi_col_k, n_i).map_err(|_| {
-                    FdarError::ComputationFailed {
-                        operation: "pace_fpca band solve",
-                        detail: format!(
-                            "Cholesky solve for Sigma_yi[:,{k}] of curve {i} failed after ridge"
-                        ),
-                    }
-                })?;
-                for j in 0..n_i {
-                    sigma_inv_phi_lam[j * actual_ncomp + k] = eigenvalues[k] * sol[j];
-                }
-            }
-
-            // Step 2: A_i[k,l] = diag(λ)[k] · Φ_i[:,k]^T · Σ_yi^{-1} · Φ_i[:,l] · diag(λ)[l]
-            //   = Σ_j phi_i[j,k] · sigma_inv_phi_lam[j,l]
-            let mut a_mat = vec![0.0_f64; actual_ncomp * actual_ncomp];
-            for k in 0..actual_ncomp {
-                for l in 0..actual_ncomp {
-                    let mut s = 0.0_f64;
-                    for j in 0..n_i {
-                        s += phi_i[j * actual_ncomp + k] * sigma_inv_phi_lam[j * actual_ncomp + l];
-                    }
-                    a_mat[k * actual_ncomp + l] = eigenvalues[k] * s;
-                }
-            }
-
-            // Step 3: Ω_i[k,l] = (k==l ? λ_k : 0) - A_i[k,l]
-            // Step 4: Var(x̂_i(t_j)) = Σ_{k,l} Ω_i[k,l] φ_k(t_j) φ_l(t_j), guarded ≥ 0
-            let (lower_row, upper_row): (Vec<f64>, Vec<f64>) = (0..m)
-                .map(|j| {
-                    let phi_at_j: Vec<f64> =
-                        (0..actual_ncomp).map(|k| eigenfunctions[(j, k)]).collect();
-                    let mut var_j = 0.0_f64;
-                    for k in 0..actual_ncomp {
-                        for l in 0..actual_ncomp {
-                            let omega_kl = if k == l {
-                                eigenvalues[k] - a_mat[k * actual_ncomp + l]
-                            } else {
-                                -a_mat[k * actual_ncomp + l]
-                            };
-                            var_j += omega_kl * phi_at_j[k] * phi_at_j[l];
-                        }
-                    }
-                    let std_j = var_j.max(0.0).sqrt();
-                    (fitted_row[j] - z * std_j, fitted_row[j] + z * std_j)
-                })
-                .unzip();
-
-            Ok((scores_row, fitted_row, lower_row, upper_row))
-        })
-        .collect();
-
-    // Assemble results into output matrices
-    let mut scores = FdMatrix::zeros(n, actual_ncomp);
-    let mut fitted = FdMatrix::zeros(n, m);
-    let mut fitted_lower = FdMatrix::zeros(n, m);
-    let mut fitted_upper = FdMatrix::zeros(n, m);
-
-    for (i, res) in curve_results.into_iter().enumerate() {
-        let (scores_row, fitted_row, lower_row, upper_row) = res?;
-        for k in 0..actual_ncomp {
-            scores[(i, k)] = scores_row[k];
-        }
-        for j in 0..m {
-            fitted[(i, j)] = fitted_row[j];
-            fitted_lower[(i, j)] = lower_row[j];
-            fitted_upper[(i, j)] = upper_row[j];
+    // Build Φ_i (n_i × actual_ncomp, row-major: phi_i[j * ncomp + k])
+    let mut phi_i = vec![0.0_f64; n_i * actual_ncomp];
+    for k in 0..actual_ncomp {
+        for j in 0..n_i {
+            phi_i[j * actual_ncomp + k] = linear_interp(work_grid, &ef_cols[k], obs_t[j]);
         }
     }
 
-    Ok(PaceFpcaResult {
-        mean,
+    // Build Σ_yi (n_i × n_i, row-major): Φ_i diag(λ) Φ_i^T + σ²I
+    let sigma_yi = pace_fpca_build_sigma_yi(&phi_i, eigenvalues, n_i, actual_ncomp, sigma2);
+
+    // Resolve sigma_yi once (with optional ridge) so the BLUP solve and all
+    // subsequent band solves operate on the IDENTICAL linear system.
+    let sigma_yi_resolved = pace_fpca_resolve_sigma_yi(sigma_yi, &resid, n_i);
+
+    // Solve v = Σ_yi_resolved^{-1} resid
+    let v = cholesky_solve(&sigma_yi_resolved, &resid, n_i).map_err(|_| {
+        FdarError::ComputationFailed {
+            operation: "pace_fpca BLUP",
+            detail: format!(
+                "Cholesky solve for Sigma_yi of curve {i} failed \
+                 even after adding a 1e-8 ridge; sigma2 may be too small \
+                 or curve has nearly collinear eigenfunction values"
+            ),
+        }
+    })?;
+
+    // BLUP scores: ξ_ik = λ_k · dot(Φ_i[:,k], v)
+    let scores_row: Vec<f64> = (0..actual_ncomp)
+        .map(|k| {
+            let dot: f64 = (0..n_i).map(|j| phi_i[j * actual_ncomp + k] * v[j]).sum();
+            eigenvalues[k] * dot
+        })
+        .collect();
+
+    // Fitted trajectories on the work grid
+    let fitted_row: Vec<f64> = (0..m)
+        .map(|j| {
+            let mut val = mean[j];
+            for k in 0..actual_ncomp {
+                val += scores_row[k] * eigenfunctions[(j, k)];
+            }
+            val
+        })
+        .collect();
+
+    // Confidence bands via prediction variance (Yao et al. 2005, eq. 3.2).
+    let (lower_row, upper_row) = pace_fpca_confidence_bands(
+        &phi_i,
         eigenvalues,
         eigenfunctions,
-        scores,
-        fitted,
-        fitted_lower,
-        fitted_upper,
-        argvals: config.work_grid.clone(),
-        sigma2: config.sigma2,
-        ncomp: actual_ncomp,
-    })
+        &sigma_yi_resolved,
+        &fitted_row,
+        n_i,
+        actual_ncomp,
+        m,
+        z,
+        i,
+    )?;
+
+    Ok((scores_row, fitted_row, lower_row, upper_row))
+}
+
+/// Build Σ_yi (n_i × n_i, row-major): Φ_i diag(λ) Φ_i^T + σ²I.
+fn pace_fpca_build_sigma_yi(
+    phi_i: &[f64],
+    eigenvalues: &[f64],
+    n_i: usize,
+    actual_ncomp: usize,
+    sigma2: f64,
+) -> Vec<f64> {
+    let mut sigma_yi = vec![0.0_f64; n_i * n_i];
+    for row in 0..n_i {
+        for col in 0..n_i {
+            let mut s = 0.0_f64;
+            for k in 0..actual_ncomp {
+                s += phi_i[row * actual_ncomp + k] * eigenvalues[k] * phi_i[col * actual_ncomp + k];
+            }
+            sigma_yi[row * n_i + col] = s;
+        }
+        sigma_yi[row * n_i + row] += sigma2;
+    }
+    sigma_yi
+}
+
+/// Optionally ridge-stabilise Σ_yi: returns the matrix unchanged if Cholesky
+/// already succeeds on `resid`, otherwise returns a copy with 1e-8 added to
+/// the diagonal.
+fn pace_fpca_resolve_sigma_yi(sigma_yi: Vec<f64>, resid: &[f64], n_i: usize) -> Vec<f64> {
+    match cholesky_solve(&sigma_yi, resid, n_i) {
+        Ok(_) => sigma_yi,
+        Err(_) => {
+            let mut r = sigma_yi;
+            for row in 0..n_i {
+                r[row * n_i + row] += 1e-8;
+            }
+            r
+        }
+    }
+}
+
+/// Compute pointwise confidence bands for curve `i`.
+///
+/// Implements Yao et al. (2005) eq. 3.2:
+///   Ω_i[k,l] = (k==l ? λ_k : 0) - A_i[k,l]
+///   Var(x̂_i(t_j)) = Σ_{k,l} Ω_i[k,l] φ_k(t_j) φ_l(t_j)
+///   lower/upper = fitted_row[j] ∓ z · sqrt(max(Var, 0))
+#[allow(clippy::too_many_arguments)]
+fn pace_fpca_confidence_bands(
+    phi_i: &[f64],
+    eigenvalues: &[f64],
+    eigenfunctions: &FdMatrix,
+    sigma_yi_resolved: &[f64],
+    fitted_row: &[f64],
+    n_i: usize,
+    actual_ncomp: usize,
+    m: usize,
+    z: f64,
+    curve_idx: usize,
+) -> Result<(Vec<f64>, Vec<f64>), FdarError> {
+    // Step 1: Σ_yi^{-1} Φ_i diag(λ) column by column.
+    //   c_k = λ_k · (Σ_yi^{-1} · Φ_i[:,k])
+    let mut sigma_inv_phi_lam = vec![0.0_f64; n_i * actual_ncomp];
+    for k in 0..actual_ncomp {
+        let phi_col_k: Vec<f64> = (0..n_i).map(|j| phi_i[j * actual_ncomp + k]).collect();
+        let sol = cholesky_solve(sigma_yi_resolved, &phi_col_k, n_i).map_err(|_| {
+            FdarError::ComputationFailed {
+                operation: "pace_fpca band solve",
+                detail: format!(
+                    "Cholesky solve for Sigma_yi[:,{k}] of curve {curve_idx} failed after ridge"
+                ),
+            }
+        })?;
+        for j in 0..n_i {
+            sigma_inv_phi_lam[j * actual_ncomp + k] = eigenvalues[k] * sol[j];
+        }
+    }
+
+    // Step 2: A_i[k,l] = diag(λ)[k] · Φ_i[:,k]^T · Σ_yi^{-1} · Φ_i[:,l] · diag(λ)[l]
+    let mut a_mat = vec![0.0_f64; actual_ncomp * actual_ncomp];
+    for k in 0..actual_ncomp {
+        for l in 0..actual_ncomp {
+            let mut s = 0.0_f64;
+            for j in 0..n_i {
+                s += phi_i[j * actual_ncomp + k] * sigma_inv_phi_lam[j * actual_ncomp + l];
+            }
+            a_mat[k * actual_ncomp + l] = eigenvalues[k] * s;
+        }
+    }
+
+    // Steps 3–4: Ω_i, pointwise variance, bands
+    let (lower_row, upper_row): (Vec<f64>, Vec<f64>) = (0..m)
+        .map(|j| {
+            let phi_at_j: Vec<f64> = (0..actual_ncomp).map(|k| eigenfunctions[(j, k)]).collect();
+            let mut var_j = 0.0_f64;
+            for k in 0..actual_ncomp {
+                for l in 0..actual_ncomp {
+                    let omega_kl = if k == l {
+                        eigenvalues[k] - a_mat[k * actual_ncomp + l]
+                    } else {
+                        -a_mat[k * actual_ncomp + l]
+                    };
+                    var_j += omega_kl * phi_at_j[k] * phi_at_j[l];
+                }
+            }
+            let std_j = var_j.max(0.0).sqrt();
+            (fitted_row[j] - z * std_j, fitted_row[j] + z * std_j)
+        })
+        .unzip();
+
+    Ok((lower_row, upper_row))
 }
 
 // ---------------------------------------------------------------------------
