@@ -112,7 +112,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 - [x] 109-06-PLAN.md — helpers.rs shared infra (4 fns)
 - [x] 109-07-PLAN.md — scalar_on_function multi/additive/fregre_lm (7 fns)
 - [x] 109-08-PLAN.md — fpca_variants/famm/pace_fpca (7 fns, incl. pace_fpca_validate_config residual)
-- [ ] 109-09-PLAN.md — fof_regression + boosting gamlss/boost_fosr (5 fns)
+- [x] 109-09-PLAN.md — fof_regression + boosting gamlss/boost_fosr (5 fns)
 - [ ] 109-10-PLAN.md — gmm/subspace, density_fda, conformal/cv (6 fns)
 - [ ] 109-11-PLAN.md — smooth_basis, soft_dtw, fts/spectral, depth/dispatch (8 fns)
 - [ ] 109-12-PLAN.md — alignment singletons geodesic/lambda_cv/mod/multires/phase_boxplot/warp_stats (6 fns)

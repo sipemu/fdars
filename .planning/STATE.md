@@ -6,16 +6,16 @@ current_phase: 109
 current_phase_name: Complexity Tail & Quality-Gate Green
 current_plan: 4
 status: executing
-stopped_at: Completed 109-08-PLAN.md
-last_updated: "2026-09-14T19:52:41.222Z"
+stopped_at: Completed 109-09-PLAN.md
+last_updated: "2026-09-14T20:08:43.050Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 109 execution resumed (wave continue)
-state_head: 84599a99053ebc7250c328f64b0f185840279722
+state_head: fc786a00697e97b2d53bdce41de122bacadb8853
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 26
-  completed_plans: 20
+  completed_plans: 21
 ---
 
 # Project State
@@ -104,6 +104,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 109 P04 | 25 | 3 tasks | 1 files |
 | Phase 109 P07 | 30 | 3 tasks | 3 files |
 | Phase 109 P08 | 30 | 3 tasks | 3 files |
+| Phase 109 P09 | 12 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -153,6 +154,8 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 109]: 109-07: CD sweep helpers lift verbatim — cd_group_partial/cd_group_ols_soft/cd_scalar_partial_j decompose group_lasso_cd (cog 67→17) without reordering FP accumulation
 - [Phase 109]: 109-07: gkam_validate split-validate applied — gkam_validate_predictors (per-predictor loop cog 11) + gkam_validate (guards cog 15)
 - [Phase 109]: fsvd: combine gram-eigen and singular-vector recovery in one fn to avoid re-building eigen twice (eigenvector ordering risk)
+- [Phase 109]: fof_re_reconstruct required 2 sub-helpers (extra split vs plan) to clear pmat cog 23 threshold — same pattern as 106-03 boost_fofr
+- [Phase 109]: gamlss_validate split into _dims + _config (not single helper) — cog 30 exceeded threshold after first extraction
 
 ### Pending Todos
 
@@ -178,8 +181,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T19:52:36.506Z
-Stopped at: Completed 109-08-PLAN.md
+Last session: 2026-09-14T20:08:42.999Z
+Stopped at: Completed 109-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
