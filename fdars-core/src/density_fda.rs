@@ -270,40 +270,12 @@ pub fn lqd_transform(
     Ok(psi)
 }
 
-/// Inverse LQD transform: reconstruct a normalized probability density on `target_argvals`.
-///
-/// Inverts the LQD transform: given ψ on a quantile grid t ∈ [0, 1], recovers a
-/// probability density on `target_argvals`.  The result is always renormalized so
-/// that it integrates to 1 over `target_argvals`.
-///
-/// **Numeric chain** (matching `fdadensity::lqd2dens`):
-/// 1. Compute quantile function: `Q_raw = lb + cumtrapz(exp(ψ), t_grid)`.
-/// 2. **Mandatory rescaling** (θ_ψ correction): map Q_raw to the target support
-///    `[target_argvals[0], target_argvals.last()]` by linear scaling.
-/// 3. Compute density values at quantile-grid points: `dens_raw[i] = exp(−ψ[i])`.
-/// 4. Dedup adjacent equal Q values to keep the interpolation x-axis strictly monotone.
-/// 5. Interpolate `dens_raw` onto `target_argvals` via `linear_interp`.
-/// 6. Renormalize so that `trapz(result, target_argvals) = 1`.
-///
-/// # Arguments
-///
-/// * `psi`            — LQD values on `t_grid`.
-/// * `t_grid`         — strictly increasing quantile grid (typically uniform on [0, 1]).
-/// * `target_argvals` — strictly increasing physical grid for the output density.
-///
-/// # Errors
-///
-/// Returns [`FdarError::InvalidDimension`] if `psi.len() != t_grid.len()`.
-/// Returns [`FdarError::InvalidParameter`] if `t_grid` or `target_argvals` is not
-/// strictly increasing, or if `psi` contains non-finite values.
-/// Returns [`FdarError::ComputationFailed`] if the reconstructed Q range is zero
-/// (degenerate density) or renormalization fails.
-pub fn inverse_lqd(
+/// Validate inputs for `inverse_lqd`.
+fn validate_inverse_lqd_inputs(
     psi: &[f64],
     t_grid: &[f64],
     target_argvals: &[f64],
-) -> Result<Vec<f64>, FdarError> {
-    // --- validation ---
+) -> Result<(), FdarError> {
     if psi.len() != t_grid.len() {
         return Err(FdarError::InvalidDimension {
             parameter: "psi",
@@ -341,6 +313,43 @@ pub fn inverse_lqd(
             message: "psi must contain only finite values".to_string(),
         });
     }
+    Ok(())
+}
+
+/// Inverse LQD transform: reconstruct a normalized probability density on `target_argvals`.
+///
+/// Inverts the LQD transform: given ψ on a quantile grid t ∈ [0, 1], recovers a
+/// probability density on `target_argvals`.  The result is always renormalized so
+/// that it integrates to 1 over `target_argvals`.
+///
+/// **Numeric chain** (matching `fdadensity::lqd2dens`):
+/// 1. Compute quantile function: `Q_raw = lb + cumtrapz(exp(ψ), t_grid)`.
+/// 2. **Mandatory rescaling** (θ_ψ correction): map Q_raw to the target support
+///    `[target_argvals[0], target_argvals.last()]` by linear scaling.
+/// 3. Compute density values at quantile-grid points: `dens_raw[i] = exp(−ψ[i])`.
+/// 4. Dedup adjacent equal Q values to keep the interpolation x-axis strictly monotone.
+/// 5. Interpolate `dens_raw` onto `target_argvals` via `linear_interp`.
+/// 6. Renormalize so that `trapz(result, target_argvals) = 1`.
+///
+/// # Arguments
+///
+/// * `psi`            — LQD values on `t_grid`.
+/// * `t_grid`         — strictly increasing quantile grid (typically uniform on [0, 1]).
+/// * `target_argvals` — strictly increasing physical grid for the output density.
+///
+/// # Errors
+///
+/// Returns [`FdarError::InvalidDimension`] if `psi.len() != t_grid.len()`.
+/// Returns [`FdarError::InvalidParameter`] if `t_grid` or `target_argvals` is not
+/// strictly increasing, or if `psi` contains non-finite values.
+/// Returns [`FdarError::ComputationFailed`] if the reconstructed Q range is zero
+/// (degenerate density) or renormalization fails.
+pub fn inverse_lqd(
+    psi: &[f64],
+    t_grid: &[f64],
+    target_argvals: &[f64],
+) -> Result<Vec<f64>, FdarError> {
+    validate_inverse_lqd_inputs(psi, t_grid, target_argvals)?;
 
     // Step 1: Q_raw(t) = lb + cumtrapz(exp(ψ), t_grid)
     let exp_psi: Vec<f64> = psi.iter().map(|&p| p.exp()).collect();
@@ -381,6 +390,78 @@ pub fn inverse_lqd(
         });
     }
     Ok(dens.iter().map(|&d| d / integral).collect())
+}
+
+/// Resolve and validate the optional weights vector for `wasserstein_barycenter`.
+///
+/// Returns normalized weights (sum = 1) or uniform 1/n if `weights` is None.
+fn resolve_barycenter_weights(weights: Option<&[f64]>, n: usize) -> Result<Vec<f64>, FdarError> {
+    if let Some(w) = weights {
+        if w.len() != n {
+            return Err(FdarError::InvalidDimension {
+                parameter: "weights",
+                expected: format!("{n}"),
+                actual: format!("{}", w.len()),
+            });
+        }
+        if w.iter().any(|&wi| wi < 0.0 || !wi.is_finite()) {
+            return Err(FdarError::InvalidParameter {
+                parameter: "weights",
+                message: "weights must be non-negative and finite".to_string(),
+            });
+        }
+        let s: f64 = w.iter().sum();
+        if s < 1e-15 {
+            return Err(FdarError::InvalidParameter {
+                parameter: "weights",
+                message: "weights sum to zero".to_string(),
+            });
+        }
+        Ok(w.iter().map(|&wi| wi / s).collect())
+    } else {
+        Ok(vec![1.0 / n as f64; n])
+    }
+}
+
+/// Compute the weighted average quantile function Q̄(t) = Σᵢ wᵢ Qᵢ(t).
+///
+/// Validates each density row (non-negative, non-zero integral) and accumulates
+/// the weighted quantile average into `q_bar` (length n_q).
+fn compute_q_bar(
+    density_matrix: &FdMatrix,
+    argvals: &[f64],
+    w_vec: &[f64],
+    n: usize,
+    m: usize,
+    n_q: usize,
+    t_grid: &[f64],
+) -> Result<Vec<f64>, FdarError> {
+    let mut q_bar = vec![0.0_f64; n_q];
+    for i in 0..n {
+        let row: Vec<f64> = (0..m).map(|j| density_matrix[(i, j)]).collect();
+        if row.iter().any(|&v| v < 0.0) {
+            return Err(FdarError::InvalidParameter {
+                parameter: "density_matrix",
+                message: format!(
+                    "row {i} contains negative values; densities must be non-negative"
+                ),
+            });
+        }
+        let integral = trapz(&row, argvals);
+        if integral < 1e-15 {
+            return Err(FdarError::InvalidParameter {
+                parameter: "density_matrix",
+                message: format!("row {i} integrates to zero (all-zero density)"),
+            });
+        }
+        let norm_row: Vec<f64> = row.iter().map(|&v| v / integral).collect();
+        let cdf_i = cumulative_trapz(&norm_row, argvals);
+        let wi = w_vec[i];
+        for j in 0..n_q {
+            q_bar[j] += wi * linear_interp(&cdf_i, argvals, t_grid[j]);
+        }
+    }
+    Ok(q_bar)
 }
 
 /// 1D Wasserstein Fréchet mean (quantile-average barycenter) of a collection of densities.
@@ -438,63 +519,14 @@ pub fn wasserstein_barycenter(
         });
     }
 
-    // Resolve weights
-    let w_vec: Vec<f64> = if let Some(w) = weights {
-        if w.len() != n {
-            return Err(FdarError::InvalidDimension {
-                parameter: "weights",
-                expected: format!("{n}"),
-                actual: format!("{}", w.len()),
-            });
-        }
-        if w.iter().any(|&wi| wi < 0.0 || !wi.is_finite()) {
-            return Err(FdarError::InvalidParameter {
-                parameter: "weights",
-                message: "weights must be non-negative and finite".to_string(),
-            });
-        }
-        let s: f64 = w.iter().sum();
-        if s < 1e-15 {
-            return Err(FdarError::InvalidParameter {
-                parameter: "weights",
-                message: "weights sum to zero".to_string(),
-            });
-        }
-        w.iter().map(|&wi| wi / s).collect()
-    } else {
-        vec![1.0 / n as f64; n]
-    };
+    let w_vec = resolve_barycenter_weights(weights, n)?;
 
     // Quantile grid (same resolution as input)
     let n_q = m.max(101);
     let t_grid: Vec<f64> = (0..n_q).map(|i| i as f64 / (n_q - 1) as f64).collect();
 
     // Compute weighted average quantile function Q̄(t) = Σᵢ wᵢ Qᵢ(t)
-    let mut q_bar = vec![0.0_f64; n_q];
-    for i in 0..n {
-        let row: Vec<f64> = (0..m).map(|j| density_matrix[(i, j)]).collect();
-        if row.iter().any(|&v| v < 0.0) {
-            return Err(FdarError::InvalidParameter {
-                parameter: "density_matrix",
-                message: format!(
-                    "row {i} contains negative values; densities must be non-negative"
-                ),
-            });
-        }
-        let integral = trapz(&row, argvals);
-        if integral < 1e-15 {
-            return Err(FdarError::InvalidParameter {
-                parameter: "density_matrix",
-                message: format!("row {i} integrates to zero (all-zero density)"),
-            });
-        }
-        let norm_row: Vec<f64> = row.iter().map(|&v| v / integral).collect();
-        let cdf_i = cumulative_trapz(&norm_row, argvals);
-        let wi = w_vec[i];
-        for j in 0..n_q {
-            q_bar[j] += wi * linear_interp(&cdf_i, argvals, t_grid[j]);
-        }
-    }
+    let q_bar = compute_q_bar(density_matrix, argvals, &w_vec, n, m, n_q, &t_grid)?;
 
     // Invert Q̄ to a density using the same back-map as inverse_lqd
     // Q̄ is already on the target x-range [argvals[0], argvals[last]]
