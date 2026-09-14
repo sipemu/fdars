@@ -373,9 +373,88 @@ pub fn kcfc_cluster(
     argvals: &[f64],
     config: &KcfcConfig,
 ) -> Result<KcfcResult, FdarError> {
-    let (n, m) = data.shape();
+    let (n, m) = kcfc_validate(data, argvals, config)?;
+    let k = config.k;
+    let weights = simpsons_weights(argvals);
 
-    // Validation
+    // ── k-means++ initialisation over raw row curves ──────────────────────
+    let row_major = data.to_row_major(); // n * m, row-major buffer
+    let mut rng = StdRng::seed_from_u64(config.seed);
+    let center_indices = kcfc_kmeans_pp_init(&row_major, n, m, k, &weights, &mut rng);
+
+    // Initial assignment: assign each curve to nearest center
+    let mut cluster: Vec<usize> = (0..n)
+        .map(|i| {
+            center_indices
+                .iter()
+                .enumerate()
+                .min_by(|(_, &c1), (_, &c2)| {
+                    let d1 = l2_dist_rowmajor(&row_major, i, c1, m, &weights);
+                    let d2 = l2_dist_rowmajor(&row_major, i, c2, m, &weights);
+                    d1.partial_cmp(&d2).unwrap_or(std::cmp::Ordering::Equal)
+                })
+                .map(|(ki, _)| ki)
+                .unwrap_or(0)
+        })
+        .collect();
+
+    // ── Reassignment loop ─────────────────────────────────────────────────
+    let mut fpca_models: Vec<Option<FpcaResult>> = vec![None; k];
+    let mut converged = false;
+    let mut iterations = 0;
+
+    for _iter in 0..config.max_iter {
+        iterations += 1;
+
+        // ── Fit per-cluster FPCA models ───────────────────────────────────
+        for ki in 0..k {
+            if let Some(fpca) = kcfc_fit_cluster_fpca(data, &cluster, ki, config.ncomp, argvals, m)?
+            {
+                fpca_models[ki] = Some(fpca);
+            }
+            // None: empty or degenerate cluster — keep prior model
+        }
+
+        // ── Compute reconstruction errors for all curves vs all clusters ──
+        let reconstruction_errors =
+            kcfc_reconstruction_errors(data, &fpca_models, &weights, n, m, k)?;
+
+        // ── Reassign each curve to the cluster with minimum error ─────────
+        let changed = kcfc_reassign(&reconstruction_errors, &mut cluster, n, k);
+
+        if !changed {
+            converged = true;
+            let reconstruction_errors_final =
+                kcfc_reconstruction_errors(data, &fpca_models, &weights, n, m, k)?;
+            return Ok(KcfcResult {
+                cluster,
+                fpca_models,
+                reconstruction_errors: reconstruction_errors_final,
+                iterations,
+                converged,
+            });
+        }
+    }
+
+    // Build final reconstruction errors after the last iteration
+    let reconstruction_errors = kcfc_reconstruction_errors(data, &fpca_models, &weights, n, m, k)?;
+
+    Ok(KcfcResult {
+        cluster,
+        fpca_models,
+        reconstruction_errors,
+        iterations,
+        converged,
+    })
+}
+
+/// Validate inputs for `kcfc_cluster`; returns `(n, m)` on success.
+fn kcfc_validate(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &KcfcConfig,
+) -> Result<(usize, usize), FdarError> {
+    let (n, m) = data.shape();
     if n == 0 || m == 0 {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
@@ -408,14 +487,23 @@ pub fn kcfc_cluster(
             message: "ncomp must be >= 1".to_string(),
         });
     }
+    Ok((n, m))
+}
 
-    let k = config.k;
-    let weights = simpsons_weights(argvals);
-
-    // ── k-means++ initialisation over raw row curves ──────────────────────
-    let row_major = data.to_row_major(); // n * m, row-major buffer
-    let mut rng = StdRng::seed_from_u64(config.seed);
-
+/// K-means++ D-squared initialisation over raw row curves (weighted L2 distance).
+///
+/// Distinct from `funfem_kmeans_pp_init`: uses Simpson weights (not uniform)
+/// because the distance is over raw curves, not score-space Euclidean.
+/// Draws from `rng` in the same order and count as the original inline code —
+/// RNG sequence is byte-identical to preserve seeded cluster assignments.
+fn kcfc_kmeans_pp_init(
+    row_major: &[f64],
+    n: usize,
+    m: usize,
+    k: usize,
+    weights: &[f64],
+    rng: &mut StdRng,
+) -> Vec<usize> {
     // Select first center uniformly
     let mut center_indices: Vec<usize> = Vec::with_capacity(k);
     center_indices.push(rng.gen_range(0..n));
@@ -424,7 +512,7 @@ pub fn kcfc_cluster(
     let mut min_dist_sq: Vec<f64> = (0..n)
         .map(|i| {
             let c0 = center_indices[0];
-            let d = l2_dist_rowmajor(&row_major, i, c0, m, &weights);
+            let d = l2_dist_rowmajor(row_major, i, c0, m, weights);
             d * d
         })
         .collect();
@@ -451,131 +539,120 @@ pub fn kcfc_cluster(
 
         // Update min_dist_sq with distance to new center
         for i in 0..n {
-            let d = l2_dist_rowmajor(&row_major, i, chosen, m, &weights);
+            let d = l2_dist_rowmajor(row_major, i, chosen, m, weights);
             let d2 = d * d;
             if d2 < min_dist_sq[i] {
                 min_dist_sq[i] = d2;
             }
         }
     }
+    center_indices
+}
 
-    // Initial assignment: assign each curve to nearest center
-    let mut cluster: Vec<usize> = (0..n)
-        .map(|i| {
-            center_indices
-                .iter()
-                .enumerate()
-                .min_by(|(_, &c1), (_, &c2)| {
-                    let d1 = l2_dist_rowmajor(&row_major, i, c1, m, &weights);
-                    let d2 = l2_dist_rowmajor(&row_major, i, c2, m, &weights);
-                    d1.partial_cmp(&d2).unwrap_or(std::cmp::Ordering::Equal)
-                })
-                .map(|(ki, _)| ki)
-                .unwrap_or(0)
-        })
-        .collect();
+/// Fit per-cluster FPCA for cluster `ki`; returns `Some(FpcaResult)` or
+/// `None` for an empty or degenerate cluster (caller keeps the prior model).
+fn kcfc_fit_cluster_fpca(
+    data: &FdMatrix,
+    cluster: &[usize],
+    ki: usize,
+    ncomp: usize,
+    argvals: &[f64],
+    m: usize,
+) -> Result<Option<FpcaResult>, FdarError> {
+    let member_indices: Vec<usize> = (0..cluster.len()).filter(|&i| cluster[i] == ki).collect();
 
-    // ── Reassignment loop ─────────────────────────────────────────────────
-    let mut fpca_models: Vec<Option<FpcaResult>> = vec![None; k];
-    let mut reconstruction_errors = FdMatrix::zeros(n, k);
-    let mut converged = false;
-    let mut iterations = 0;
-
-    for _iter in 0..config.max_iter {
-        iterations += 1;
-
-        // ── Fit per-cluster FPCA models ───────────────────────────────────
-        for ki in 0..k {
-            let member_indices: Vec<usize> = (0..n).filter(|&i| cluster[i] == ki).collect();
-
-            if member_indices.is_empty() {
-                // Keep previous model (or None on first iteration)
-                continue;
-            }
-
-            // Gather member rows into a (n_k x m) FdMatrix
-            let n_k = member_indices.len();
-            let mut col_major_k = vec![0.0_f64; n_k * m];
-            for (row_in_k, &orig_i) in member_indices.iter().enumerate() {
-                for j in 0..m {
-                    col_major_k[row_in_k + j * n_k] = data[(orig_i, j)];
-                }
-            }
-            let data_k = FdMatrix::from_column_major(col_major_k, n_k, m)?;
-
-            // Fit FPCA (ncomp clamped internally to min(n_k, m))
-            match fdata_to_pc(&data_k, config.ncomp, argvals) {
-                Ok(fpca) => {
-                    fpca_models[ki] = Some(fpca);
-                }
-                Err(_) => {
-                    // Degenerate cluster; keep prior model
-                }
-            }
-        }
-
-        // ── Compute reconstruction errors for all curves vs all clusters ──
-        for i in 0..n {
-            let curve_row = data.row(i);
-            let curve_mat = FdMatrix::from_slice(&curve_row, 1, m)?;
-
-            for ki in 0..k {
-                let err = match &fpca_models[ki] {
-                    None => f64::INFINITY,
-                    Some(fpca) => {
-                        let ncomp_eff = fpca.rotation.ncols();
-                        match fpca.project(&curve_mat) {
-                            Ok(scores) => {
-                                match fpca.reconstruct(&scores, ncomp_eff) {
-                                    Ok(recon) => {
-                                        // L2^2 reconstruction error with Simpson weights
-                                        let mut err_sq = 0.0;
-                                        for j in 0..m {
-                                            let diff = curve_row[j] - recon[(0, j)];
-                                            err_sq += diff * diff * weights[j];
-                                        }
-                                        err_sq
-                                    }
-                                    Err(_) => f64::INFINITY,
-                                }
-                            }
-                            Err(_) => f64::INFINITY,
-                        }
-                    }
-                };
-                reconstruction_errors[(i, ki)] = err;
-            }
-        }
-
-        // ── Reassign each curve to the cluster with minimum error ─────────
-        let mut changed = false;
-        for i in 0..n {
-            let best_k = (0..k)
-                .min_by(|&a, &b| {
-                    reconstruction_errors[(i, a)]
-                        .partial_cmp(&reconstruction_errors[(i, b)])
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-                .unwrap_or(0);
-            if cluster[i] != best_k {
-                cluster[i] = best_k;
-                changed = true;
-            }
-        }
-
-        if !changed {
-            converged = true;
-            break;
-        }
+    if member_indices.is_empty() {
+        // Keep previous model (or None on first iteration)
+        return Ok(None);
     }
 
-    Ok(KcfcResult {
-        cluster,
-        fpca_models,
-        reconstruction_errors,
-        iterations,
-        converged,
-    })
+    // Gather member rows into a (n_k x m) FdMatrix
+    let n_k = member_indices.len();
+    let mut col_major_k = vec![0.0_f64; n_k * m];
+    for (row_in_k, &orig_i) in member_indices.iter().enumerate() {
+        for j in 0..m {
+            col_major_k[row_in_k + j * n_k] = data[(orig_i, j)];
+        }
+    }
+    let data_k = FdMatrix::from_column_major(col_major_k, n_k, m)?;
+
+    // Fit FPCA (ncomp clamped internally to min(n_k, m))
+    match fdata_to_pc(&data_k, ncomp, argvals) {
+        Ok(fpca) => Ok(Some(fpca)),
+        Err(_) => Ok(None), // Degenerate cluster; caller keeps prior model
+    }
+}
+
+/// Compute the n×k reconstruction-error matrix for all curves vs all clusters.
+///
+/// `reconstruction_errors[(i, ki)]` is the L2² reconstruction error of curve i
+/// against cluster ki's FPCA model (Simpson-weighted; `f64::INFINITY` for None).
+fn kcfc_reconstruction_errors(
+    data: &FdMatrix,
+    fpca_models: &[Option<FpcaResult>],
+    weights: &[f64],
+    n: usize,
+    m: usize,
+    k: usize,
+) -> Result<FdMatrix, FdarError> {
+    let mut reconstruction_errors = FdMatrix::zeros(n, k);
+    for i in 0..n {
+        let curve_row = data.row(i);
+        let curve_mat = FdMatrix::from_slice(&curve_row, 1, m)?;
+
+        for ki in 0..k {
+            let err = match &fpca_models[ki] {
+                None => f64::INFINITY,
+                Some(fpca) => {
+                    let ncomp_eff = fpca.rotation.ncols();
+                    match fpca.project(&curve_mat) {
+                        Ok(scores) => match fpca.reconstruct(&scores, ncomp_eff) {
+                            Ok(recon) => {
+                                // L2^2 reconstruction error with Simpson weights
+                                let mut err_sq = 0.0;
+                                for j in 0..m {
+                                    let diff = curve_row[j] - recon[(0, j)];
+                                    err_sq += diff * diff * weights[j];
+                                }
+                                err_sq
+                            }
+                            Err(_) => f64::INFINITY,
+                        },
+                        Err(_) => f64::INFINITY,
+                    }
+                }
+            };
+            reconstruction_errors[(i, ki)] = err;
+        }
+    }
+    Ok(reconstruction_errors)
+}
+
+/// Reassign each curve to the cluster with minimum reconstruction error.
+///
+/// Returns `true` if any assignment changed (algorithm should continue),
+/// `false` if all assignments are stable (convergence).
+fn kcfc_reassign(
+    reconstruction_errors: &FdMatrix,
+    cluster: &mut [usize],
+    n: usize,
+    k: usize,
+) -> bool {
+    let mut changed = false;
+    for i in 0..n {
+        let best_k = (0..k)
+            .min_by(|&a, &b| {
+                reconstruction_errors[(i, a)]
+                    .partial_cmp(&reconstruction_errors[(i, b)])
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap_or(0);
+        if cluster[i] != best_k {
+            cluster[i] = best_k;
+            changed = true;
+        }
+    }
+    changed
 }
 
 // ────────────────────────────────────────────────────────────────────────────
