@@ -4,18 +4,18 @@ milestone: v0.46.0
 milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
 current_phase: 109
 current_phase_name: Complexity Tail & Quality-Gate Green
-current_plan: Not started
-status: planning
-stopped_at: Phase 108 complete, ready to plan Phase 109
-last_updated: "2026-09-14T11:55:22.999Z"
+current_plan: 3
+status: executing
+stopped_at: Completed 109-01-PLAN.md (TRACER)
+last_updated: "2026-09-14T12:25:02.924Z"
 last_activity: 2026-09-14
-last_activity_desc: Phase 108 complete, transitioned to Phase 109
-state_head: 53822f3c7b6ed383c25d8262e9c59aa7a460ac75
+last_activity_desc: Phase 109 execution resumed (wave continue)
+state_head: 402d4cd3bd82c850a2f3bc77c1805ce16bba0f14
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 26
+  completed_plans: 13
 ---
 
 # Project State
@@ -25,15 +25,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-13)
 
 **Core value:** A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps on the road to a deliberate 1.0 cut.
-**Current focus:** Phase 108 — Entropy Extraction & SATD/Unwrap Cleanup
+**Current focus:** Phase 109 — Complexity Tail & Quality-Gate Green
 
 ## Current Position
 
-Phase: 109 — Complexity Tail & Quality-Gate Green
-Current Plan: Not started
+Phase: 109 (Complexity Tail & Quality-Gate Green) — EXECUTING
+Current Plan: 3
 Total Plans in Phase: 4
-Status: Ready to plan
-Last activity: 2026-09-14 — Phase 108 complete, transitioned to Phase 109
+Status: Ready to execute
+Last activity: 2026-09-14 — Phase 109 execution resumed (wave continue)
 
 ## Milestone Roadmap (v0.46.0)
 
@@ -98,6 +98,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 108 P01 | 15 | 2 tasks | 3 files |
 | Phase 108 P02 | 35 | 3 tasks | 11 files |
 | Phase 108 P03 | 12 | 2 tasks | 5 files |
+| Phase 109 P01 | 7 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,7 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 108]: subtract_fitted chosen over compute_residuals in scalar_on_shape.rs — 3-arg version already exists at line 636; naming collision forced distinct name
 - [Phase 108]: pmat entropy counts structurally-identical lines inside a helper: node_bbox needed single-fold accumulation to clear fem_smoothing flag; sin_sin_surface test helper also required
 - [Phase 108]: helpers::extract_curves equivalence verified by source inspection (FdMatrix::rows() == (0..nrows).map(|i| row(i)).collect()): reused in soft_dtw without adding new extract_rows helper
+- [Phase 109]: 109-01 TRACER: two-seam decomposition for cog 28-32; single-seam for cog 24-25; inline on hot-path helpers; clippy ptr_arg auto-fixed
 
 ### Pending Todos
 
@@ -163,8 +165,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T11:06:02.500Z
-Stopped at: Phase 108 complete, ready to plan Phase 109
+Last session: 2026-09-14T12:25:02.890Z
+Stopped at: Completed 109-01-PLAN.md (TRACER)
 Resume file: None
 
 ## Operator Next Steps

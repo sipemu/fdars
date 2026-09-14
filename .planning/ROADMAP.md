@@ -103,7 +103,8 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
   4. The full `cargo test` suite passes with identical numeric output; clippy `--all-targets` and fmt stay clean; the public API surface is unchanged.
 
 **Plans**: 14 plans
-- [ ] 109-01-PLAN.md — TRACER: alignment fpns/closed/bayesian (4 fns) — prove extract→pmat→commit loop
+
+- [x] 109-01-PLAN.md — TRACER: alignment fpns/closed/bayesian (4 fns) — prove extract→pmat→commit loop
 - [ ] 109-02-PLAN.md — alignment clustering/nd/generative (8 fns)
 - [ ] 109-03-PLAN.md — peer.rs (3 fns, heaviest cognitive scores)
 - [ ] 109-04-PLAN.md — clustering_advanced.rs (5 fns, incl. funfem_cluster residual)

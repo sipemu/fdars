@@ -23,7 +23,7 @@ This milestone drives `pmat quality-gate` to **PASS** (0 violations), fixes the 
 
 - [x] **QUAL-01**: The worst top-level complexity hotspots — `funfem_cluster` (cyc 59), `elastic_net_cd` (cog 54), `wnet_cv_lambda` (cog 45), `wnet` (cog 31), `boost_fofr` (cyc 39), `pace_fpca` (cyc 37), `bayesian_fosr` (cyc 36), `kcfc_cluster` (cyc 28) — are refactored into smaller helpers, each under pmat's cognitive/cyclomatic thresholds, with behavior and numeric output identical (verified by the existing test suite).
 - [x] **QUAL-02**: The SPM complexity cluster — `mfpca`, `spm_phase1_iterative`, `spm_mewma_monitor`, `select_ncomp`, `conditional_expectation` (partial), `spm_monitor_from_fields` (phase), `profile_phase1`, `spe_multivariate` (stats) — is refactored under pmat thresholds, behavior/numeric-identical.
-- [ ] **QUAL-03**: All remaining complexity violations across `fdars-core` are resolved so `pmat analyze complexity` / `pmat quality-gate` reports **0 complexity findings**.
+- [x] **QUAL-03**: All remaining complexity violations across `fdars-core` are resolved so `pmat analyze complexity` / `pmat quality-gate` reports **0 complexity findings**.
 
 ### Entropy & Technical Debt
 
@@ -75,7 +75,7 @@ Which phases cover which requirements.
 | QUAL-02 | Phase 107 | Complete |
 | QUAL-04 | Phase 108 | Complete |
 | QUAL-05 | Phase 108 | Complete |
-| QUAL-03 | Phase 109 | Pending |
+| QUAL-03 | Phase 109 | Complete |
 | CI-01 | Phase 110 | Pending |
 | REL-01 | Phase 111 | Pending |
 
