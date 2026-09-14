@@ -703,42 +703,8 @@ pub fn funfem_cluster(
     argvals: &[f64],
     config: &FunFemConfig,
 ) -> Result<FunFemResult, FdarError> {
-    let (n, m) = data.shape();
-
-    // Validation
-    if n == 0 || m == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "at least 1 row and 1 column".to_string(),
-            actual: format!("{n} rows, {m} columns"),
-        });
-    }
-    if argvals.len() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "argvals",
-            expected: format!("{m}"),
-            actual: format!("{}", argvals.len()),
-        });
-    }
-    if config.k == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "k",
-            message: "k must be >= 1".to_string(),
-        });
-    }
-    if config.k > n {
-        return Err(FdarError::InvalidParameter {
-            parameter: "k",
-            message: format!("k={} exceeds number of curves n={}", config.k, n),
-        });
-    }
-    if config.ncomp == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "ncomp",
-            message: "ncomp must be >= 1".to_string(),
-        });
-    }
-
+    let (n, m) = funfem_validate(data, argvals, config)?;
+    let _ = m; // m used only for validation; FPCA handles it internally
     let k = config.k;
 
     // Step 1: Global FPC scores via fdata_to_pc (clamps ncomp to min(n,m))
@@ -755,47 +721,12 @@ pub fn funfem_cluster(
     };
 
     // Step 2: K-means++ initialization on the score rows
-    let weights_uniform = vec![1.0; ncomp_eff]; // uniform weight for Euclidean distance in score space
     let row_major_scores = scores.to_row_major(); // n * ncomp_eff
     let mut rng = StdRng::seed_from_u64(config.seed);
-
-    let mut center_indices: Vec<usize> = Vec::with_capacity(k);
-    center_indices.push(rng.gen_range(0..n));
-    let mut min_dist_sq: Vec<f64> = (0..n)
-        .map(|i| {
-            let c0 = center_indices[0];
-            let d = l2_dist_rowmajor(&row_major_scores, i, c0, ncomp_eff, &weights_uniform);
-            d * d
-        })
-        .collect();
-    while center_indices.len() < k {
-        let total: f64 = min_dist_sq.iter().sum();
-        let chosen = if total < 1e-15 {
-            rng.gen_range(0..n)
-        } else {
-            let r = rng.gen::<f64>() * total;
-            let mut cumsum = 0.0;
-            let mut sel = n - 1;
-            for (i, &d) in min_dist_sq.iter().enumerate() {
-                cumsum += d;
-                if cumsum >= r {
-                    sel = i;
-                    break;
-                }
-            }
-            sel
-        };
-        center_indices.push(chosen);
-        for i in 0..n {
-            let d = l2_dist_rowmajor(&row_major_scores, i, chosen, ncomp_eff, &weights_uniform);
-            let d2 = d * d;
-            if d2 < min_dist_sq[i] {
-                min_dist_sq[i] = d2;
-            }
-        }
-    }
+    let center_indices = funfem_kmeans_pp_init(&row_major_scores, n, ncomp_eff, k, &mut rng);
 
     // Initial hard labels from nearest center
+    let weights_uniform = vec![1.0; ncomp_eff]; // uniform weight for Euclidean distance in score space
     let mut cluster: Vec<usize> = (0..n)
         .map(|i| {
             center_indices
@@ -856,86 +787,16 @@ pub fn funfem_cluster(
         iterations += 1;
 
         // ── Project scores onto current discriminative subspace ───────────
-        // proj_scores[i, d] = sum_j scores[(i,j)] * disc_dirs[j + d*ncomp_eff]
-        // disc_dirs is ncomp_eff x p_disc_eff column-major
-        let mut proj_scores = vec![0.0_f64; n * p_disc_eff]; // n x p_disc_eff row-major
-        for i in 0..n {
-            for d in 0..p_disc_eff {
-                let mut val = 0.0;
-                for j in 0..ncomp_eff {
-                    val += scores[(i, j)] * disc_dirs[j + d * ncomp_eff];
-                }
-                proj_scores[i * p_disc_eff + d] = val;
-            }
-        }
+        let proj_scores = funfem_project_scores(scores, &disc_dirs, n, ncomp_eff, p_disc_eff);
 
         // ── GMM in projected subspace: per-cluster mean and diag variance ─
-        // Compute cluster means in projected space
-        let mut mu_disc: Vec<Vec<f64>> = vec![vec![0.0; p_disc_eff]; k];
-        let mut n_k_soft: Vec<f64> = vec![0.0; k];
-        for i in 0..n {
-            for ki in 0..k {
-                let r = resp[i * k + ki];
-                n_k_soft[ki] += r;
-                for d in 0..p_disc_eff {
-                    mu_disc[ki][d] += r * proj_scores[i * p_disc_eff + d];
-                }
-            }
-        }
-        for ki in 0..k {
-            if n_k_soft[ki] > 1e-10 {
-                for d in 0..p_disc_eff {
-                    mu_disc[ki][d] /= n_k_soft[ki];
-                }
-            }
-        }
-
-        // Per-cluster diagonal variance in projected space
-        let mut var_disc: Vec<Vec<f64>> = vec![vec![1.0; p_disc_eff]; k];
-        for ki in 0..k {
-            if n_k_soft[ki] > 1e-10 {
-                for d in 0..p_disc_eff {
-                    let mut v = 0.0;
-                    for i in 0..n {
-                        let diff = proj_scores[i * p_disc_eff + d] - mu_disc[ki][d];
-                        v += resp[i * k + ki] * diff * diff;
-                    }
-                    var_disc[ki][d] = (v / n_k_soft[ki]).max(1e-8);
-                }
-            }
-        }
+        let (mu_disc, var_disc, n_k_soft) =
+            funfem_gmm_disc_stats(&proj_scores, &resp, n, k, p_disc_eff);
 
         // ── E-step: compute log-responsibilities in projected space ────────
-        let mut log_resp = vec![0.0_f64; n * k];
-        let mut ll = 0.0;
-        for i in 0..n {
-            let mut log_components = vec![0.0_f64; k];
-            for ki in 0..k {
-                let log_pi = if pi[ki] > 1e-300 { pi[ki].ln() } else { -700.0 };
-                let mut log_lik = log_pi;
-                for d in 0..p_disc_eff {
-                    let diff = proj_scores[i * p_disc_eff + d] - mu_disc[ki][d];
-                    let var = var_disc[ki][d];
-                    log_lik -= 0.5 * (var.ln() + diff * diff / var);
-                }
-                log_lik -= 0.5 * (p_disc_eff as f64) * std::f64::consts::TAU.ln();
-                log_components[ki] = log_lik;
-            }
-            // Log-sum-exp normalization
-            let log_sum = log_sum_exp(&log_components);
-            ll += log_sum;
-            for ki in 0..k {
-                log_resp[i * k + ki] = log_components[ki] - log_sum;
-            }
-        }
-
-        // Exponentiate
-        resp.fill(0.0);
-        for i in 0..n {
-            for ki in 0..k {
-                resp[i * k + ki] = log_resp[i * k + ki].exp().max(1e-300);
-            }
-        }
+        let (new_resp, ll) =
+            funfem_e_step(&proj_scores, &mu_disc, &var_disc, &pi, n, k, p_disc_eff);
+        resp = new_resp;
 
         // ── Update pi from responsibilities ────────────────────────────────
         let mut n_k_new: Vec<f64> = vec![0.0; k];
@@ -975,89 +836,18 @@ pub fn funfem_cluster(
         );
 
         // ── Fisher-EM discriminative subspace update ───────────────────────
-        // Compute between-scatter B_soft and within-scatter W_soft in score space
-        let global_mean: Vec<f64> = (0..ncomp_eff)
-            .map(|j| {
-                (0..n)
-                    .map(|i| row_major_scores[i * ncomp_eff + j])
-                    .sum::<f64>()
-                    / n as f64
-            })
-            .collect();
-
-        let mut b_soft = vec![0.0_f64; ncomp_eff * ncomp_eff]; // ncomp_eff x ncomp_eff row-major
-        let mut w_soft = vec![0.0_f64; ncomp_eff * ncomp_eff];
-
-        // Between-scatter: sum_k n_k (mu_k - mu_global)(mu_k - mu_global)^T
-        for ki in 0..k {
-            let nk = n_k_new[ki].max(1.0);
-            for j in 0..ncomp_eff {
-                for l in 0..ncomp_eff {
-                    b_soft[j * ncomp_eff + l] +=
-                        nk * (mu_k[ki][j] - global_mean[j]) * (mu_k[ki][l] - global_mean[l]);
-                }
-            }
-        }
-
-        // Within-scatter: sum_i sum_k r_{ik} (x_i - mu_k)(x_i - mu_k)^T
-        for i in 0..n {
-            for ki in 0..k {
-                let r = resp[i * k + ki];
-                for j in 0..ncomp_eff {
-                    let dj = row_major_scores[i * ncomp_eff + j] - mu_k[ki][j];
-                    for l in 0..ncomp_eff {
-                        let dl = row_major_scores[i * ncomp_eff + l] - mu_k[ki][l];
-                        w_soft[j * ncomp_eff + l] += r * dj * dl;
-                    }
-                }
-            }
-        }
-
-        // Add data-scaled regularization floor to W_soft diagonal (Pitfall 3)
-        let trace_w: f64 = (0..ncomp_eff)
-            .map(|j| w_soft[j * ncomp_eff + j])
-            .sum::<f64>();
-        let reg_floor = (trace_w / ncomp_eff as f64 * 1e-4).max(1e-8);
-        for j in 0..ncomp_eff {
-            w_soft[j * ncomp_eff + j] += reg_floor;
-        }
-
-        // Compute W^{-1} B via Cholesky + SVD: new discriminative directions
-        // W_soft Cholesky, then solve each column of B
-        match crate::linalg::cholesky_factor(&w_soft, ncomp_eff) {
-            Ok(l_w) => {
-                // Form W^{-1} B by solving W * X = B column by column
-                let mut winv_b = vec![0.0_f64; ncomp_eff * ncomp_eff];
-                for col in 0..ncomp_eff {
-                    let b_col: Vec<f64> = (0..ncomp_eff)
-                        .map(|r| b_soft[r * ncomp_eff + col])
-                        .collect();
-                    let x = crate::linalg::cholesky_forward_back(&l_w, &b_col, ncomp_eff);
-                    for r in 0..ncomp_eff {
-                        winv_b[r * ncomp_eff + col] = x[r];
-                    }
-                }
-
-                // SVD of W^{-1}B to get top p_disc_eff directions
-                use nalgebra::{DMatrix, SVD};
-                let mat = DMatrix::from_row_slice(ncomp_eff, ncomp_eff, &winv_b);
-                let svd = SVD::new(mat, true, false);
-                if let Some(u) = svd.u {
-                    // u columns = left singular vectors (ncomp_eff x ncomp_eff)
-                    // Store top p_disc_eff columns as new disc_dirs (ncomp_eff x p_disc_eff column-major)
-                    let mut new_dirs = vec![0.0_f64; ncomp_eff * p_disc_eff];
-                    for d in 0..p_disc_eff {
-                        for r in 0..ncomp_eff {
-                            new_dirs[r + d * ncomp_eff] = u[(r, d)];
-                        }
-                    }
-                    disc_dirs = new_dirs;
-                }
-                // If SVD u unavailable, keep previous disc_dirs
-            }
-            Err(_) => {
-                // Cholesky failed — keep previous discriminative directions (identity fallback)
-            }
+        if let Some(new_dirs) = funfem_subspace_update(
+            &row_major_scores,
+            &resp,
+            &mu_k,
+            &n_k_new,
+            &n_k_soft,
+            n,
+            ncomp_eff,
+            k,
+            p_disc_eff,
+        ) {
+            disc_dirs = new_dirs;
         }
 
         // Convergence check
@@ -1091,6 +881,316 @@ pub fn funfem_cluster(
         iterations,
         converged,
     })
+}
+
+/// Validate inputs for `funfem_cluster`; returns `(n, m)` on success.
+fn funfem_validate(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &FunFemConfig,
+) -> Result<(usize, usize), FdarError> {
+    let (n, m) = data.shape();
+    if n == 0 || m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 row and 1 column".to_string(),
+            actual: format!("{n} rows, {m} columns"),
+        });
+    }
+    if argvals.len() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("{m}"),
+            actual: format!("{}", argvals.len()),
+        });
+    }
+    if config.k == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k",
+            message: "k must be >= 1".to_string(),
+        });
+    }
+    if config.k > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k",
+            message: format!("k={} exceeds number of curves n={}", config.k, n),
+        });
+    }
+    if config.ncomp == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "ncomp",
+            message: "ncomp must be >= 1".to_string(),
+        });
+    }
+    Ok((n, m))
+}
+
+/// K-means++ D-squared initialisation in score space (uniform/Euclidean weights).
+///
+/// Draws from `rng` in the same order and count as the original inline code —
+/// RNG sequence is byte-identical to preserve seeded cluster assignments.
+fn funfem_kmeans_pp_init(
+    row_major_scores: &[f64],
+    n: usize,
+    ncomp_eff: usize,
+    k: usize,
+    rng: &mut StdRng,
+) -> Vec<usize> {
+    let weights_uniform = vec![1.0; ncomp_eff]; // uniform weight for Euclidean distance in score space
+    let mut center_indices: Vec<usize> = Vec::with_capacity(k);
+    center_indices.push(rng.gen_range(0..n));
+    let mut min_dist_sq: Vec<f64> = (0..n)
+        .map(|i| {
+            let c0 = center_indices[0];
+            let d = l2_dist_rowmajor(row_major_scores, i, c0, ncomp_eff, &weights_uniform);
+            d * d
+        })
+        .collect();
+    while center_indices.len() < k {
+        let total: f64 = min_dist_sq.iter().sum();
+        let chosen = if total < 1e-15 {
+            rng.gen_range(0..n)
+        } else {
+            let r = rng.gen::<f64>() * total;
+            let mut cumsum = 0.0;
+            let mut sel = n - 1;
+            for (i, &d) in min_dist_sq.iter().enumerate() {
+                cumsum += d;
+                if cumsum >= r {
+                    sel = i;
+                    break;
+                }
+            }
+            sel
+        };
+        center_indices.push(chosen);
+        for i in 0..n {
+            let d = l2_dist_rowmajor(row_major_scores, i, chosen, ncomp_eff, &weights_uniform);
+            let d2 = d * d;
+            if d2 < min_dist_sq[i] {
+                min_dist_sq[i] = d2;
+            }
+        }
+    }
+    center_indices
+}
+
+/// Project FPC scores onto the discriminative subspace.
+///
+/// Returns a flat `n × p_disc_eff` row-major buffer where
+/// `proj_scores[i * p_disc_eff + d] = Σ_j scores[(i,j)] * disc_dirs[j + d*ncomp_eff]`.
+///
+/// `disc_dirs` is `ncomp_eff × p_disc_eff` column-major:
+/// element `(j, d)` is at index `j + d * ncomp_eff`.
+fn funfem_project_scores(
+    scores: &FdMatrix,
+    disc_dirs: &[f64],
+    n: usize,
+    ncomp_eff: usize,
+    p_disc_eff: usize,
+) -> Vec<f64> {
+    // column-major: element (i,j) at i + j*nrows (FdMatrix convention)
+    let mut proj_scores = vec![0.0_f64; n * p_disc_eff]; // n x p_disc_eff row-major
+    for i in 0..n {
+        for d in 0..p_disc_eff {
+            let mut val = 0.0;
+            for j in 0..ncomp_eff {
+                val += scores[(i, j)] * disc_dirs[j + d * ncomp_eff];
+            }
+            proj_scores[i * p_disc_eff + d] = val;
+        }
+    }
+    proj_scores
+}
+
+/// Compute soft cluster means and diagonal variances in the projected subspace.
+///
+/// Returns `(mu_disc, var_disc, n_k_soft)` where
+/// `mu_disc[ki][d]` is the responsibility-weighted mean,
+/// `var_disc[ki][d]` is the responsibility-weighted variance (floored at 1e-8),
+/// and `n_k_soft[ki]` is the effective cluster size.
+fn funfem_gmm_disc_stats(
+    proj_scores: &[f64],
+    resp: &[f64],
+    n: usize,
+    k: usize,
+    p_disc_eff: usize,
+) -> (Vec<Vec<f64>>, Vec<Vec<f64>>, Vec<f64>) {
+    let mut mu_disc: Vec<Vec<f64>> = vec![vec![0.0; p_disc_eff]; k];
+    let mut n_k_soft: Vec<f64> = vec![0.0; k];
+    for i in 0..n {
+        for ki in 0..k {
+            let r = resp[i * k + ki];
+            n_k_soft[ki] += r;
+            for d in 0..p_disc_eff {
+                mu_disc[ki][d] += r * proj_scores[i * p_disc_eff + d];
+            }
+        }
+    }
+    for ki in 0..k {
+        if n_k_soft[ki] > 1e-10 {
+            for d in 0..p_disc_eff {
+                mu_disc[ki][d] /= n_k_soft[ki];
+            }
+        }
+    }
+
+    // Per-cluster diagonal variance in projected space
+    let mut var_disc: Vec<Vec<f64>> = vec![vec![1.0; p_disc_eff]; k];
+    for ki in 0..k {
+        if n_k_soft[ki] > 1e-10 {
+            for d in 0..p_disc_eff {
+                let mut v = 0.0;
+                for i in 0..n {
+                    let diff = proj_scores[i * p_disc_eff + d] - mu_disc[ki][d];
+                    v += resp[i * k + ki] * diff * diff;
+                }
+                var_disc[ki][d] = (v / n_k_soft[ki]).max(1e-8);
+            }
+        }
+    }
+    (mu_disc, var_disc, n_k_soft)
+}
+
+/// Log-sum-exp E-step in the projected subspace.
+///
+/// Returns `(resp, ll)` where `resp` is a flat `n×k` row-major responsibility
+/// matrix (exponentiated, floored at 1e-300) and `ll` is the log-likelihood.
+fn funfem_e_step(
+    proj_scores: &[f64],
+    mu_disc: &[Vec<f64>],
+    var_disc: &[Vec<f64>],
+    pi: &[f64],
+    n: usize,
+    k: usize,
+    p_disc_eff: usize,
+) -> (Vec<f64>, f64) {
+    let mut log_resp = vec![0.0_f64; n * k];
+    let mut ll = 0.0;
+    for i in 0..n {
+        let mut log_components = vec![0.0_f64; k];
+        for ki in 0..k {
+            let log_pi = if pi[ki] > 1e-300 { pi[ki].ln() } else { -700.0 };
+            let mut log_lik = log_pi;
+            for d in 0..p_disc_eff {
+                let diff = proj_scores[i * p_disc_eff + d] - mu_disc[ki][d];
+                let var = var_disc[ki][d];
+                log_lik -= 0.5 * (var.ln() + diff * diff / var);
+            }
+            log_lik -= 0.5 * (p_disc_eff as f64) * std::f64::consts::TAU.ln();
+            log_components[ki] = log_lik;
+        }
+        // Log-sum-exp normalization
+        let log_sum = log_sum_exp(&log_components);
+        ll += log_sum;
+        for ki in 0..k {
+            log_resp[i * k + ki] = log_components[ki] - log_sum;
+        }
+    }
+
+    // Exponentiate
+    let mut resp = vec![0.0_f64; n * k];
+    for i in 0..n {
+        for ki in 0..k {
+            resp[i * k + ki] = log_resp[i * k + ki].exp().max(1e-300);
+        }
+    }
+    (resp, ll)
+}
+
+/// Fisher-EM discriminative subspace update (between/within scatter + Cholesky + SVD).
+///
+/// Returns `Some(new_disc_dirs)` (column-major `ncomp_eff × p_disc_eff`) when the
+/// Cholesky factorisation of W_soft succeeds, or `None` to keep the previous
+/// directions (identity fallback on Cholesky failure).
+#[allow(clippy::too_many_arguments)]
+fn funfem_subspace_update(
+    row_major_scores: &[f64],
+    resp: &[f64],
+    mu_k: &[Vec<f64>],
+    n_k_new: &[f64],
+    _n_k_soft: &[f64],
+    n: usize,
+    ncomp_eff: usize,
+    k: usize,
+    p_disc_eff: usize,
+) -> Option<Vec<f64>> {
+    // Compute between-scatter B_soft and within-scatter W_soft in score space
+    let global_mean: Vec<f64> = (0..ncomp_eff)
+        .map(|j| {
+            (0..n)
+                .map(|i| row_major_scores[i * ncomp_eff + j])
+                .sum::<f64>()
+                / n as f64
+        })
+        .collect();
+
+    let mut b_soft = vec![0.0_f64; ncomp_eff * ncomp_eff]; // ncomp_eff x ncomp_eff row-major
+    let mut w_soft = vec![0.0_f64; ncomp_eff * ncomp_eff];
+
+    // Between-scatter: sum_k n_k (mu_k - mu_global)(mu_k - mu_global)^T
+    for ki in 0..k {
+        let nk = n_k_new[ki].max(1.0);
+        for j in 0..ncomp_eff {
+            for l in 0..ncomp_eff {
+                b_soft[j * ncomp_eff + l] +=
+                    nk * (mu_k[ki][j] - global_mean[j]) * (mu_k[ki][l] - global_mean[l]);
+            }
+        }
+    }
+
+    // Within-scatter: sum_i sum_k r_{ik} (x_i - mu_k)(x_i - mu_k)^T
+    for i in 0..n {
+        for ki in 0..k {
+            let r = resp[i * k + ki];
+            for j in 0..ncomp_eff {
+                let dj = row_major_scores[i * ncomp_eff + j] - mu_k[ki][j];
+                for l in 0..ncomp_eff {
+                    let dl = row_major_scores[i * ncomp_eff + l] - mu_k[ki][l];
+                    w_soft[j * ncomp_eff + l] += r * dj * dl;
+                }
+            }
+        }
+    }
+
+    // Add data-scaled regularization floor to W_soft diagonal
+    let trace_w: f64 = (0..ncomp_eff)
+        .map(|j| w_soft[j * ncomp_eff + j])
+        .sum::<f64>();
+    let reg_floor = (trace_w / ncomp_eff as f64 * 1e-4).max(1e-8);
+    for j in 0..ncomp_eff {
+        w_soft[j * ncomp_eff + j] += reg_floor;
+    }
+
+    // Compute W^{-1} B via Cholesky + SVD: new discriminative directions
+    let l_w = crate::linalg::cholesky_factor(&w_soft, ncomp_eff).ok()?;
+
+    // Form W^{-1} B by solving W * X = B column by column
+    let mut winv_b = vec![0.0_f64; ncomp_eff * ncomp_eff];
+    for col in 0..ncomp_eff {
+        let b_col: Vec<f64> = (0..ncomp_eff)
+            .map(|r| b_soft[r * ncomp_eff + col])
+            .collect();
+        let x = crate::linalg::cholesky_forward_back(&l_w, &b_col, ncomp_eff);
+        for r in 0..ncomp_eff {
+            winv_b[r * ncomp_eff + col] = x[r];
+        }
+    }
+
+    // SVD of W^{-1}B to get top p_disc_eff directions
+    use nalgebra::{DMatrix, SVD};
+    let mat = DMatrix::from_row_slice(ncomp_eff, ncomp_eff, &winv_b);
+    let svd = SVD::new(mat, true, false);
+    let u = svd.u?;
+    // u columns = left singular vectors (ncomp_eff x ncomp_eff)
+    // Store top p_disc_eff columns as new disc_dirs (ncomp_eff x p_disc_eff column-major)
+    let mut new_dirs = vec![0.0_f64; ncomp_eff * p_disc_eff];
+    for d in 0..p_disc_eff {
+        for r in 0..ncomp_eff {
+            new_dirs[r + d * ncomp_eff] = u[(r, d)];
+        }
+    }
+    Some(new_dirs)
 }
 
 /// Update GMM parameters from hard assignments.
