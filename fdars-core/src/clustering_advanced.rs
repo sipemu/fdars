@@ -262,8 +262,8 @@ fn dbscan_expand_cluster(
     eps: f64,
     min_points: usize,
     cluster_id: usize,
-    labels: &mut Vec<Option<usize>>,
-    visited: &mut Vec<bool>,
+    labels: &mut [Option<usize>],
+    visited: &mut [bool],
 ) {
     let mut queue = initial_neighbors;
     let mut qi = 0;
@@ -1602,11 +1602,69 @@ pub fn align_cluster_fd(
     argvals: &[f64],
     config: &AlignClusterConfig,
 ) -> Result<AlignClusterResult, FdarError> {
-    use crate::alignment::{amplitude_distance, elastic_distance, karcher_mean};
+    let (n, m) = align_cluster_validate(data, argvals, config)?;
+    let k = config.k;
 
+    // Initialize k templates by seeded random distinct-curve selection.
+    let mut rng = StdRng::seed_from_u64(config.seed);
+    let mut templates = align_cluster_init_templates(data, n, k, &mut rng);
+
+    let mut cluster: Vec<usize> = vec![0; n];
+    let mut distances = FdMatrix::zeros(n, k);
+    let mut converged = false;
+    let mut iterations = 0;
+
+    for _iter in 0..config.max_iter {
+        iterations += 1;
+
+        // ── Reassignment: compute distances + assign to nearest template ──
+        let changed = align_cluster_reassign(
+            data,
+            argvals,
+            config,
+            n,
+            k,
+            &templates,
+            &mut cluster,
+            &mut distances,
+        );
+
+        // ── Template update: Karcher mean of cluster members ─────────────
+        let template_changed = align_cluster_update_templates(
+            data,
+            argvals,
+            config,
+            n,
+            m,
+            k,
+            &cluster,
+            &mut templates,
+            &mut rng,
+        )?;
+
+        // Converge only when no curve moved AND no template was reinit-ed.
+        if !changed && !template_changed {
+            converged = true;
+            break;
+        }
+    }
+
+    Ok(AlignClusterResult {
+        cluster,
+        templates,
+        distances,
+        iterations,
+        converged,
+    })
+}
+
+/// Validate inputs for `align_cluster_fd`; returns `(n, m)` on success.
+fn align_cluster_validate(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &AlignClusterConfig,
+) -> Result<(usize, usize), FdarError> {
     let (n, m) = data.shape();
-
-    // Validation
     if n == 0 || m == 0 {
         return Err(FdarError::InvalidDimension {
             parameter: "data",
@@ -1633,14 +1691,19 @@ pub fn align_cluster_fd(
             message: format!("k={} exceeds number of curves n={}", config.k, n),
         });
     }
+    Ok((n, m))
+}
 
-    let k = config.k;
-
-    // Initialize k templates by seeded random distinct-curve selection.
-    // Use a shuffled index list and pick every n/k curves for spread,
-    // then shuffle within the stratum using the seeded RNG to ensure
-    // reproducibility while covering the data range.
-    let mut rng = StdRng::seed_from_u64(config.seed);
+/// Initialize k templates by seeded Fisher-Yates shuffle and evenly-strided selection.
+///
+/// Draws from `rng` in the same order as the original inlined initialization code —
+/// RNG sequence is byte-identical to preserve seeded template choices.
+fn align_cluster_init_templates(
+    data: &FdMatrix,
+    n: usize,
+    k: usize,
+    rng: &mut StdRng,
+) -> Vec<Vec<f64>> {
     let mut shuffled: Vec<usize> = (0..n).collect();
     // Fisher-Yates shuffle
     for i in (1..n).rev() {
@@ -1650,107 +1713,105 @@ pub fn align_cluster_fd(
     // Pick k evenly-strided indices from the shuffled list for spread
     let step = n / k;
     let template_indices: Vec<usize> = (0..k).map(|ki| shuffled[(ki * step).min(n - 1)]).collect();
+    template_indices.iter().map(|&ci| data.row(ci)).collect()
+}
 
-    // Initialize templates as the selected curve values
-    let mut templates: Vec<Vec<f64>> = template_indices.iter().map(|&ci| data.row(ci)).collect();
-
-    let mut cluster: Vec<usize> = vec![0; n];
-    let mut distances = FdMatrix::zeros(n, k);
-    let mut converged = false;
-    let mut iterations = 0;
-
-    for _iter in 0..config.max_iter {
-        iterations += 1;
-
-        // ── Reassignment: compute distances to each template ──────────────
-        for i in 0..n {
-            let curve_i = data.row(i);
-            for ki in 0..k {
-                let dist = if config.use_amplitude_only {
-                    amplitude_distance(&curve_i, &templates[ki], argvals, config.elastic_lambda)
-                } else {
-                    elastic_distance(&curve_i, &templates[ki], argvals, config.elastic_lambda)
-                };
-                distances[(i, ki)] = dist;
-            }
-        }
-
-        // Assign each curve to nearest template
-        let mut changed = false;
-        for i in 0..n {
-            let best_k = (0..k)
-                .min_by(|&a, &b| {
-                    distances[(i, a)]
-                        .partial_cmp(&distances[(i, b)])
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-                .unwrap_or(0);
-            if cluster[i] != best_k {
-                cluster[i] = best_k;
-                changed = true;
-            }
-        }
-
-        // ── Template update: Karcher mean of cluster members ──────────────
-        // Track whether any template was changed (including by empty-cluster
-        // reinit) so convergence is not declared on the same iteration that a
-        // reinit occurred — the new template must be tested in the next pass.
-        let mut template_changed = false;
+/// Compute elastic distances from every curve to every template, then reassign each
+/// curve to the nearest template.
+///
+/// Returns `true` if any assignment changed (algorithm should continue).
+fn align_cluster_reassign(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &AlignClusterConfig,
+    n: usize,
+    k: usize,
+    templates: &[Vec<f64>],
+    cluster: &mut [usize],
+    distances: &mut FdMatrix,
+) -> bool {
+    use crate::alignment::{amplitude_distance, elastic_distance};
+    for i in 0..n {
+        let curve_i = data.row(i);
         for ki in 0..k {
-            let member_indices: Vec<usize> = (0..n).filter(|&i| cluster[i] == ki).collect();
-
-            if member_indices.is_empty() {
-                // Empty-cluster fallback (Pitfall 6): reinit to a random non-member curve
-                // Find all non-members
-                let non_members: Vec<usize> = (0..n).filter(|&i| cluster[i] != ki).collect();
-                if !non_members.is_empty() {
-                    let rand_idx = rng.gen_range(0..non_members.len());
-                    templates[ki] = data.row(non_members[rand_idx]);
-                    template_changed = true;
-                }
-                // (If somehow all n are in one cluster, keep the old template)
-                continue;
-            }
-
-            // Gather member rows into (n_k x m) FdMatrix
-            let n_k = member_indices.len();
-            let mut col_major_k = vec![0.0_f64; n_k * m];
-            for (row_in_k, &orig_i) in member_indices.iter().enumerate() {
-                for j in 0..m {
-                    col_major_k[row_in_k + j * n_k] = data[(orig_i, j)];
-                }
-            }
-            let data_k = FdMatrix::from_column_major(col_major_k, n_k, m)?;
-
-            // Karcher mean — returns KarcherMeanResult, template is `.mean` field
-            let km = karcher_mean(
-                &data_k,
-                argvals,
-                config.karcher_max_iter,
-                config.karcher_tol,
-                config.elastic_lambda,
-            );
-            templates[ki] = km.mean;
-        }
-
-        // Converge only when no curve moved AND no template was reinit-ed due to
-        // an empty cluster.  Including template_changed prevents the algorithm
-        // from declaring convergence on the same iteration as an empty-cluster
-        // reinit, before the new template has been used in a subsequent
-        // reassignment pass.
-        if !changed && !template_changed {
-            converged = true;
-            break;
+            let dist = if config.use_amplitude_only {
+                amplitude_distance(&curve_i, &templates[ki], argvals, config.elastic_lambda)
+            } else {
+                elastic_distance(&curve_i, &templates[ki], argvals, config.elastic_lambda)
+            };
+            distances[(i, ki)] = dist;
         }
     }
+    let mut changed = false;
+    for i in 0..n {
+        let best_k = (0..k)
+            .min_by(|&a, &b| {
+                distances[(i, a)]
+                    .partial_cmp(&distances[(i, b)])
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap_or(0);
+        if cluster[i] != best_k {
+            cluster[i] = best_k;
+            changed = true;
+        }
+    }
+    changed
+}
 
-    Ok(AlignClusterResult {
-        cluster,
-        templates,
-        distances,
-        iterations,
-        converged,
-    })
+/// Update each cluster template to the Karcher mean of its members.
+///
+/// Handles empty clusters by reinitializing to a random non-member curve (drawing
+/// from `rng` in the same order as the original code). Returns `true` if any
+/// template was updated or reinit-ed (signals caller that convergence is not yet safe).
+fn align_cluster_update_templates(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &AlignClusterConfig,
+    n: usize,
+    m: usize,
+    k: usize,
+    cluster: &[usize],
+    templates: &mut [Vec<f64>],
+    rng: &mut StdRng,
+) -> Result<bool, FdarError> {
+    use crate::alignment::karcher_mean;
+    // Track whether any template was changed (including by empty-cluster reinit)
+    // so convergence is not declared on the same iteration as a reinit.
+    let mut template_changed = false;
+    for ki in 0..k {
+        let member_indices: Vec<usize> = (0..n).filter(|&i| cluster[i] == ki).collect();
+        if member_indices.is_empty() {
+            // Empty-cluster fallback: reinit to a random non-member curve
+            let non_members: Vec<usize> = (0..n).filter(|&i| cluster[i] != ki).collect();
+            if !non_members.is_empty() {
+                let rand_idx = rng.gen_range(0..non_members.len());
+                templates[ki] = data.row(non_members[rand_idx]);
+                template_changed = true;
+            }
+            // (If somehow all n are in one cluster, keep the old template)
+            continue;
+        }
+        // Gather member rows into (n_k x m) FdMatrix
+        let n_k = member_indices.len();
+        let mut col_major_k = vec![0.0_f64; n_k * m];
+        for (row_in_k, &orig_i) in member_indices.iter().enumerate() {
+            for j in 0..m {
+                col_major_k[row_in_k + j * n_k] = data[(orig_i, j)];
+            }
+        }
+        let data_k = FdMatrix::from_column_major(col_major_k, n_k, m)?;
+        // Karcher mean — returns KarcherMeanResult, template is `.mean` field
+        let km = karcher_mean(
+            &data_k,
+            argvals,
+            config.karcher_max_iter,
+            config.karcher_tol,
+            config.elastic_lambda,
+        );
+        templates[ki] = km.mean;
+    }
+    Ok(template_changed)
 }
 
 // ────────────────────────────────────────────────────────────────────────────
