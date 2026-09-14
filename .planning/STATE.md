@@ -6,16 +6,16 @@ current_phase: 109
 current_phase_name: Complexity Tail & Quality-Gate Green
 current_plan: 4
 status: executing
-stopped_at: Completed 109-05-PLAN.md
-last_updated: "2026-09-14T13:58:36.043Z"
+stopped_at: Completed 109-07-PLAN.md
+last_updated: "2026-09-14T16:03:01.315Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 109 execution resumed (wave continue)
-state_head: 4271a4d1dfad52d9a37c1ac9abcf1766ee36428a
+state_head: "0b8efccb91062bc3282df5813cdbb5ec14e80cfd"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 26
-  completed_plans: 17
+  completed_plans: 19
 ---
 
 # Project State
@@ -102,6 +102,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 109 P02 | 11 | 3 tasks | 3 files |
 | Phase 109 P03 | 15 | 3 tasks | 1 files |
 | Phase 109 P04 | 25 | 3 tasks | 1 files |
+| Phase 109 P07 | 30 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -148,6 +149,8 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 109]: peer/lpeer/select_lambda_reml_peer decomposed into 10 private helpers; all below cog 23/cyc 30; REML EM order verbatim; sigma_inv closure to named fn with explicit params; reml_estep returns Option (None=Cholesky failure)
 - [Phase 109]: dbscan_expand_cluster takes initial_neighbors by value to match original flow
 - [Phase 109]: gmm_hard/soft_cluster_params return owned (mu, sigma) tuples to avoid borrow aliasing
+- [Phase 109]: 109-07: CD sweep helpers lift verbatim — cd_group_partial/cd_group_ols_soft/cd_scalar_partial_j decompose group_lasso_cd (cog 67→17) without reordering FP accumulation
+- [Phase 109]: 109-07: gkam_validate split-validate applied — gkam_validate_predictors (per-predictor loop cog 11) + gkam_validate (guards cog 15)
 
 ### Pending Todos
 
@@ -173,8 +176,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-14T13:58:36.010Z
-Stopped at: Completed 109-05-PLAN.md
+Last session: 2026-09-14T16:03:01.284Z
+Stopped at: Completed 109-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
