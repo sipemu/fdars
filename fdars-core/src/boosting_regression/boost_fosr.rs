@@ -192,6 +192,211 @@ pub(crate) fn boost_fosr_one_step(
 }
 
 // ---------------------------------------------------------------------------
+// Private helpers for boost_fosr
+// ---------------------------------------------------------------------------
+
+/// Validate data/predictor/argvals dimensions for boost_fosr.
+fn boost_fosr_validate_dims(
+    data: &FdMatrix,
+    predictors: &FdMatrix,
+    argvals: &[f64],
+) -> Result<(), FdarError> {
+    let (n, m_t) = data.shape();
+    if n < 3 || m_t == 0 || predictors.nrows() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data/predictors",
+            expected: format!("n >= 3, m > 0, predictors.nrows() == n (n={n})"),
+            actual: format!("n={n}, m={m_t}, predictors.nrows()={}", predictors.nrows()),
+        });
+    }
+    if argvals.len() != m_t {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: format!("length == data.ncols() = {m_t}"),
+            actual: format!("length = {}", argvals.len()),
+        });
+    }
+    if predictors.ncols() == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "predictors",
+            expected: "at least 1 predictor column".to_string(),
+            actual: "0 columns".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Validate boosting config parameters for boost_fosr.
+fn boost_fosr_validate_config(config: &BoostingConfig, n: usize) -> Result<(), FdarError> {
+    if config.mstop == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "mstop",
+            message: "must be >= 1".to_string(),
+        });
+    }
+    if config.nu <= 0.0 || config.nu > 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "nu",
+            message: format!("must be in (0, 1], got {}", config.nu),
+        });
+    }
+    if config.nbasis < 4 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: format!("must be >= 4, got {}", config.nbasis),
+        });
+    }
+    if config.lambda <= 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda",
+            message: format!("must be > 0, got {}", config.lambda),
+        });
+    }
+    if config.order < 1 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "order",
+            message: format!("must be >= 1, got {}", config.order),
+        });
+    }
+    if config.nbasis > n {
+        return Err(FdarError::InvalidParameter {
+            parameter: "nbasis",
+            message: format!(
+                "must be <= n (got nbasis={}, n={n}) — prevents degenerate Cholesky",
+                config.nbasis
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Initialize intercept F₀(t) = Ȳ(t) and the current estimate matrix.
+/// Returns (intercept, f_current).
+fn boost_fosr_init(data: &FdMatrix, n: usize, m_t: usize) -> (Vec<f64>, FdMatrix) {
+    let intercept: Vec<f64> = (0..m_t)
+        .map(|t| (0..n).map(|i| data[(i, t)]).sum::<f64>() / n as f64)
+        .collect();
+    let mut f_current = FdMatrix::zeros(n, m_t);
+    for t in 0..m_t {
+        for i in 0..n {
+            f_current[(i, t)] = intercept[t];
+        }
+    }
+    (intercept, f_current)
+}
+
+/// Pre-compute base-learners (Φⱼ, Lⱼ) for each predictor column.
+fn boost_fosr_build_learners(
+    predictors: &FdMatrix,
+    n: usize,
+    config: &BoostingConfig,
+) -> Result<Vec<BaseLearner>, FdarError> {
+    let p = predictors.ncols();
+    let nbasis = config.nbasis;
+    let order = config.order;
+    let lambda = config.lambda;
+    let mut learners: Vec<BaseLearner> = Vec::with_capacity(p);
+
+    for j in 0..p {
+        let x_col = predictors.column(j);
+        let phi = build_bspline_design_at(x_col, nbasis, order);
+        let actual_k = phi.len() / n;
+
+        let x_argvals_for_penalty: Vec<f64> = {
+            let x_min = x_col.iter().copied().fold(f64::INFINITY, f64::min);
+            let x_max = x_col.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+            let n_pts = (actual_k + 1).max(20);
+            (0..n_pts)
+                .map(|i| x_min + (x_max - x_min) * i as f64 / (n_pts - 1).max(1) as f64)
+                .collect()
+        };
+        let r_col_major =
+            bspline_penalty_matrix(&x_argvals_for_penalty, actual_k, order, config.lfd_order);
+
+        let k = actual_k;
+        let mut a = vec![0.0f64; k * k];
+        for row in 0..k {
+            for col in row..k {
+                let mut s = 0.0f64;
+                for i in 0..n {
+                    s += phi[i + row * n] * phi[i + col * n];
+                }
+                a[row * k + col] = s;
+                a[col * k + row] = s;
+            }
+        }
+        for col in 0..k {
+            for row in 0..k {
+                a[row * k + col] += lambda * r_col_major[row + col * k];
+            }
+        }
+        for i in 0..k {
+            a[i * k + i] += 1e-10;
+        }
+        let l = cholesky_factor(&a, k).map_err(|e| FdarError::ComputationFailed {
+            operation: "boost_fosr base-learner Cholesky",
+            detail: format!("predictor j={j}: {e:?} — try increasing lambda or decreasing nbasis"),
+        })?;
+        learners.push(BaseLearner { phi, l, k });
+    }
+    Ok(learners)
+}
+
+/// Run the main boosting loop. Returns (selected_learners, gcv_path).
+/// Mutates f_current and beta in place.
+fn boost_fosr_loop(
+    data: &FdMatrix,
+    f_current: &mut FdMatrix,
+    beta: &mut FdMatrix,
+    learners: &[BaseLearner],
+    n: usize,
+    m_t: usize,
+    nu: f64,
+    mstop: usize,
+) -> Result<(Vec<usize>, Vec<f64>), FdarError> {
+    let mut selected_learners = Vec::with_capacity(mstop);
+    let mut gcv_path = Vec::with_capacity(mstop);
+
+    for _iter in 0..mstop {
+        // Compute residual U = Y − F̂
+        let mut residuals = FdMatrix::zeros(n, m_t);
+        for t in 0..m_t {
+            let y_col = data.column(t);
+            let f_col = f_current.column(t);
+            let r_col = residuals.column_mut(t);
+            for i in 0..n {
+                r_col[i] = y_col[i] - f_col[i];
+            }
+        }
+
+        let rss_before: f64 = (0..m_t)
+            .flat_map(|t| residuals.column(t).iter().map(|&r| r * r))
+            .sum();
+        gcv_path.push(rss_before);
+
+        let (j_star, fitted_star, _coefs_star) = boost_fosr_one_step(&residuals, learners)?;
+        selected_learners.push(j_star);
+
+        // Update F̂ += ν·Ĥⱼ*
+        for t in 0..m_t {
+            let f_col = f_current.column_mut(t);
+            let h_col = fitted_star.column(t);
+            for i in 0..n {
+                f_col[i] += nu * h_col[i];
+            }
+        }
+
+        // Accumulate β_{j*}(t) += ν · mean fitted effect per time point.
+        for t in 0..m_t {
+            let h_col = fitted_star.column(t);
+            let mean_effect: f64 = h_col.iter().sum::<f64>() / n as f64;
+            beta[(j_star, t)] += nu * mean_effect;
+        }
+    }
+    Ok((selected_learners, gcv_path))
+}
+
+// ---------------------------------------------------------------------------
 // Public: boost_fosr
 // ---------------------------------------------------------------------------
 
@@ -271,204 +476,33 @@ pub fn boost_fosr(
     argvals: &[f64],
     config: &BoostingConfig,
 ) -> Result<BoostFosrResult, FdarError> {
-    // ---- Input validation ---------------------------------------------------
+    boost_fosr_validate_dims(data, predictors, argvals)?;
+    boost_fosr_validate_config(config, data.nrows())?;
+
     let (n, m_t) = data.shape();
     let p = predictors.ncols();
-
-    if n < 3 || m_t == 0 || predictors.nrows() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data/predictors",
-            expected: format!("n >= 3, m > 0, predictors.nrows() == n (n={n})"),
-            actual: format!("n={n}, m={m_t}, predictors.nrows()={}", predictors.nrows()),
-        });
-    }
-    if argvals.len() != m_t {
-        return Err(FdarError::InvalidDimension {
-            parameter: "argvals",
-            expected: format!("length == data.ncols() = {m_t}"),
-            actual: format!("length = {}", argvals.len()),
-        });
-    }
-    if p == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "predictors",
-            expected: "at least 1 predictor column".to_string(),
-            actual: "0 columns".to_string(),
-        });
-    }
-    if config.mstop == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "mstop",
-            message: "must be >= 1".to_string(),
-        });
-    }
-    if config.nu <= 0.0 || config.nu > 1.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "nu",
-            message: format!("must be in (0, 1], got {}", config.nu),
-        });
-    }
-    if config.nbasis < 4 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "nbasis",
-            message: format!("must be >= 4, got {}", config.nbasis),
-        });
-    }
-    if config.lambda <= 0.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "lambda",
-            message: format!("must be > 0, got {}", config.lambda),
-        });
-    }
-    if config.order < 1 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "order",
-            message: format!("must be >= 1, got {}", config.order),
-        });
-    }
-    if config.nbasis > n {
-        return Err(FdarError::InvalidParameter {
-            parameter: "nbasis",
-            message: format!(
-                "must be <= n (got nbasis={}, n={n}) — prevents degenerate Cholesky",
-                config.nbasis
-            ),
-        });
-    }
-
-    let nbasis = config.nbasis;
-    let order = config.order;
-    let lambda = config.lambda;
     let nu = config.nu;
 
     // ---- Initialization: F₀(t) = Ȳ(t) ------------------------------------
-    let intercept: Vec<f64> = (0..m_t)
-        .map(|t| (0..n).map(|i| data[(i, t)]).sum::<f64>() / n as f64)
-        .collect();
+    let (intercept, mut f_current) = boost_fosr_init(data, n, m_t);
 
-    // Current estimate F (n × m_t)
-    let mut f_current = FdMatrix::zeros(n, m_t);
-    for t in 0..m_t {
-        for i in 0..n {
-            f_current[(i, t)] = intercept[t];
-        }
-    }
+    // ---- Pre-compute base-learners -----------------------------------------
+    let learners = boost_fosr_build_learners(predictors, n, config)?;
 
-    // Accumulated coefficient matrix β (p × m_t), initialized to zero
+    // ---- Accumulated coefficient matrix β (p × m_t) -----------------------
     let mut beta = FdMatrix::zeros(p, m_t);
 
-    // ---- Pre-compute base-learners (Φⱼ, Lⱼ) for each predictor j ----------
-    // The penalty and Cholesky factor are constant across boosting iterations
-    // since Φⱼ depends only on the predictor values (not the residuals).
-    let mut learners: Vec<BaseLearner> = Vec::with_capacity(p);
-
-    for j in 0..p {
-        // Extract column j of predictors (scalar predictor values for base-learner j)
-        let x_col = predictors.column(j);
-
-        // Build design matrix Φⱼ (n × K, column-major)
-        let phi = build_bspline_design_at(x_col, nbasis, order);
-        let actual_k = phi.len() / n; // actual K (may differ slightly due to nknots rounding)
-
-        // Compute penalty matrix Rⱼ (K × K, column-major from bspline_penalty_matrix)
-        // Use the predictor's own range as the argvals for the penalty
-        let x_argvals_for_penalty: Vec<f64> = {
-            // Use a uniform grid over [min(x), max(x)] for penalty matrix computation
-            let x_min = x_col.iter().copied().fold(f64::INFINITY, f64::min);
-            let x_max = x_col.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-            let n_pts = (actual_k + 1).max(20);
-            (0..n_pts)
-                .map(|i| x_min + (x_max - x_min) * i as f64 / (n_pts - 1).max(1) as f64)
-                .collect()
-        };
-        let r_col_major =
-            bspline_penalty_matrix(&x_argvals_for_penalty, actual_k, order, config.lfd_order);
-
-        // Build Aⱼ = Φⱼ'Φⱼ + λ·Rⱼ + ε·I (K × K row-major)
-        // Note: Φ is column-major (element (i,k) at phi[i + k*n])
-        //       R from bspline_penalty_matrix is column-major (element (j,k) at r[j + k*K])
-        let k = actual_k;
-        let mut a = vec![0.0f64; k * k];
-
-        // Φ'Φ: a[row, col] = Σᵢ phi[i + row*n] * phi[i + col*n]
-        for row in 0..k {
-            for col in row..k {
-                let mut s = 0.0f64;
-                for i in 0..n {
-                    s += phi[i + row * n] * phi[i + col * n];
-                }
-                a[row * k + col] = s;
-                a[col * k + row] = s;
-            }
-        }
-
-        // Add λ·Rⱼ (convert column-major R to row-major A)
-        for col in 0..k {
-            for row in 0..k {
-                a[row * k + col] += lambda * r_col_major[row + col * k];
-            }
-        }
-
-        // Ridge jitter ε·I (prevent near-singular Cholesky)
-        for i in 0..k {
-            a[i * k + i] += 1e-10;
-        }
-
-        // Cholesky factor
-        let l = cholesky_factor(&a, k).map_err(|e| FdarError::ComputationFailed {
-            operation: "boost_fosr base-learner Cholesky",
-            detail: format!("predictor j={j}: {e:?} — try increasing lambda or decreasing nbasis"),
-        })?;
-
-        learners.push(BaseLearner { phi, l, k });
-    }
-
-    // ---- Boosting loop ------------------------------------------------------
-    let mut selected_learners = Vec::with_capacity(config.mstop);
-    let mut gcv_path = Vec::with_capacity(config.mstop);
-
-    for _iter in 0..config.mstop {
-        // Compute residual U = Y − F̂ (n × m_t)
-        let mut residuals = FdMatrix::zeros(n, m_t);
-        for t in 0..m_t {
-            let y_col = data.column(t);
-            let f_col = f_current.column(t);
-            let r_col = residuals.column_mut(t);
-            for i in 0..n {
-                r_col[i] = y_col[i] - f_col[i];
-            }
-        }
-
-        // Track ‖U‖_F² before update
-        let rss_before: f64 = (0..m_t)
-            .flat_map(|t| residuals.column(t).iter().map(|&r| r * r))
-            .sum();
-        gcv_path.push(rss_before);
-
-        // Select best base-learner and get its fitted values + coefficients
-        let (j_star, fitted_star, _coefs_star) = boost_fosr_one_step(&residuals, &learners)?;
-        selected_learners.push(j_star);
-
-        // Update F̂ += ν·Ĥⱼ*
-        for t in 0..m_t {
-            let f_col = f_current.column_mut(t);
-            let h_col = fitted_star.column(t);
-            for i in 0..n {
-                f_col[i] += nu * h_col[i];
-            }
-        }
-
-        // Accumulate β_{j*}(t) += ν · mean fitted effect per time point.
-        // beta (p × m_t) stores the accumulated contribution of each base-learner.
-        // We track the mean fitted value (averaged over observations) as a scalar proxy
-        // coefficient per predictor per time point — interpretable as the average marginal
-        // effect of base-learner j* at iteration m.
-        for t in 0..m_t {
-            let h_col = fitted_star.column(t);
-            let mean_effect: f64 = h_col.iter().sum::<f64>() / n as f64;
-            beta[(j_star, t)] += nu * mean_effect;
-        }
-    }
+    // ---- Boosting loop -----------------------------------------------------
+    let (selected_learners, gcv_path) = boost_fosr_loop(
+        data,
+        &mut f_current,
+        &mut beta,
+        &learners,
+        n,
+        m_t,
+        nu,
+        config.mstop,
+    )?;
 
     // ---- Final residuals and R² -------------------------------------------
     let mut final_residuals = FdMatrix::zeros(n, m_t);
