@@ -120,6 +120,59 @@ fn find_best_rotation(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> (
     (best_k, best_dist)
 }
 
+// ─── Karcher Mean Helpers ────────────────────────────────────────────────────
+
+/// Align all curves to `mu` using closed alignment and accumulate the new SRSF mean.
+///
+/// Returns `(mu_q_new, align_results)` where `mu_q_new` is the averaged SRSF and
+/// `align_results` carries per-curve `(ClosedAlignmentResult, q_aligned)` pairs for
+/// the caller to store gammas/rotations.
+fn karcher_iter_step(
+    data: &FdMatrix,
+    mu: &[f64],
+    argvals: &[f64],
+    lambda: f64,
+    n: usize,
+    m: usize,
+) -> (Vec<f64>, Vec<(ClosedAlignmentResult, Vec<f64>)>) {
+    let align_results: Vec<(ClosedAlignmentResult, Vec<f64>)> = iter_maybe_parallel!(0..n)
+        .map(|i| {
+            let fi = data.row(i);
+            let res = elastic_align_pair_closed(mu, &fi, argvals, lambda)
+                .expect("dimension invariant: all curves have length m");
+            let q_warped = srsf_single(&res.f_aligned, argvals);
+            (res, q_warped)
+        })
+        .collect();
+
+    let mut mu_q_new = vec![0.0; m];
+    for (_, q_aligned) in &align_results {
+        for j in 0..m {
+            mu_q_new[j] += q_aligned[j];
+        }
+    }
+    for v in &mut mu_q_new {
+        *v /= n as f64;
+    }
+
+    (mu_q_new, align_results)
+}
+
+/// Store per-curve gammas and rotations from a completed alignment step.
+fn store_align_results(
+    gammas: &mut FdMatrix,
+    rotations: &mut Vec<usize>,
+    align_results: &[(ClosedAlignmentResult, Vec<f64>)],
+    m: usize,
+) {
+    for (i, (res, _)) in align_results.iter().enumerate() {
+        for j in 0..m {
+            gammas[(i, j)] = res.gamma[j];
+        }
+        rotations[i] = res.optimal_rotation;
+    }
+}
+
 // ─── Public Functions ───────────────────────────────────────────────────────
 
 /// Align closed curve `f2` to closed curve `f1` with rotation search.
@@ -252,29 +305,9 @@ pub fn karcher_mean_closed(
     for iter in 0..max_iter {
         n_iter = iter + 1;
 
-        // Align all curves to current mean using closed alignment
-        let align_results: Vec<(ClosedAlignmentResult, Vec<f64>)> = iter_maybe_parallel!(0..n)
-            .map(|i| {
-                let fi = data.row(i);
-                let res = elastic_align_pair_closed(&mu, &fi, argvals, lambda)
-                    .expect("dimension invariant: all curves have length m");
-                let q_warped = srsf_single(&res.f_aligned, argvals);
-                (res, q_warped)
-            })
-            .collect();
-
-        // Accumulate and compute new mean SRSF
-        let mut mu_q_new = vec![0.0; m];
-        for (i, (res, q_aligned)) in align_results.iter().enumerate() {
-            for j in 0..m {
-                gammas[(i, j)] = res.gamma[j];
-                mu_q_new[j] += q_aligned[j];
-            }
-            rotations[i] = res.optimal_rotation;
-        }
-        for j in 0..m {
-            mu_q_new[j] /= n as f64;
-        }
+        // Align all curves to current mean and accumulate new SRSF mean
+        let (mu_q_new, align_results) = karcher_iter_step(data, &mu, argvals, lambda, n, m);
+        store_align_results(&mut gammas, &mut rotations, &align_results, m);
 
         // Check convergence
         let diff_norm: f64 = mu_q
