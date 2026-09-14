@@ -424,12 +424,13 @@ pub fn kcfc_cluster(
 
         if !changed {
             converged = true;
-            let reconstruction_errors_final =
-                kcfc_reconstruction_errors(data, &fpca_models, &weights, n, m, k)?;
+            // `fpca_models` and `weights` are unchanged since `reconstruction_errors`
+            // was computed above (`kcfc_reassign` only mutates `cluster`), so the
+            // errors are identical — reuse them instead of recomputing.
             return Ok(KcfcResult {
                 cluster,
                 fpca_models,
-                reconstruction_errors: reconstruction_errors_final,
+                reconstruction_errors,
                 iterations,
                 converged,
             });
