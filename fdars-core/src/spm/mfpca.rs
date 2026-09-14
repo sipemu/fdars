@@ -421,7 +421,7 @@ fn mfpca_build_stacked(
 
 /// Extract scores, rotation, eigenvalues, and per-variable eigenfunctions from SVD output.
 fn mfpca_extract_components(
-    _svd: &nalgebra::SVD<f64, nalgebra::Dyn, nalgebra::Dyn>,
+    svd: &nalgebra::SVD<f64, nalgebra::Dyn, nalgebra::Dyn>,
     u: &nalgebra::Matrix<
         f64,
         nalgebra::Dyn,
@@ -439,7 +439,7 @@ fn mfpca_extract_components(
     total_cols: usize,
     grid_sizes: &[usize],
 ) -> Result<(FdMatrix, FdMatrix, Vec<f64>, Vec<FdMatrix>), FdarError> {
-    let singular_values: Vec<f64> = _svd.singular_values.iter().take(ncomp).copied().collect();
+    let singular_values: Vec<f64> = svd.singular_values.iter().take(ncomp).copied().collect();
 
     // Eigenvalues = sv^2 / (n - 1)
     let eigenvalues: Vec<f64> = singular_values

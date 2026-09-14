@@ -325,8 +325,7 @@ pub fn t2_contributions_mfpca(
     mfpca: &MfpcaResult,
 ) -> Result<FdMatrix, FdarError> {
     let (n, ncomp) = scores.shape();
-    let (ncomp_validated, p) = t2_mfpca_validate(scores, mfpca)?;
-    let _ = ncomp_validated; // ncomp from scores.shape() is authoritative
+    let p = t2_mfpca_validate(scores, mfpca)?;
     let eigenvalues = &mfpca.eigenvalues;
 
     let weights = t2_mfpca_compute_weights(mfpca, ncomp, p);
@@ -350,9 +349,10 @@ pub fn t2_contributions_mfpca(
 
 /// Validate inputs for `t2_contributions_mfpca`.
 ///
-/// Returns `(ncomp, p)` where `ncomp` is the number of score columns and `p` is
-/// the number of functional variables in the MFPCA result.
-fn t2_mfpca_validate(scores: &FdMatrix, mfpca: &MfpcaResult) -> Result<(usize, usize), FdarError> {
+/// Returns `p`, the number of functional variables in the MFPCA result. The
+/// score-column count `ncomp` is validated internally but not returned — the
+/// caller derives it authoritatively from `scores.shape()`.
+fn t2_mfpca_validate(scores: &FdMatrix, mfpca: &MfpcaResult) -> Result<usize, FdarError> {
     let (_, ncomp) = scores.shape();
     let eigenvalues = &mfpca.eigenvalues;
 
@@ -373,7 +373,7 @@ fn t2_mfpca_validate(scores: &FdMatrix, mfpca: &MfpcaResult) -> Result<(usize, u
         });
     }
 
-    Ok((ncomp, p))
+    Ok(p)
 }
 
 /// Compute loading weights for `t2_contributions_mfpca`.
