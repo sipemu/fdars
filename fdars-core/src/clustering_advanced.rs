@@ -1336,40 +1336,60 @@ fn update_gmm_params_from_hard(
     }
     for ki in 0..k {
         pi[ki] = (counts[ki] as f64 / n as f64).max(1e-300);
-        mu_k[ki] = vec![0.0; d];
-        // Initialize to 0 so that the accumulation below yields Σ(x-μ)²
-        // (not 1 + Σ(x-μ)², which was the previous incorrect value).
-        sigma_k[ki] = vec![0.0; d];
-        for i in 0..n {
-            if cluster[i] == ki {
-                for j in 0..d {
-                    mu_k[ki][j] += scores_rm[i * d + j];
-                }
-            }
-        }
-        if counts[ki] > 0 {
+        let (mu, sigma) = gmm_hard_cluster_params(scores_rm, cluster, n, d, ki, counts[ki]);
+        mu_k[ki] = mu;
+        sigma_k[ki] = sigma;
+    }
+}
+
+/// Compute the mean and diagonal variance for one cluster from hard assignments.
+///
+/// Returns `(mu, sigma)` where `mu[j]` is the sample mean and `sigma[j]` is the
+/// sample variance (floored at 1e-8) for dimension `j`. If `count == 0`, `mu`
+/// is all-zero and `sigma` is all-one (identity fallback). FP-accumulation order
+/// is verbatim from the original per-cluster loop in `update_gmm_params_from_hard`.
+fn gmm_hard_cluster_params(
+    scores_rm: &[f64],
+    cluster: &[usize],
+    n: usize,
+    d: usize,
+    ki: usize,
+    count: usize,
+) -> (Vec<f64>, Vec<f64>) {
+    let mut mu = vec![0.0_f64; d];
+    // Initialize to 0 so that the accumulation below yields Σ(x-μ)²
+    // (not 1 + Σ(x-μ)², which was the previous incorrect value).
+    let mut sigma = vec![0.0_f64; d];
+    for i in 0..n {
+        if cluster[i] == ki {
             for j in 0..d {
-                mu_k[ki][j] /= counts[ki] as f64;
-            }
-        }
-        for i in 0..n {
-            if cluster[i] == ki {
-                for j in 0..d {
-                    let diff = scores_rm[i * d + j] - mu_k[ki][j];
-                    sigma_k[ki][j] += diff * diff;
-                }
-            }
-        }
-        if counts[ki] > 1 {
-            for j in 0..d {
-                sigma_k[ki][j] = (sigma_k[ki][j] / counts[ki] as f64).max(1e-8);
-            }
-        } else {
-            for j in 0..d {
-                sigma_k[ki][j] = 1.0;
+                mu[j] += scores_rm[i * d + j];
             }
         }
     }
+    if count > 0 {
+        for j in 0..d {
+            mu[j] /= count as f64;
+        }
+    }
+    for i in 0..n {
+        if cluster[i] == ki {
+            for j in 0..d {
+                let diff = scores_rm[i * d + j] - mu[j];
+                sigma[j] += diff * diff;
+            }
+        }
+    }
+    if count > 1 {
+        for j in 0..d {
+            sigma[j] = (sigma[j] / count as f64).max(1e-8);
+        }
+    } else {
+        for j in 0..d {
+            sigma[j] = 1.0;
+        }
+    }
+    (mu, sigma)
 }
 
 /// Update GMM parameters from soft responsibilities.
@@ -1392,31 +1412,52 @@ fn update_gmm_params_from_soft(
     let total: f64 = n_k.iter().sum();
     for ki in 0..k {
         pi[ki] = (n_k[ki] / total).max(1e-300);
-        mu_k[ki] = vec![0.0; d];
-        sigma_k[ki] = vec![1.0; d];
-        if n_k[ki] > 1e-10 {
-            for i in 0..n {
-                let r = resp[i * k + ki];
-                for j in 0..d {
-                    mu_k[ki][j] += r * scores_rm[i * d + j];
-                }
-            }
+        let (mu, sigma) = gmm_soft_cluster_params(scores_rm, resp, n, d, k, ki, n_k[ki]);
+        mu_k[ki] = mu;
+        sigma_k[ki] = sigma;
+    }
+}
+
+/// Compute the mean and diagonal variance for one cluster from soft responsibilities.
+///
+/// Returns `(mu, sigma)` where `mu[j]` and `sigma[j]` are the responsibility-weighted
+/// mean and variance (floored at 1e-8). If `n_ki < 1e-10` returns all-zero mu and
+/// all-one sigma (identity fallback). FP-accumulation order verbatim from the original
+/// per-cluster loop in `update_gmm_params_from_soft`.
+fn gmm_soft_cluster_params(
+    scores_rm: &[f64],
+    resp: &[f64],
+    n: usize,
+    d: usize,
+    k: usize,
+    ki: usize,
+    n_ki: f64,
+) -> (Vec<f64>, Vec<f64>) {
+    let mut mu = vec![0.0_f64; d];
+    let mut sigma = vec![1.0_f64; d];
+    if n_ki > 1e-10 {
+        for i in 0..n {
+            let r = resp[i * k + ki];
             for j in 0..d {
-                mu_k[ki][j] /= n_k[ki];
-            }
-            let mut var_j = vec![0.0_f64; d];
-            for i in 0..n {
-                let r = resp[i * k + ki];
-                for j in 0..d {
-                    let diff = scores_rm[i * d + j] - mu_k[ki][j];
-                    var_j[j] += r * diff * diff;
-                }
-            }
-            for j in 0..d {
-                sigma_k[ki][j] = (var_j[j] / n_k[ki]).max(1e-8);
+                mu[j] += r * scores_rm[i * d + j];
             }
         }
+        for j in 0..d {
+            mu[j] /= n_ki;
+        }
+        let mut var_j = vec![0.0_f64; d];
+        for i in 0..n {
+            let r = resp[i * k + ki];
+            for j in 0..d {
+                let diff = scores_rm[i * d + j] - mu[j];
+                var_j[j] += r * diff * diff;
+            }
+        }
+        for j in 0..d {
+            sigma[j] = (var_j[j] / n_ki).max(1e-8);
+        }
     }
+    (mu, sigma)
 }
 
 /// Log-sum-exp of a slice (numerically stable).
