@@ -1,5 +1,31 @@
 # Milestones
 
+## v0.46.0 Quality Hardening — pmat Complexity Pass & CI Guardrail (Shipped: 2026-09-15)
+
+**Phases completed:** 6 phases, 26 plans, 42 tasks
+
+**Key accomplishments:**
+
+- Private-helper extraction of elastic_net_cd (cog 54→0), wnet_cv_lambda (cog 45→6), and wnet (cog 31→0) in wavelet/regression.rs proves the extract->test->pmat->commit loop for Phase 106
+- Private-helper extraction of funfem_cluster (cog 167→25) and kcfc_cluster (cog 93→11) in clustering_advanced.rs — both the worst and second-worst clustering functions cleared, 11 new private helpers added, 2942 tests green
+- Private-helper extraction of boost_fofr (cog 98→15, cyc 39→9) and bayesian_fosr (cog 84→7, cyc 36→5) clears the two boosting-regression QUAL-01 hotspots; Gibbs RNG order preserved; 2942 tests green
+- pace_fpca decomposed from cyclomatic 37/cognitive 78 into 8+1 private helpers, dropping the entry-point to cyc 4/cog 5 with numeric-identical output verified by 15 tests under both feature gates.
+- Private-helper extraction in ewma/mewma/stats/phase drops all four monitoring-cluster hotspots from cog 25-27 to cog 0-7 under pmat 3.18.0, 2942 lib tests numerically identical, clippy clean
+- Two SATD doc-comment false-positives reworded and one critical .unwrap() replaced with .expect(), clearing QUAL-05a + QUAL-05b and proving the pmat-verify->commit loop for the entropy plans.
+- Private helpers extracted for 5 production files (E-04 through E-12): node_bbox, extract_scalar_row, subtract_fitted, extract_score_row, plus helpers::extract_curves reuse in soft_dtw — pmat entropy flags cleared across 3x consecutive runs
+- Four alignment violations eliminated via private helper extraction (fpns.rs, closed.rs, bayesian.rs) — all targets now cog <=18 / cyc <=11, all new helpers cog <=14 / cyc <=7, 12/12 tests pass, clippy clean
+- Private-helper extraction of all five complexity violations in clustering_advanced.rs — dbscan_fd (53→11), funfem_cluster (25→18), update_gmm_params_from_hard (35→4), update_gmm_params_from_soft (26→4), align_cluster_fd (56→8) — 9 new private helpers added, all ≤ cog 20, 2942 tests green
+- Six clustering violations eliminated via private helper extraction (coclustering.rs, kernel_kmeans.rs, kshape.rs) — all targets now cog <=13 / cyc <=6, all helpers cog <=16 / cyc <=13, 34/34 tests pass, clippy clean
+- All 4 helpers.rs complexity violations eliminated via private helper extraction — targets now cog <=19 / cyc <=10, all new helpers cog <=12 / cyc <=10, 2942 lib tests + 215 doctests pass, clippy clean
+- Seven scalar_on_function complexity violations decomposed via private helpers — fregre_gkam (58→11), select_group_lasso_lambda (54→8), group_lasso_cd (67→17), fregre_cv (26→14) — all below pmat cog 23 / cyc 30, 2942 tests green, CD/CV order byte-identical
+- Seven FPCA/FAMM cognitive complexity violations cleared across fpca_variants.rs, famm.rs, and pace_fpca.rs via private helper extraction — all targets and helpers below cog 23 / cyc 30, 2942 tests green, numeric-identical.
+- Private-helper extraction of 5 high-complexity targets across 3 files clears the fof/boosting concentration: fof_regression (cog 57→0), fof_cv (cog 43→12), fof_re_regression (cog 58→0), gamlss_fosr (cog 70→1 / cyc 35→2), boost_fosr (cog 66→3 / cyc 30→3); 2942 tests green
+- Six complexity violations eliminated across three files via private helper extraction — all targets now cog ≤19 / cyc ≤10, all new helpers cog ≤19 / cyc ≤8, 2942/2942 lib tests pass, clippy clean
+- Eight high-complexity functions across four files decomposed into private helpers — all 8 targets and 12 new helpers are now cognitive <=23 / cyclomatic <=30; 2942 lib tests pass; clippy clean
+- Six alignment singleton violations eliminated via private helper extraction — all targets now cog <=21 / cyc <=9, all new helpers cog <=17 / cyc <=7, 2942 lib tests pass, clippy clean
+
+---
+
 ## v0.45.0 Soft-DTW Barycenter — Global Optimizer (SDTW-O1) (Shipped: 2026-09-13)
 
 **Phases completed:** 5 phases, 5 plans, 12 tasks
