@@ -743,6 +743,35 @@ The implementation milestone that cleared the entire **differentiable-core** sec
 - Notable: the terminal release phase (100) was verified by the orchestrator directly — every gate run inline in the editing session — as a deliberate context-conservation choice at the milestone tail.
 
 
+## Milestone: v0.46.0 — Quality Hardening (pmat Complexity Pass & CI Guardrail)
+
+**Shipped:** 2026-09-15
+**Phases:** 6 (106–111) | **Plans:** 28
+
+### What Was Built
+Drove the curated `pmat quality-gate --checks complexity,satd,dead-code,duplicates` to **PASS (0 violations)** on `fdars-core`: ~114 functions decomposed into private helpers (cognitive ≤23 / cyclomatic ≤30) across 106 (8 top hotspots), 107 (13 SPM functions), and 109 (97-function tail over 57 files); entropy `DataTransformation` patterns factored out, the critical `.unwrap()` and 2 SATD false-positives fixed (108); a pmat CI guardrail job added (110); crate bumped 0.45.0→0.46.0 with CHANGELOGs and the full gate battery green (111). Strictly non-breaking + numeric-identical throughout.
+
+### What Worked
+- **Tracer-first per phase + proven-pattern reuse.** The 106 tracer established the extract→pmat→commit loop; every later phase mirrored it, so executors were fast and consistent. Self-flagging helpers were caught and re-split mid-task.
+- **Numeric discipline held.** Executors preserved seeded-RNG draw order, iterative recurrences, and FP-accumulation order verbatim — one even kept an 8.9e-16 grid-form difference as a separate helper rather than merge it. The full suite (2942 lib + 215 doctests + integration) stayed green every phase.
+- **Focused code review over the full 57-file review.** Reviewing only the seeded-RNG/iterative files caught the highest-risk surface; its 2 "regressions" were both verified against the milestone baseline as pre-existing (faithfully preserved) — avoiding a "fix" that would have reintroduced an already-fixed bug.
+
+### What Was Inefficient
+- **Executor connection drops / 600s stalls recurred** (4–5 times across ~30 dispatches). Each required inspecting git state before re-dispatch (clean re-dispatch when nothing committed; resume-from-task when a file was already committed). "Commit each file as soon as green, don't batch" reduced lost work.
+- **pmat's stochastic entropy analyzer** consumed a mid-milestone decision cycle — it can't hit a stable 0, forcing a gate redefinition (exclude entropy) escalated to the operator.
+
+### Patterns Established
+- **Curated pmat gate** = `--checks complexity,satd,dead-code,duplicates` (entropy excluded as stochastic). The gate's cognitive bar is **>23** ("recommended"), stricter than `pmat analyze complexity`'s >25 — internal target is cog ≤23.
+- Split over-large validators into `_validate_dims` + `_validate_config`; prefer `&mut [T]` over `&mut Vec<T>` in helper signatures (clippy ptr_arg).
+
+### Key Lessons
+- **Verify review findings against the milestone baseline before acting** — a plausible "silent numeric change" was pre-existing state faithfully preserved.
+- **pmat quality-gate uses a stricter threshold than analyze-complexity** — validate the actual gate command early, not the looser sub-analyzer.
+
+### Cost Observations
+- Model mix: opus (orchestrator + planners), sonnet (researchers/executors/verifiers/reviewers), haiku (plan-checkers).
+- Fully autonomous run; sequential executors on the main tree (worktrees disabled).
+
 ## Milestone: v0.45.0 — Soft-DTW Barycenter — Global Optimizer (SDTW-O1)
 
 **Shipped:** 2026-09-13
