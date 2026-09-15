@@ -5,6 +5,43 @@ All notable changes to fdars-core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.46.0] - 2026-09-14
+
+**Quality Hardening — pmat Complexity Pass & CI Guardrail.** Strictly non-breaking and
+numeric-identical: every change is pure internal decomposition into private helper
+functions, documentation, or CI tooling. No public API/signature/visibility change, no new
+crate dependency. Proven by the full existing suite (2942 lib tests + 215 doctests + 28
+examples) staying green throughout.
+
+### Changed (internal only — behavior/numeric-identical)
+
+- **Complexity decomposed to the pmat gate bar (cognitive ≤23 / cyclomatic ≤30).** ~114
+  functions across the crate were decomposed into smaller private helper functions so
+  `pmat quality-gate` reports 0 complexity findings. Worst hotspots included
+  `funfem_cluster`, `elastic_net_cd`, `boost_fofr`, `pace_fpca`, `bayesian_fosr` (top-level,
+  QUAL-01); the `src/spm/` cluster (`spm_amewma_monitor`, `mfpca`, `spm_mewma_monitor`, …,
+  QUAL-02); and a broad 97-function tail across `alignment/`, `peer.rs`, `clustering_advanced.rs`,
+  `scalar_on_function/`, `boosting_regression/`, `fpca_variants.rs`, `gmm/`, and ~50 other
+  files (QUAL-03). All loop bodies were lifted verbatim — no floating-point accumulation
+  reorder, and all seeded-RNG draw orders and iterative recurrences preserved bit-for-bit.
+- **Entropy reduced** (QUAL-04): repeated `DataTransformation` idioms factored into shared
+  `#[cfg(test)]` and private helpers (71 test call-sites + 5 production files), numeric-identical.
+
+### Fixed
+
+- Replaced the one critical `.unwrap()` (`depth/rpd.rs`) with `.expect(...)` documenting its
+  by-construction invariant — no signature change, no new panic on valid input (QUAL-05).
+- Reworded two SATD doc-comment false-positives (`depth/dispatch.rs`, `metric/lp.rs`) so the
+  pmat SATD analyzer no longer flags them — prose only, no code change (QUAL-05).
+
+### Added (tooling — not shipped in the crate)
+
+- **pmat quality-gate CI guardrail** (CI-01): a GitHub Actions job installs pmat 3.18.0 and
+  runs `pmat quality-gate --checks complexity,satd,dead-code,duplicates --fail-on-violation`
+  against `fdars-core`, failing the build (and gating release) on any reintroduced violation.
+  The stochastic `entropy` analyzer is deliberately excluded from the gate (its sampler is
+  non-deterministic and would make CI flaky); entropy remains an untracked advisory metric.
+
 ## [0.45.0] - 2026-09-13
 
 **Soft-DTW Barycenter — Global Optimizer (SDTW-O1).** Strictly additive, non-breaking;

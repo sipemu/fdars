@@ -11,6 +11,40 @@ signatures and dependencies, with one intentional exception: the v0.40.0 soft-DT
 barycenter correction changes convergence behavior intentionally (see [0.40.0]
 Changed below).
 
+## [0.46.0] - 2026-09-14
+
+**Quality Hardening — pmat Complexity Pass & CI Guardrail.** Strictly non-breaking and
+numeric-identical. A dedicated quality cycle that drives `pmat quality-gate` (checks:
+complexity, satd, dead-code, duplicates) to PASS on `fdars-core` and wires it into CI as a
+guardrail. Every code change is pure internal decomposition into private helper functions —
+no public API/signature/visibility change, no new crate dependency — and every refactored
+body is behavior- and numeric-identical (all loop bodies lifted verbatim; seeded-RNG draw
+orders and iterative recurrences preserved bit-for-bit). Proven by the full existing suite
+(2942 lib tests + 215 doctests + 28 examples) staying green.
+
+### Changed (internal only)
+
+- **Complexity decomposed to the gate bar (cognitive ≤23 / cyclomatic ≤30).** ~114 functions
+  across the crate decomposed into private helpers so `pmat quality-gate` reports 0 complexity
+  findings — top-level hotspots (QUAL-01), the `src/spm/` statistical-process-monitoring cluster
+  (QUAL-02), and a 97-function tail spanning ~57 files across `alignment/`, `peer.rs`,
+  `clustering_advanced.rs`, `scalar_on_function/`, `boosting_regression/`, `gmm/`, and more (QUAL-03).
+- **Entropy reduced** (QUAL-04): repeated `DataTransformation` idioms factored into shared
+  test/private helpers, numeric-identical.
+
+### Fixed
+
+- The one critical `.unwrap()` (`depth/rpd.rs`) replaced with `.expect(...)` documenting its
+  by-construction invariant; two SATD doc-comment false-positives reworded (`depth/dispatch.rs`,
+  `metric/lp.rs`) — prose only (QUAL-05).
+
+### Added (CI tooling — not shipped in the crate)
+
+- **pmat quality-gate CI guardrail** (CI-01): a GitHub Actions job installs pmat 3.18.0 and runs
+  the curated gate against `fdars-core`, failing the build and gating release on any reintroduced
+  complexity/SATD/dead-code/duplicate violation. The stochastic `entropy` analyzer is excluded
+  from the gate (non-deterministic sampler → would flake CI); entropy stays an advisory metric.
+
 ## [0.45.0] - 2026-09-13
 
 **Soft-DTW Barycenter — Global Optimizer (SDTW-O1).** Strictly additive, non-breaking.
