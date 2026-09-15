@@ -50,6 +50,139 @@ pub struct ConcurrentRegrResult {
 // Main function
 // ---------------------------------------------------------------------------
 
+/// Check that each predictor has the same shape as the response.
+fn check_predictor_shapes(predictors: &[FdMatrix], n: usize, m: usize) -> Result<(), FdarError> {
+    for (k, pred) in predictors.iter().enumerate() {
+        if pred.nrows() != n {
+            return Err(FdarError::InvalidDimension {
+                parameter: "predictors[k]",
+                expected: format!("{n} rows (matching response)"),
+                actual: format!("{} (predictor index {k})", pred.nrows()),
+            });
+        }
+        if pred.ncols() != m {
+            return Err(FdarError::InvalidDimension {
+                parameter: "predictors[k]",
+                expected: format!("{m} columns (matching response)"),
+                actual: format!("{} (predictor index {k})", pred.ncols()),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Validate concurrent regression inputs. Returns `(n, m, p)` on success.
+fn validate_concurrent_inputs(
+    response: &FdMatrix,
+    predictors: &[FdMatrix],
+    argvals: Option<&[f64]>,
+    bandwidth: f64,
+) -> Result<(usize, usize, usize), FdarError> {
+    if predictors.is_empty() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "predictors",
+            expected: "at least 1".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    let (n, m) = response.shape();
+    if n < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "response",
+            expected: "at least 2 rows (observations)".to_string(),
+            actual: format!("{n}"),
+        });
+    }
+    if m == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "response",
+            expected: "non-zero columns (grid points)".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    check_predictor_shapes(predictors, n, m)?;
+    // Reject NaN (`is_finite()` is false for NaN), ±Inf, zero and negative
+    // values — all of which would propagate into the kernel smoother and
+    // produce silent all-zero output.
+    if !bandwidth.is_finite() || bandwidth <= 0.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "bandwidth",
+            message: format!("must be finite and positive, got {bandwidth}"),
+        });
+    }
+    if let Some(av) = argvals {
+        if av.len() != m {
+            return Err(FdarError::InvalidDimension {
+                parameter: "argvals",
+                expected: format!("{m} elements (matching response columns)"),
+                actual: format!("{}", av.len()),
+            });
+        }
+    }
+    let p = predictors.len();
+    Ok((n, m, p))
+}
+
+/// Solve the OLS normal equations at one grid column `j`.
+///
+/// Returns `(raw_intercept_j, raw_beta_j)`.
+fn compute_ols_column(
+    response: &FdMatrix,
+    predictors: &[FdMatrix],
+    j: usize,
+    n: usize,
+    q: usize,
+) -> (f64, Vec<f64>) {
+    let p = q - 1;
+    let mut xtx = vec![0.0_f64; q * q];
+    let mut xty = vec![0.0_f64; q];
+    for i in 0..n {
+        let mut row = vec![1.0_f64; q];
+        for (k, pred) in predictors.iter().enumerate() {
+            row[k + 1] = pred[(i, j)];
+        }
+        for a in 0..q {
+            for b in 0..q {
+                xtx[a * q + b] += row[a] * row[b];
+            }
+            xty[a] += row[a] * response[(i, j)];
+        }
+    }
+    let eps = 1e-10 * (xtx[0] + 1.0);
+    for d in 0..q {
+        xtx[d * q + d] += eps;
+    }
+    let coef = smoothing::solve_gaussian_pub(&mut xtx, &mut xty, q);
+    let raw_intercept_j = coef[0];
+    let raw_beta_j: Vec<f64> = coef[1..q].to_vec();
+    let _ = p; // consumed via coef[1..q]
+    (raw_intercept_j, raw_beta_j)
+}
+
+/// Compute fitted values and residuals from smoothed coefficients.
+fn compute_concurrent_fitted(
+    response: &FdMatrix,
+    predictors: &[FdMatrix],
+    beta_curve: &FdMatrix,
+    intercept: &[f64],
+    n: usize,
+    m: usize,
+) -> (FdMatrix, FdMatrix) {
+    let mut fitted = FdMatrix::zeros(n, m);
+    let mut residuals = FdMatrix::zeros(n, m);
+    for j in 0..m {
+        for i in 0..n {
+            let mut val = intercept[j];
+            for (k, pred) in predictors.iter().enumerate() {
+                val += beta_curve[(k, j)] * pred[(i, j)];
+            }
+            fitted[(i, j)] = val;
+            residuals[(i, j)] = response[(i, j)] - val;
+        }
+    }
+    (fitted, residuals)
+}
+
 /// Concurrent (varying-coefficient) functional regression.
 ///
 /// Fits the model `y_i(t) = β₀(t) + Σₖ βₖ(t)·xₖᵢ(t) + εᵢ(t)` for a
@@ -99,78 +232,7 @@ pub fn concurrent_regression(
     // ------------------------------------------------------------------
     // 1. Input validation
     // ------------------------------------------------------------------
-    if predictors.is_empty() {
-        return Err(FdarError::InvalidDimension {
-            parameter: "predictors",
-            expected: "at least 1".to_string(),
-            actual: "0".to_string(),
-        });
-    }
-
-    let (n, m) = response.shape();
-
-    if n < 2 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "response",
-            expected: "at least 2 rows (observations)".to_string(),
-            actual: format!("{n}"),
-        });
-    }
-    if m == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "response",
-            expected: "non-zero columns (grid points)".to_string(),
-            actual: "0".to_string(),
-        });
-    }
-
-    for (k, pred) in predictors.iter().enumerate() {
-        if pred.nrows() != n {
-            return Err(FdarError::InvalidDimension {
-                parameter: "predictors[k]",
-                expected: format!("{n} rows (matching response)"),
-                actual: format!("{} (predictor index {k})", pred.nrows()),
-            });
-        }
-        if pred.ncols() != m {
-            return Err(FdarError::InvalidDimension {
-                parameter: "predictors[k]",
-                expected: format!("{m} columns (matching response)"),
-                actual: format!("{} (predictor index {k})", pred.ncols()),
-            });
-        }
-    }
-
-    // Reject NaN (`is_finite()` is false for NaN), ±Inf, zero and negative
-    // values — all of which would propagate into the kernel smoother and
-    // produce silent all-zero output.  The original `bandwidth <= 0.0` guard
-    // was insufficient because `NaN <= 0.0` evaluates to `false` under
-    // IEEE 754, allowing NaN to bypass the check.
-    if !bandwidth.is_finite() || bandwidth <= 0.0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "bandwidth",
-            message: format!("must be finite and positive, got {bandwidth}"),
-        });
-    }
-
-    if let Some(av) = argvals {
-        if av.len() != m {
-            return Err(FdarError::InvalidDimension {
-                parameter: "argvals",
-                expected: format!("{m} elements (matching response columns)"),
-                actual: format!("{}", av.len()),
-            });
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // 2. Resolve argvals
-    // ------------------------------------------------------------------
-    let argvals_owned: Vec<f64> = argvals
-        .map(|v| v.to_vec())
-        .unwrap_or_else(|| (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect());
-
-    let p = predictors.len();
+    let (n, m, p) = validate_concurrent_inputs(response, predictors, argvals, bandwidth)?;
     let q = p + 1; // intercept + p slopes
 
     // Guard: with n <= p the per-column design matrix X_j ∈ R^{n×(p+1)} is
@@ -191,50 +253,22 @@ pub fn concurrent_regression(
     }
 
     // ------------------------------------------------------------------
+    // 2. Resolve argvals
+    // ------------------------------------------------------------------
+    let argvals_owned: Vec<f64> = argvals
+        .map(|v| v.to_vec())
+        .unwrap_or_else(|| (0..m).map(|j| j as f64 / (m - 1).max(1) as f64).collect());
+
+    // ------------------------------------------------------------------
     // 3. Step 1 — pointwise OLS at each grid column (parallelised)
-    //
-    // Each closure allocates its own local xtx / xty buffers so there is
-    // no shared mutable state — safe for rayon (mirrors local_polynomial).
-    // Returns (raw_intercept_j, raw_beta_j: Vec<f64> of length p).
     // ------------------------------------------------------------------
     let raw_cols: Vec<(f64, Vec<f64>)> = iter_maybe_parallel!(0..m)
-        .map(|j| {
-            let mut xtx = vec![0.0_f64; q * q];
-            let mut xty = vec![0.0_f64; q];
-
-            for i in 0..n {
-                // design row: [1, pred_0[i,j], pred_1[i,j], ...]
-                let mut row = vec![1.0_f64; q];
-                for (k, pred) in predictors.iter().enumerate() {
-                    row[k + 1] = pred[(i, j)];
-                }
-                for a in 0..q {
-                    for b in 0..q {
-                        xtx[a * q + b] += row[a] * row[b];
-                    }
-                    xty[a] += row[a] * response[(i, j)];
-                }
-            }
-
-            // Ridge stabiliser: eps = 1e-10 * (n + 1) (xtx[0] ≈ n for
-            // the intercept column, but use n directly for clarity).
-            let eps = 1e-10 * (xtx[0] + 1.0);
-            for d in 0..q {
-                xtx[d * q + d] += eps;
-            }
-
-            let coef = smoothing::solve_gaussian_pub(&mut xtx, &mut xty, q);
-
-            let raw_intercept_j = coef[0];
-            let raw_beta_j: Vec<f64> = coef[1..q].to_vec();
-            (raw_intercept_j, raw_beta_j)
-        })
+        .map(|j| compute_ols_column(response, predictors, j, n, q))
         .collect();
 
     // Serialise collected results into contiguous buffers.
     let mut raw_intercept = vec![0.0_f64; m];
-    // raw_beta layout: row-major over (predictor k, grid column j)
-    // raw_beta[k * m + j] = β_k[j]
+    // raw_beta layout: raw_beta[k * m + j] = β_k[j]
     let mut raw_beta = vec![0.0_f64; p * m];
     for (j, (ic, bk)) in raw_cols.into_iter().enumerate() {
         raw_intercept[j] = ic;
@@ -267,18 +301,8 @@ pub fn concurrent_regression(
     // ------------------------------------------------------------------
     // 5. Step 3 — fitted curves and residuals
     // ------------------------------------------------------------------
-    let mut fitted = FdMatrix::zeros(n, m);
-    let mut residuals = FdMatrix::zeros(n, m);
-    for j in 0..m {
-        for i in 0..n {
-            let mut val = intercept[j];
-            for (k, pred) in predictors.iter().enumerate() {
-                val += beta_curve[(k, j)] * pred[(i, j)];
-            }
-            fitted[(i, j)] = val;
-            residuals[(i, j)] = response[(i, j)] - val;
-        }
-    }
+    let (fitted, residuals) =
+        compute_concurrent_fitted(response, predictors, &beta_curve, &intercept, n, m);
 
     Ok(ConcurrentRegrResult {
         beta_curve,

@@ -50,42 +50,15 @@ fn subsample_rows(src: &FdMatrix, indices: &[usize]) -> FdMatrix {
     out
 }
 
-/// FDboost-style stability selection.
-///
-/// Runs `stab_config.n_resamples` subsamples of size ⌊n/2⌋ (without replacement),
-/// fits `boost_fosr` on each subsample, and aggregates per-base-learner selection
-/// frequencies across resamples.
-///
-/// # Arguments
-///
-/// * `data` — Functional response Y (n × m_t).
-/// * `predictors` — Scalar predictor matrix (n × p). One base-learner per column.
-/// * `argvals` — Response grid evaluation points (length m_t).
-/// * `boost_config` — [`BoostingConfig`] for the inner `boost_fosr` calls.
-/// * `stab_config` — [`StabilityConfig`] controlling resamples, threshold, and seed.
-///
-/// # Returns
-///
-/// [`StabilityResult`] with per-learner selection frequencies, the stable set at
-/// `pi_thr`, the PFER bound, and the number of resamples used.
-///
-/// # Errors
-///
-/// [`FdarError::InvalidDimension`] on shape problems (including too-small subsamples);
-/// [`FdarError::InvalidParameter`] on out-of-range config; propagates any
-/// [`FdarError`] from the inner `boost_fosr` fits.
-#[must_use = "expensive computation whose result should not be discarded"]
-pub fn stability_selection(
+/// Validate stability selection inputs; returns `(half, p)` on success.
+fn validate_stability_inputs(
     data: &FdMatrix,
     predictors: &FdMatrix,
     argvals: &[f64],
-    boost_config: &BoostingConfig,
     stab_config: &StabilityConfig,
-) -> Result<StabilityResult, FdarError> {
+) -> Result<(usize, usize), FdarError> {
     let (n, m_t) = data.shape();
     let p = predictors.ncols();
-
-    // ---- Validation --------------------------------------------------------
     if m_t == 0 || predictors.nrows() != n {
         return Err(FdarError::InvalidDimension {
             parameter: "data/predictors",
@@ -127,31 +100,96 @@ pub fn stability_selection(
             actual: format!("n={n} → ⌊n/2⌋={half}"),
         });
     }
+    Ok((half, p))
+}
+
+/// Execute one resample: Fisher–Yates shuffle → subsample → boost → selected flags.
+///
+/// Preserves draw order exactly (seeded per replicate).
+fn one_resample(
+    data: &FdMatrix,
+    predictors: &FdMatrix,
+    argvals: &[f64],
+    boost_config: &BoostingConfig,
+    n: usize,
+    half: usize,
+    p: usize,
+    seed: u64,
+    b: usize,
+) -> Result<Vec<bool>, FdarError> {
+    let mut rng = crate::helpers::seed_for_thread(seed, b);
+    // Sample `half` distinct row indices without replacement via a partial
+    // Fisher–Yates shuffle (first `half` slots hold the sample).
+    let mut idx: Vec<usize> = (0..n).collect();
+    for i in 0..half {
+        let j = rng.gen_range(i..n);
+        idx.swap(i, j);
+    }
+    let sub = &idx[..half];
+    let sub_data = subsample_rows(data, sub);
+    let sub_pred = subsample_rows(predictors, sub);
+    let fit = boost_fosr(&sub_data, &sub_pred, argvals, boost_config)?;
+    let mut selected = vec![false; p];
+    for &j in &fit.selected_learners {
+        if j < p {
+            selected[j] = true;
+        }
+    }
+    Ok(selected)
+}
+
+/// FDboost-style stability selection.
+///
+/// Runs `stab_config.n_resamples` subsamples of size ⌊n/2⌋ (without replacement),
+/// fits `boost_fosr` on each subsample, and aggregates per-base-learner selection
+/// frequencies across resamples.
+///
+/// # Arguments
+///
+/// * `data` — Functional response Y (n × m_t).
+/// * `predictors` — Scalar predictor matrix (n × p). One base-learner per column.
+/// * `argvals` — Response grid evaluation points (length m_t).
+/// * `boost_config` — [`BoostingConfig`] for the inner `boost_fosr` calls.
+/// * `stab_config` — [`StabilityConfig`] controlling resamples, threshold, and seed.
+///
+/// # Returns
+///
+/// [`StabilityResult`] with per-learner selection frequencies, the stable set at
+/// `pi_thr`, the PFER bound, and the number of resamples used.
+///
+/// # Errors
+///
+/// [`FdarError::InvalidDimension`] on shape problems (including too-small subsamples);
+/// [`FdarError::InvalidParameter`] on out-of-range config; propagates any
+/// [`FdarError`] from the inner `boost_fosr` fits.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn stability_selection(
+    data: &FdMatrix,
+    predictors: &FdMatrix,
+    argvals: &[f64],
+    boost_config: &BoostingConfig,
+    stab_config: &StabilityConfig,
+) -> Result<StabilityResult, FdarError> {
+    let (n, _m_t) = data.shape();
+    // ---- Validation --------------------------------------------------------
+    let (half, p) = validate_stability_inputs(data, predictors, argvals, stab_config)?;
 
     let b_count = stab_config.n_resamples;
 
     // ---- Resample loop (deterministic per replicate, parallel-safe) --------
     let per_resample: Vec<Vec<bool>> = iter_maybe_parallel!(0..b_count)
         .map(|b| -> Result<Vec<bool>, FdarError> {
-            let mut rng = crate::helpers::seed_for_thread(stab_config.seed, b);
-            // Sample `half` distinct row indices without replacement via a partial
-            // Fisher–Yates shuffle (first `half` slots hold the sample).
-            let mut idx: Vec<usize> = (0..n).collect();
-            for i in 0..half {
-                let j = rng.gen_range(i..n);
-                idx.swap(i, j);
-            }
-            let sub = &idx[..half];
-            let sub_data = subsample_rows(data, sub);
-            let sub_pred = subsample_rows(predictors, sub);
-            let fit = boost_fosr(&sub_data, &sub_pred, argvals, boost_config)?;
-            let mut selected = vec![false; p];
-            for &j in &fit.selected_learners {
-                if j < p {
-                    selected[j] = true;
-                }
-            }
-            Ok(selected)
+            one_resample(
+                data,
+                predictors,
+                argvals,
+                boost_config,
+                n,
+                half,
+                p,
+                stab_config.seed,
+                b,
+            )
         })
         .collect::<Result<Vec<Vec<bool>>, FdarError>>()?;
 

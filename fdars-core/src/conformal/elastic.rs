@@ -234,6 +234,112 @@ pub fn conformal_elastic_pcr_with_config(
 // Elastic prediction helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Project new SRSFs onto vertical FPCA components (Vertical PCA path).
+fn project_vert_pca(
+    q_new: &FdMatrix,
+    result: &ElasticPcrResult,
+    argvals: &[f64],
+) -> Result<FdMatrix, FdarError> {
+    let (n_new, m) = q_new.shape();
+    let mean_srsf = &result.karcher.mean_srsf;
+    let fpca = result
+        .vert_fpca
+        .as_ref()
+        .ok_or_else(|| FdarError::ComputationFailed {
+            operation: "predict_elastic_pcr",
+            detail: "vertical FPCA result missing".to_string(),
+        })?;
+    let ncomp = fpca.scores.ncols();
+    let mut sc = FdMatrix::zeros(n_new, ncomp);
+    for i in 0..n_new {
+        let qi: Vec<f64> = (0..m).map(|j| q_new[(i, j)]).collect();
+        let gam = crate::alignment::dp_alignment_core(mean_srsf, &qi, argvals, 0.0);
+        let q_warped = crate::alignment::reparameterize_curve(&qi, argvals, &gam);
+        let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+        let gam_deriv = crate::helpers::gradient_uniform(&gam, h);
+        for k in 0..ncomp {
+            let mut s = 0.0;
+            for j in 0..m {
+                let q_aligned = q_warped[j] * gam_deriv[j].max(0.0).sqrt();
+                let centered = q_aligned - mean_srsf[j.min(mean_srsf.len() - 1)];
+                s += centered * fpca.eigenfunctions_q[(k, j)];
+            }
+            sc[(i, k)] = s;
+        }
+    }
+    Ok(sc)
+}
+
+/// Project new SRSFs onto horizontal FPCA components (Horizontal PCA path).
+fn project_horiz_pca(
+    q_new: &FdMatrix,
+    result: &ElasticPcrResult,
+    argvals: &[f64],
+) -> Result<FdMatrix, FdarError> {
+    let (n_new, m) = q_new.shape();
+    let mean_srsf = &result.karcher.mean_srsf;
+    let fpca = result
+        .horiz_fpca
+        .as_ref()
+        .ok_or_else(|| FdarError::ComputationFailed {
+            operation: "predict_elastic_pcr",
+            detail: "horizontal FPCA result missing".to_string(),
+        })?;
+    let ncomp = fpca.scores.ncols().min(result.coefficients.len());
+    let mut sc = FdMatrix::zeros(n_new, ncomp);
+    for i in 0..n_new {
+        let qi: Vec<f64> = (0..m).map(|j| q_new[(i, j)]).collect();
+        let gam = crate::alignment::dp_alignment_core(mean_srsf, &qi, argvals, 0.0);
+        let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+        let psi = crate::warping::gam_to_psi(&gam, h);
+        for k in 0..ncomp {
+            let mut s = 0.0;
+            for j in 0..m {
+                let centered = psi[j] - fpca.mean_psi[j];
+                s += centered * fpca.eigenfunctions_psi[(k, j)];
+            }
+            sc[(i, k)] = s;
+        }
+    }
+    Ok(sc)
+}
+
+/// Project new SRSFs onto joint FPCA components (Joint PCA path).
+fn project_joint_pca(
+    q_new: &FdMatrix,
+    result: &ElasticPcrResult,
+    argvals: &[f64],
+) -> Result<FdMatrix, FdarError> {
+    let (n_new, m) = q_new.shape();
+    let mean_srsf = &result.karcher.mean_srsf;
+    let fpca = result
+        .joint_fpca
+        .as_ref()
+        .ok_or_else(|| FdarError::ComputationFailed {
+            operation: "predict_elastic_pcr",
+            detail: "joint FPCA result missing".to_string(),
+        })?;
+    let ncomp = fpca.scores.ncols().min(result.coefficients.len());
+    let mut sc = FdMatrix::zeros(n_new, ncomp);
+    for i in 0..n_new {
+        let qi: Vec<f64> = (0..m).map(|j| q_new[(i, j)]).collect();
+        let gam = crate::alignment::dp_alignment_core(mean_srsf, &qi, argvals, 0.0);
+        let q_warped = crate::alignment::reparameterize_curve(&qi, argvals, &gam);
+        let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
+        let gam_deriv = crate::helpers::gradient_uniform(&gam, h);
+        for k in 0..ncomp {
+            let mut s = 0.0;
+            for j in 0..m {
+                let q_aligned = q_warped[j] * gam_deriv[j].max(0.0).sqrt();
+                let centered = q_aligned - mean_srsf[j.min(mean_srsf.len() - 1)];
+                s += centered * fpca.vert_component[(k, j.min(fpca.vert_component.ncols() - 1))];
+            }
+            sc[(i, k)] = s;
+        }
+    }
+    Ok(sc)
+}
+
 /// Predict from elastic regression result on new data.
 ///
 /// Aligns new curves to the estimated beta(t) and computes inner products.
@@ -276,95 +382,10 @@ fn rebuild_elastic_pcr_model(
     q_new: &FdMatrix,
     argvals: &[f64],
 ) -> Result<FdMatrix, FdarError> {
-    let (n_new, m) = q_new.shape();
-    let mean_srsf = &result.karcher.mean_srsf;
-
     match result.pca_method {
-        PcaMethod::Vertical => {
-            let fpca = result
-                .vert_fpca
-                .as_ref()
-                .ok_or_else(|| FdarError::ComputationFailed {
-                    operation: "predict_elastic_pcr",
-                    detail: "vertical FPCA result missing".to_string(),
-                })?;
-            let ncomp = fpca.scores.ncols();
-            let mut sc = FdMatrix::zeros(n_new, ncomp);
-            for i in 0..n_new {
-                let qi: Vec<f64> = (0..m).map(|j| q_new[(i, j)]).collect();
-                let gam = crate::alignment::dp_alignment_core(mean_srsf, &qi, argvals, 0.0);
-                let q_warped = crate::alignment::reparameterize_curve(&qi, argvals, &gam);
-                let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
-                let gam_deriv = crate::helpers::gradient_uniform(&gam, h);
-
-                for k in 0..ncomp {
-                    let mut s = 0.0;
-                    for j in 0..m {
-                        let q_aligned = q_warped[j] * gam_deriv[j].max(0.0).sqrt();
-                        let centered = q_aligned - mean_srsf[j.min(mean_srsf.len() - 1)];
-                        s += centered * fpca.eigenfunctions_q[(k, j)];
-                    }
-                    sc[(i, k)] = s;
-                }
-            }
-            Ok(sc)
-        }
-        PcaMethod::Horizontal => {
-            let fpca = result
-                .horiz_fpca
-                .as_ref()
-                .ok_or_else(|| FdarError::ComputationFailed {
-                    operation: "predict_elastic_pcr",
-                    detail: "horizontal FPCA result missing".to_string(),
-                })?;
-            let ncomp = fpca.scores.ncols().min(result.coefficients.len());
-            let mut sc = FdMatrix::zeros(n_new, ncomp);
-            for i in 0..n_new {
-                let qi: Vec<f64> = (0..m).map(|j| q_new[(i, j)]).collect();
-                let gam = crate::alignment::dp_alignment_core(mean_srsf, &qi, argvals, 0.0);
-                let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
-                let psi = crate::warping::gam_to_psi(&gam, h);
-                for k in 0..ncomp {
-                    let mut s = 0.0;
-                    for j in 0..m {
-                        let centered = psi[j] - fpca.mean_psi[j];
-                        s += centered * fpca.eigenfunctions_psi[(k, j)];
-                    }
-                    sc[(i, k)] = s;
-                }
-            }
-            Ok(sc)
-        }
-        PcaMethod::Joint => {
-            let fpca = result
-                .joint_fpca
-                .as_ref()
-                .ok_or_else(|| FdarError::ComputationFailed {
-                    operation: "predict_elastic_pcr",
-                    detail: "joint FPCA result missing".to_string(),
-                })?;
-            let ncomp = fpca.scores.ncols().min(result.coefficients.len());
-            let mut sc = FdMatrix::zeros(n_new, ncomp);
-            for i in 0..n_new {
-                let qi: Vec<f64> = (0..m).map(|j| q_new[(i, j)]).collect();
-                let gam = crate::alignment::dp_alignment_core(mean_srsf, &qi, argvals, 0.0);
-                let q_warped = crate::alignment::reparameterize_curve(&qi, argvals, &gam);
-                let h = (argvals[m - 1] - argvals[0]) / (m - 1) as f64;
-                let gam_deriv = crate::helpers::gradient_uniform(&gam, h);
-
-                for k in 0..ncomp {
-                    let mut s = 0.0;
-                    for j in 0..m {
-                        let q_aligned = q_warped[j] * gam_deriv[j].max(0.0).sqrt();
-                        let centered = q_aligned - mean_srsf[j.min(mean_srsf.len() - 1)];
-                        s += centered
-                            * fpca.vert_component[(k, j.min(fpca.vert_component.ncols() - 1))];
-                    }
-                    sc[(i, k)] = s;
-                }
-            }
-            Ok(sc)
-        }
+        PcaMethod::Vertical => project_vert_pca(q_new, result, argvals),
+        PcaMethod::Horizontal => project_horiz_pca(q_new, result, argvals),
+        PcaMethod::Joint => project_joint_pca(q_new, result, argvals),
     }
 }
 
