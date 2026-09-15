@@ -9,6 +9,72 @@ use rand::prelude::*;
 
 use super::{FpcPredictor, TaskType};
 
+/// Bootstrap loop for regression stability: refits `fregre_lm` on each resample.
+#[allow(clippy::too_many_arguments)]
+fn boot_regression(
+    data: &FdMatrix,
+    y: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+    ncomp: usize,
+    n_boot: usize,
+    n: usize,
+    rng: &mut StdRng,
+    all_beta_t: &mut Vec<Vec<f64>>,
+    all_coefs: &mut Vec<Vec<f64>>,
+    all_abs_coefs: &mut Vec<Vec<f64>>,
+    all_metrics: &mut Vec<f64>,
+) {
+    for _ in 0..n_boot {
+        let idx: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
+        let boot_data = subsample_rows(data, &idx);
+        let boot_y: Vec<f64> = idx.iter().map(|&i| y[i]).collect();
+        let boot_sc = scalar_covariates.map(|sc| subsample_rows(sc, &idx));
+        if let Ok(refit) = fregre_lm(&boot_data, &boot_y, boot_sc.as_ref(), ncomp) {
+            all_beta_t.push(refit.beta_t.clone());
+            let coefs: Vec<f64> = (0..ncomp).map(|k| refit.coefficients[1 + k]).collect();
+            all_abs_coefs.push(coefs.iter().map(|c| c.abs()).collect());
+            all_coefs.push(coefs);
+            all_metrics.push(refit.r_squared);
+        }
+    }
+}
+
+/// Bootstrap loop for binary-classification stability: refits `functional_logistic` on each resample.
+#[allow(clippy::too_many_arguments)]
+fn boot_logistic(
+    data: &FdMatrix,
+    y: &[f64],
+    scalar_covariates: Option<&FdMatrix>,
+    ncomp: usize,
+    n_boot: usize,
+    n: usize,
+    rng: &mut StdRng,
+    all_beta_t: &mut Vec<Vec<f64>>,
+    all_coefs: &mut Vec<Vec<f64>>,
+    all_abs_coefs: &mut Vec<Vec<f64>>,
+    all_metrics: &mut Vec<f64>,
+) {
+    for _ in 0..n_boot {
+        let idx: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
+        let boot_data = subsample_rows(data, &idx);
+        let boot_y: Vec<f64> = idx.iter().map(|&i| y[i]).collect();
+        let boot_sc = scalar_covariates.map(|sc| subsample_rows(sc, &idx));
+        let has_both = boot_y.iter().any(|&v| v < 0.5) && boot_y.iter().any(|&v| v >= 0.5);
+        if !has_both {
+            continue;
+        }
+        if let Ok(refit) =
+            functional_logistic(&boot_data, &boot_y, boot_sc.as_ref(), ncomp, 25, 1e-6)
+        {
+            all_beta_t.push(refit.beta_t.clone());
+            let coefs: Vec<f64> = (0..ncomp).map(|k| refit.coefficients[1 + k]).collect();
+            all_abs_coefs.push(coefs.iter().map(|c| c.abs()).collect());
+            all_coefs.push(coefs);
+            all_metrics.push(refit.accuracy);
+        }
+    }
+}
+
 /// Generic explanation stability via bootstrap resampling.
 ///
 /// Refits the model on bootstrap samples and measures variability of
@@ -78,40 +144,34 @@ pub fn generic_stability(
 
     match task_type {
         TaskType::Regression => {
-            for _ in 0..n_boot {
-                let idx: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
-                let boot_data = subsample_rows(data, &idx);
-                let boot_y: Vec<f64> = idx.iter().map(|&i| y[i]).collect();
-                let boot_sc = scalar_covariates.map(|sc| subsample_rows(sc, &idx));
-                if let Ok(refit) = fregre_lm(&boot_data, &boot_y, boot_sc.as_ref(), ncomp) {
-                    all_beta_t.push(refit.beta_t.clone());
-                    let coefs: Vec<f64> = (0..ncomp).map(|k| refit.coefficients[1 + k]).collect();
-                    all_abs_coefs.push(coefs.iter().map(|c| c.abs()).collect());
-                    all_coefs.push(coefs);
-                    all_metrics.push(refit.r_squared);
-                }
-            }
+            boot_regression(
+                data,
+                y,
+                scalar_covariates,
+                ncomp,
+                n_boot,
+                n,
+                &mut rng,
+                &mut all_beta_t,
+                &mut all_coefs,
+                &mut all_abs_coefs,
+                &mut all_metrics,
+            );
         }
         TaskType::BinaryClassification => {
-            for _ in 0..n_boot {
-                let idx: Vec<usize> = (0..n).map(|_| rng.gen_range(0..n)).collect();
-                let boot_data = subsample_rows(data, &idx);
-                let boot_y: Vec<f64> = idx.iter().map(|&i| y[i]).collect();
-                let boot_sc = scalar_covariates.map(|sc| subsample_rows(sc, &idx));
-                let has_both = boot_y.iter().any(|&v| v < 0.5) && boot_y.iter().any(|&v| v >= 0.5);
-                if !has_both {
-                    continue;
-                }
-                if let Ok(refit) =
-                    functional_logistic(&boot_data, &boot_y, boot_sc.as_ref(), ncomp, 25, 1e-6)
-                {
-                    all_beta_t.push(refit.beta_t.clone());
-                    let coefs: Vec<f64> = (0..ncomp).map(|k| refit.coefficients[1 + k]).collect();
-                    all_abs_coefs.push(coefs.iter().map(|c| c.abs()).collect());
-                    all_coefs.push(coefs);
-                    all_metrics.push(refit.accuracy);
-                }
-            }
+            boot_logistic(
+                data,
+                y,
+                scalar_covariates,
+                ncomp,
+                n_boot,
+                n,
+                &mut rng,
+                &mut all_beta_t,
+                &mut all_coefs,
+                &mut all_abs_coefs,
+                &mut all_metrics,
+            );
         }
         TaskType::MulticlassClassification(_) => {
             return Err(FdarError::InvalidParameter {

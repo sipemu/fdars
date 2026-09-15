@@ -4,6 +4,43 @@ use crate::matrix::FdMatrix;
 
 use super::FpcPredictor;
 
+/// Compute one observation's ICE row across all grid points.
+#[allow(clippy::too_many_arguments)]
+fn fill_ice_row(
+    model: &dyn FpcPredictor,
+    scores: &FdMatrix,
+    scalar_covariates: Option<&FdMatrix>,
+    grid_values: &[f64],
+    component: usize,
+    ncomp: usize,
+    p_scalar: usize,
+    i: usize,
+    n_grid: usize,
+    obs_scores: &mut Vec<f64>,
+    obs_z: &mut Vec<f64>,
+    ice_curves: &mut FdMatrix,
+) {
+    for k in 0..ncomp {
+        obs_scores[k] = scores[(i, k)];
+    }
+    let obs_z_slice: Option<&[f64]> = if p_scalar > 0 {
+        if let Some(sc) = scalar_covariates {
+            for j in 0..p_scalar {
+                obs_z[j] = sc[(i, j)];
+            }
+            Some(obs_z.as_slice())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    for g in 0..n_grid {
+        obs_scores[component] = grid_values[g];
+        ice_curves[(i, g)] = model.predict_from_scores(obs_scores, obs_z_slice);
+    }
+}
+
 /// Generic partial dependence plot / ICE curves for any FPC-based model.
 ///
 /// # Errors
@@ -53,29 +90,23 @@ pub fn generic_pdp(
 
     let p_scalar = scalar_covariates.map_or(0, crate::matrix::FdMatrix::ncols);
     let mut ice_curves = FdMatrix::zeros(n, n_grid);
-    // Pre-allocate buffers outside the observation loop and reuse them
     let mut obs_scores = vec![0.0; ncomp];
     let mut obs_z = vec![0.0; p_scalar];
     for i in 0..n {
-        for k in 0..ncomp {
-            obs_scores[k] = scores[(i, k)];
-        }
-        let obs_z_slice: Option<&[f64]> = if p_scalar > 0 {
-            if let Some(sc) = scalar_covariates {
-                for j in 0..p_scalar {
-                    obs_z[j] = sc[(i, j)];
-                }
-                Some(&obs_z)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        for g in 0..n_grid {
-            obs_scores[component] = grid_values[g];
-            ice_curves[(i, g)] = model.predict_from_scores(&obs_scores, obs_z_slice);
-        }
+        fill_ice_row(
+            model,
+            &scores,
+            scalar_covariates,
+            &grid_values,
+            component,
+            ncomp,
+            p_scalar,
+            i,
+            n_grid,
+            &mut obs_scores,
+            &mut obs_z,
+            &mut ice_curves,
+        );
     }
 
     let pdp_curve = ice_to_pdp(&ice_curves, n, n_grid);

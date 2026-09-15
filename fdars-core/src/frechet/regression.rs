@@ -46,35 +46,7 @@ pub(crate) fn compute_global_weights(
     }
     let n_out = xout.nrows();
 
-    // Predictor column means X̄.
-    let mut x_bar = vec![0.0; p];
-    for j in 0..p {
-        let mut s = 0.0;
-        for i in 0..n {
-            s += predictors[(i, j)];
-        }
-        x_bar[j] = s / n as f64;
-    }
-
-    // Sample covariance Σ̂ (p×p row-major), divide by n-1 (guard n==1), + ridge.
-    let denom = if n > 1 { (n - 1) as f64 } else { 1.0 };
-    let mut sigma = vec![0.0; p * p];
-    for i in 0..n {
-        for a in 0..p {
-            let da = predictors[(i, a)] - x_bar[a];
-            for b in 0..p {
-                let db = predictors[(i, b)] - x_bar[b];
-                sigma[a * p + b] += da * db;
-            }
-        }
-    }
-    for v in sigma.iter_mut() {
-        *v /= denom;
-    }
-    for j in 0..p {
-        sigma[j * p + j] += 1e-6;
-    }
-    let chol = cholesky_factor(&sigma, p)?;
+    let (x_bar, chol) = compute_covariance_chol(predictors, n, p)?;
 
     let mut weights_per_row = Vec::with_capacity(n_out);
     for r in 0..n_out {
@@ -165,6 +137,42 @@ pub(crate) fn compute_local_weights(
         *w /= sum_w;
     }
     Ok(weights)
+}
+
+/// Compute predictor column means and Cholesky factor of the ridge-regularized sample covariance.
+fn compute_covariance_chol(
+    predictors: &FdMatrix,
+    n: usize,
+    p: usize,
+) -> Result<(Vec<f64>, Vec<f64>), FdarError> {
+    // Predictor column means X̄.
+    let mut x_bar = vec![0.0; p];
+    for j in 0..p {
+        let mut s = 0.0;
+        for i in 0..n {
+            s += predictors[(i, j)];
+        }
+        x_bar[j] = s / n as f64;
+    }
+    // Sample covariance Σ̂ (p×p row-major), divide by n-1 (guard n==1), + ridge.
+    let denom = if n > 1 { (n - 1) as f64 } else { 1.0 };
+    let mut sigma = vec![0.0; p * p];
+    for i in 0..n {
+        for a in 0..p {
+            let da = predictors[(i, a)] - x_bar[a];
+            for b in 0..p {
+                sigma[a * p + b] += da * (predictors[(i, b)] - x_bar[b]);
+            }
+        }
+    }
+    for v in sigma.iter_mut() {
+        *v /= denom;
+    }
+    for j in 0..p {
+        sigma[j * p + j] += 1e-6;
+    }
+    let chol = cholesky_factor(&sigma, p)?;
+    Ok((x_bar, chol))
 }
 
 /// Validate the shared predictor/response/grid/xout shapes; returns `(n, p, m)`.

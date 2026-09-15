@@ -8,6 +8,86 @@ use crate::matrix::FdMatrix;
 
 use super::FpcPredictor;
 
+/// Compute Kernel SHAP row for a single observation.
+#[allow(clippy::too_many_arguments)]
+fn shap_row_for_obs(
+    model: &dyn FpcPredictor,
+    scores: &FdMatrix,
+    scalar_covariates: Option<&FdMatrix>,
+    mean_scores: &[f64],
+    mean_z: &[f64],
+    p_scalar: usize,
+    ncomp: usize,
+    n_samples: usize,
+    seed: u64,
+    i: usize,
+) -> Vec<f64> {
+    let mut rng_i = crate::helpers::seed_for_thread(seed, i);
+    let obs_scores: Vec<f64> = (0..ncomp).map(|k| scores[(i, k)]).collect();
+    let obs_z = get_obs_scalar(scalar_covariates, i, p_scalar, mean_z);
+
+    let mut ata = vec![0.0; ncomp * ncomp];
+    let mut atb = vec![0.0; ncomp];
+    let mut coal_scores = vec![0.0; ncomp];
+
+    let f_base = model.predict_from_scores(
+        mean_scores,
+        if obs_z.is_empty() { None } else { Some(&obs_z) },
+    );
+
+    accumulate_shap_samples(
+        model,
+        mean_scores,
+        &obs_scores,
+        &obs_z,
+        ncomp,
+        n_samples,
+        &mut rng_i,
+        f_base,
+        &mut coal_scores,
+        &mut ata,
+        &mut atb,
+    );
+
+    let mut local_values = FdMatrix::zeros(1, ncomp);
+    solve_kernel_shap_obs(&mut ata, &atb, ncomp, &mut local_values, 0);
+    (0..ncomp).map(|k| local_values[(0, k)]).collect()
+}
+
+/// Accumulate kernel SHAP samples for one observation.
+#[allow(clippy::too_many_arguments)]
+fn accumulate_shap_samples(
+    model: &dyn FpcPredictor,
+    mean_scores: &[f64],
+    obs_scores: &[f64],
+    obs_z: &[f64],
+    ncomp: usize,
+    n_samples: usize,
+    rng_i: &mut rand::prelude::StdRng,
+    f_base: f64,
+    coal_scores: &mut Vec<f64>,
+    ata: &mut Vec<f64>,
+    atb: &mut Vec<f64>,
+) {
+    for _ in 0..n_samples {
+        let (coalition, s_size) = sample_random_coalition(rng_i, ncomp);
+        let weight = shapley_kernel_weight(ncomp, s_size);
+        for (k, &in_coal) in coalition.iter().enumerate() {
+            coal_scores[k] = if in_coal {
+                obs_scores[k]
+            } else {
+                mean_scores[k]
+            };
+        }
+        let f_coal = model.predict_from_scores(
+            coal_scores,
+            if obs_z.is_empty() { None } else { Some(obs_z) },
+        );
+        let y_val = f_coal - f_base;
+        accumulate_kernel_shap_sample(ata, atb, &coalition, weight, y_val, ncomp);
+    }
+}
+
 /// Generic Kernel SHAP values for any FPC-based model.
 ///
 /// For nonlinear models uses sampling-based Kernel SHAP; linear models get
@@ -74,47 +154,18 @@ pub fn generic_shap_values(
 
     let rows: Vec<Vec<f64>> = iter_maybe_parallel!(0..n)
         .map(|i| {
-            // Phase-49 CONS-02: per-component thread-offset seeding via the shared helper.
-            let mut rng_i = crate::helpers::seed_for_thread(seed, i);
-            let obs_scores: Vec<f64> = (0..ncomp).map(|k| scores[(i, k)]).collect();
-            let obs_z = get_obs_scalar(scalar_covariates, i, p_scalar, &mean_z);
-
-            let mut ata = vec![0.0; ncomp * ncomp];
-            let mut atb = vec![0.0; ncomp];
-            // Pre-allocate coalition scores buffer outside the inner loop
-            let mut coal_scores = vec![0.0; ncomp];
-
-            // Pre-compute f_base once (it is constant across all coalitions)
-            let f_base = model.predict_from_scores(
+            shap_row_for_obs(
+                model,
+                &scores,
+                scalar_covariates,
                 &mean_scores,
-                if obs_z.is_empty() { None } else { Some(&obs_z) },
-            );
-
-            for _ in 0..n_samples {
-                let (coalition, s_size) = sample_random_coalition(&mut rng_i, ncomp);
-                let weight = shapley_kernel_weight(ncomp, s_size);
-                // Reuse pre-allocated buffer instead of allocating a new Vec each iteration
-                for (k, &in_coal) in coalition.iter().enumerate() {
-                    coal_scores[k] = if in_coal {
-                        obs_scores[k]
-                    } else {
-                        mean_scores[k]
-                    };
-                }
-
-                let f_coal = model.predict_from_scores(
-                    &coal_scores,
-                    if obs_z.is_empty() { None } else { Some(&obs_z) },
-                );
-                let y_val = f_coal - f_base;
-
-                accumulate_kernel_shap_sample(&mut ata, &mut atb, &coalition, weight, y_val, ncomp);
-            }
-
-            // Solve locally and return row
-            let mut local_values = FdMatrix::zeros(1, ncomp);
-            solve_kernel_shap_obs(&mut ata, &atb, ncomp, &mut local_values, 0);
-            (0..ncomp).map(|k| local_values[(0, k)]).collect()
+                &mean_z,
+                p_scalar,
+                ncomp,
+                n_samples,
+                seed,
+                i,
+            )
         })
         .collect();
 

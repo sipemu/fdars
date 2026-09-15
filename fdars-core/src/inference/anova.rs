@@ -19,6 +19,51 @@ use crate::function_on_scalar::compute_group_means;
 use crate::helpers::simpsons_weights;
 use crate::matrix::FdMatrix;
 
+/// Between-group weighted sum of squares: V = ∫ Σ_g n_g (x̄_g(t) − x̄(t))² dt.
+fn compute_between_ss(
+    weights: &[f64],
+    group_means: &FdMatrix,
+    overall_mean: &[f64],
+    k: usize,
+    m: usize,
+    counts: &[usize],
+) -> f64 {
+    let mut v = 0.0;
+    for t in 0..m {
+        let mut between_t = 0.0;
+        for g in 0..k {
+            let d = group_means[(g, t)] - overall_mean[t];
+            between_t += counts[g] as f64 * d * d;
+        }
+        v += weights[t] * between_t;
+    }
+    v
+}
+
+/// Pooled within-group variance per grid point Ĉ(t) = Σ_i (x_i(t) − x̄_{g(i)}(t))² / (n−k).
+fn compute_within_cov_diag(
+    data: &FdMatrix,
+    group_means: &FdMatrix,
+    groups: &[usize],
+    labels: &[usize],
+    n: usize,
+    m: usize,
+    k: usize,
+) -> Vec<f64> {
+    let df_within = (n as f64 - k as f64).max(1.0);
+    let mut cov_diag = vec![0.0f64; m];
+    for t in 0..m {
+        let mut ss = 0.0;
+        for i in 0..n {
+            let g = labels.iter().position(|&l| l == groups[i]).unwrap_or(0);
+            let d = data[(i, t)] - group_means[(g, t)];
+            ss += d * d;
+        }
+        cov_diag[t] = ss / df_within;
+    }
+    cov_diag
+}
+
 /// Asymptotic one-way functional ANOVA test (V-statistic).
 ///
 /// Tests the null hypothesis H0 that all groups share a common mean curve. The
@@ -126,31 +171,8 @@ pub fn oneway_anova_vstat(
 
     let weights = simpsons_weights(argvals);
 
-    // Between-group weighted sum of squares → V.
-    // V = ∫ Σ_g n_g (x̄_g(t) − x̄(t))² dt.
-    let mut v_stat = 0.0;
-    for t in 0..m {
-        let mut between_t = 0.0;
-        for g in 0..k {
-            let d = group_means[(g, t)] - overall_mean[t];
-            between_t += counts[g] as f64 * d * d;
-        }
-        v_stat += weights[t] * between_t;
-    }
-
-    // Pooled within-group variance per grid point Ĉ(t):
-    // Ĉ(t) = Σ_i (x_i(t) − x̄_{g(i)}(t))² / (n − k).
-    let df_within = (n as f64 - k as f64).max(1.0);
-    let mut cov_diag = vec![0.0f64; m];
-    for t in 0..m {
-        let mut ss = 0.0;
-        for i in 0..n {
-            let g = labels.iter().position(|&l| l == groups[i]).unwrap_or(0);
-            let d = data[(i, t)] - group_means[(g, t)];
-            ss += d * d;
-        }
-        cov_diag[t] = ss / df_within;
-    }
+    let v_stat = compute_between_ss(&weights, &group_means, &overall_mean, k, m, &counts);
+    let cov_diag = compute_within_cov_diag(data, &group_means, groups, &labels, n, m, k);
 
     // Scaled-χ² (Box/Satterthwaite) moment match on the between-group V-null.
     // Per-df between-group SS at t has expectation (k−1)·Ĉ(t); integrating with

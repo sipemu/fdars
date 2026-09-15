@@ -178,17 +178,7 @@ pub fn flm_gof_test(fit: &FregreLmResult) -> Result<TestResult, FdarError> {
         x.push([1.0, z, z * z, z * z * z]);
     }
 
-    // Normal equations X'X (ncoef x ncoef) and X'e (ncoef).
-    let mut xtx = [[0.0f64; 4]; 4];
-    let mut xte = [0.0f64; 4];
-    for (row, &ei) in x.iter().zip(e.iter()) {
-        for a in 0..ncoef {
-            xte[a] += row[a] * ei;
-            for b in 0..ncoef {
-                xtx[a][b] += row[a] * row[b];
-            }
-        }
-    }
+    let (xtx, xte) = accumulate_normal_equations(&x, e, ncoef);
 
     // Solve (X'X) coef = X'e via Gaussian elimination with partial pivoting.
     let coef = match solve_linear(xtx, xte, ncoef) {
@@ -236,6 +226,25 @@ pub fn flm_gof_test(fit: &FregreLmResult) -> Result<TestResult, FdarError> {
         p_value,
         n_perm: 0,
     })
+}
+
+/// Accumulate the normal equations X'X and X'e for the GoF auxiliary regression.
+fn accumulate_normal_equations(
+    x: &[[f64; 4]],
+    e: &[f64],
+    ncoef: usize,
+) -> ([[f64; 4]; 4], [f64; 4]) {
+    let mut xtx = [[0.0f64; 4]; 4];
+    let mut xte = [0.0f64; 4];
+    for (row, &ei) in x.iter().zip(e.iter()) {
+        for a in 0..ncoef {
+            xte[a] += row[a] * ei;
+            for b in 0..ncoef {
+                xtx[a][b] += row[a] * row[b];
+            }
+        }
+    }
+    (xtx, xte)
 }
 
 /// Solve an `n x n` linear system `A x = b` (with `n <= 4`) via Gaussian
