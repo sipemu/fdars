@@ -442,6 +442,68 @@ pub fn fem_basis_eval(
 // SR-PDE surface smoothing
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// Build the observation matrix Φ (n_obs × big_n, row-major) and its
+/// Gram matrix Φ'Φ (big_n × big_n, row-major).
+///
+/// `basis_evals[i]` is the sparse triple `(tri_idx, [(node, hat_val); 3])`
+/// returned by `fem_basis_eval`.  On return `phi_out` and `phi_t_phi_out`
+/// accumulate contributions from every observation point.
+fn build_phi_matrices(
+    basis_evals: &[(usize, [(usize, f64); 3])],
+    n_obs: usize,
+    big_n: usize,
+) -> (Vec<f64>, Vec<f64>) {
+    let mut phi = vec![0.0_f64; n_obs * big_n];
+    for (i, (_tri_idx, weights)) in basis_evals.iter().enumerate() {
+        for &(node_idx, hat_val) in weights.iter() {
+            phi[i * big_n + node_idx] = hat_val;
+        }
+    }
+
+    // Φ'Φ (symmetric — fill both triangles).
+    let mut phi_t_phi = vec![0.0_f64; big_n * big_n];
+    for i in 0..n_obs {
+        for a in 0..big_n {
+            let phi_ia = phi[i * big_n + a];
+            if phi_ia == 0.0 {
+                continue;
+            }
+            for b in a..big_n {
+                let val = phi_ia * phi[i * big_n + b];
+                phi_t_phi[a * big_n + b] += val;
+                if a != b {
+                    phi_t_phi[b * big_n + a] += val;
+                }
+            }
+        }
+    }
+    (phi, phi_t_phi)
+}
+
+/// Compute A⁻¹ column-by-column (using the Cholesky factor `l`) and return
+/// `(a_inv, edf)` where `edf = tr(A⁻¹ · Φ'Φ)`.
+fn compute_a_inv_edf(l: &[f64], phi_t_phi: &[f64], big_n: usize) -> (Vec<f64>, f64) {
+    let mut a_inv = vec![0.0_f64; big_n * big_n];
+    let mut e_col = vec![0.0_f64; big_n];
+    for j in 0..big_n {
+        e_col.iter_mut().for_each(|v| *v = 0.0);
+        e_col[j] = 1.0;
+        let col = crate::linalg::cholesky_forward_back(l, &e_col, big_n);
+        for i in 0..big_n {
+            a_inv[i * big_n + j] = col[i]; // a_inv[i, j] in row-major
+        }
+    }
+
+    // edf = tr(A⁻¹ · Φ'Φ) = Σ_{a,b} A⁻¹[a,b] * Φ'Φ[b,a]
+    let mut edf = 0.0_f64;
+    for a in 0..big_n {
+        for b in 0..big_n {
+            edf += a_inv[a * big_n + b] * phi_t_phi[b * big_n + a];
+        }
+    }
+    (a_inv, edf)
+}
+
 /// PDE-regularised (Laplacian-penalty) surface smoothing at a **fixed** smoothing parameter λ.
 ///
 /// Solves the SR-PDE penalised normal equations `(Φ'Φ + λ·K) c = Φ'y` using the in-house dense
@@ -520,42 +582,16 @@ pub fn fem_smooth(
     // mesh_validate is called inside assemble_fem_matrices.
     let (_m, k_global) = assemble_fem_matrices(nodes, triangles)?;
 
-    // ── Build Φ (n_obs × big_n) row-major flat Vec<f64> ──────────────────────
+    // ── Build Φ (n_obs × big_n) and Φ'Φ (N × N) ─────────────────────────────
     // fem_basis_eval validates mesh (again) and returns an error if any obs is outside.
     let basis_evals = fem_basis_eval(nodes, triangles, obs_xy)?;
-    let mut phi = vec![0.0_f64; n_obs * big_n];
-    for (i, (_tri_idx, weights)) in basis_evals.iter().enumerate() {
-        for &(node_idx, hat_val) in weights.iter() {
-            phi[i * big_n + node_idx] = hat_val;
-        }
-    }
+    let (phi, phi_t_phi) = build_phi_matrices(&basis_evals, n_obs, big_n);
 
-    // ── Assemble Φ'Φ (N × N, row-major) ──────────────────────────────────────
-    // O(n_obs · N²); exploiting symmetry of Φ'Φ.
+    // ── Build A = Φ'Φ + λ·K + ε·I ───────────────────────────────────────────
     // OPT-F: build Φ'Φ and A = Φ'Φ (…+λK+εI below) in a SINGLE assembly pass, removing the
     // load-bearing `phi_t_phi.clone()` (one N×N copy, ~2.6 MB at N=576). `phi_t_phi` is kept PURE
     // (Φ'Φ only) because the GCV trace below reads it; regularization is added to `a_mat` alone.
-    let mut phi_t_phi = vec![0.0_f64; big_n * big_n];
-    let mut a_mat = vec![0.0_f64; big_n * big_n];
-    for i in 0..n_obs {
-        for a in 0..big_n {
-            let phi_ia = phi[i * big_n + a];
-            if phi_ia == 0.0 {
-                continue;
-            }
-            for b in a..big_n {
-                let val = phi_ia * phi[i * big_n + b];
-                phi_t_phi[a * big_n + b] += val;
-                a_mat[a * big_n + b] += val;
-                if a != b {
-                    phi_t_phi[b * big_n + a] += val;
-                    a_mat[b * big_n + a] += val;
-                }
-            }
-        }
-    }
-
-    // ── Build A = Φ'Φ + λ·K + ε·I (added to a_mat only; phi_t_phi stays pure) ──────────────
+    let mut a_mat = phi_t_phi.clone();
     for ab in 0..(big_n * big_n) {
         a_mat[ab] += lambda * k_global[ab];
     }
@@ -590,24 +626,7 @@ pub fn fem_smooth(
     // change the returned `edf`/`gcv` fields — a breaking API change, also out of scope). Deferred; a
     // future breaking/1.0-readiness or sparse-linalg milestone can revisit. See PERF-RESULTS.md.
     let l = crate::linalg::cholesky_factor(&a_mat, big_n)?;
-    let mut a_inv = vec![0.0_f64; big_n * big_n];
-    let mut e_col = vec![0.0_f64; big_n];
-    for j in 0..big_n {
-        e_col.iter_mut().for_each(|v| *v = 0.0);
-        e_col[j] = 1.0;
-        let col = crate::linalg::cholesky_forward_back(&l, &e_col, big_n);
-        for i in 0..big_n {
-            a_inv[i * big_n + j] = col[i]; // a_inv[i, j] in row-major
-        }
-    }
-
-    // edf = tr(A⁻¹ · Φ'Φ) = Σ_{a,b} A⁻¹[a,b] * Φ'Φ[b,a]
-    let mut edf = 0.0_f64;
-    for a in 0..big_n {
-        for b in 0..big_n {
-            edf += a_inv[a * big_n + b] * phi_t_phi[b * big_n + a];
-        }
-    }
+    let (_a_inv, edf) = compute_a_inv_edf(&l, &phi_t_phi, big_n);
 
     let n_obs_f = n_obs as f64;
     let gcv_denom = 1.0 - edf / n_obs_f;

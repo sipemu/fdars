@@ -526,6 +526,68 @@ fn validate_operator_kernels(
     Ok(m)
 }
 
+/// Apply one AR operator kernel to `x_new`.
+///
+/// Computes `x_new[j1] += Σ_{j2} a_k[j1 + j2*m] * x_prev[j2]` for all j1.
+/// No-op if `hist_x` has no entry at index `k` (not enough history yet).
+#[inline]
+fn apply_ar_term(x_new: &mut [f64], ar_ops: &[Vec<f64>], hist_x: &[Vec<f64>], m: usize) {
+    for (k, a_k) in ar_ops.iter().enumerate() {
+        if let Some(x_prev) = hist_x.get(k) {
+            for j1 in 0..m {
+                let mut s = 0.0;
+                for j2 in 0..m {
+                    s += a_k[j1 + j2 * m] * x_prev[j2];
+                }
+                x_new[j1] += s;
+            }
+        }
+    }
+}
+
+/// Apply one MA operator kernel to `x_new`.
+///
+/// Computes `x_new[j1] += Σ_{j2} b_k[j1 + j2*m] * e_prev[j2]` for all j1.
+/// No-op if `hist_eps` has no entry at index `k` (not enough history yet).
+#[inline]
+fn apply_ma_term(x_new: &mut [f64], ma_ops: &[Vec<f64>], hist_eps: &[Vec<f64>], m: usize) {
+    for (k, b_k) in ma_ops.iter().enumerate() {
+        if let Some(e_prev) = hist_eps.get(k) {
+            for j1 in 0..m {
+                let mut s = 0.0;
+                for j2 in 0..m {
+                    s += b_k[j1 + j2 * m] * e_prev[j2];
+                }
+                x_new[j1] += s;
+            }
+        }
+    }
+}
+
+/// Push the newest curve/innovation into the ring-buffer histories and trim to
+/// capacity.
+fn update_histories(
+    hist_x: &mut Vec<Vec<f64>>,
+    hist_eps: &mut Vec<Vec<f64>>,
+    x_new: &[f64],
+    eps_t: Vec<f64>,
+    p: usize,
+    q: usize,
+) {
+    if p > 0 {
+        hist_x.insert(0, x_new.to_vec());
+        if hist_x.len() > p {
+            hist_x.pop();
+        }
+    }
+    if q > 0 {
+        hist_eps.insert(0, eps_t);
+        if hist_eps.len() > q {
+            hist_eps.pop();
+        }
+    }
+}
+
 /// Shared functional VAR/VMA/FARMA recurrence used by both public entry points.
 ///
 /// Runs `burn_in + n` steps of `X_t = Σ_k A_k·X_{t-k} + ε_t + Σ_k B_k·ε_{t-k}`
@@ -554,33 +616,14 @@ fn fvarma_core(
 
     let total = burn_in + n;
     for step in 0..total {
+        // RNG draw: MUST remain first — preserves draw order for reproducibility.
         let eps_t: Vec<f64> = (0..m).map(|_| rng.sample::<f64, _>(normal)).collect();
         let mut x_new = eps_t.clone();
 
         // AR terms: X_t += A_k · X_{t-1-k}.
-        for (k, a_k) in ar_ops.iter().enumerate() {
-            if let Some(x_prev) = hist_x.get(k) {
-                for j1 in 0..m {
-                    let mut s = 0.0;
-                    for j2 in 0..m {
-                        s += a_k[j1 + j2 * m] * x_prev[j2];
-                    }
-                    x_new[j1] += s;
-                }
-            }
-        }
+        apply_ar_term(&mut x_new, ar_ops, &hist_x, m);
         // MA terms: X_t += B_k · ε_{t-1-k}.
-        for (k, b_k) in ma_ops.iter().enumerate() {
-            if let Some(e_prev) = hist_eps.get(k) {
-                for j1 in 0..m {
-                    let mut s = 0.0;
-                    for j2 in 0..m {
-                        s += b_k[j1 + j2 * m] * e_prev[j2];
-                    }
-                    x_new[j1] += s;
-                }
-            }
-        }
+        apply_ma_term(&mut x_new, ma_ops, &hist_eps, m);
 
         // Divergence guard (Pitfall 5): reject non-finite values instead of emitting them.
         // Fires anywhere in the recurrence (burn-in or kept output), so the message
@@ -596,19 +639,7 @@ fn fvarma_core(
             });
         }
 
-        if p > 0 {
-            hist_x.insert(0, x_new.clone());
-            if hist_x.len() > p {
-                hist_x.pop();
-            }
-        }
-        if q > 0 {
-            hist_eps.insert(0, eps_t);
-            if hist_eps.len() > q {
-                hist_eps.pop();
-            }
-        }
-
+        update_histories(&mut hist_x, &mut hist_eps, &x_new, eps_t, p, q);
         if step >= burn_in {
             kept.push(x_new);
         }

@@ -201,6 +201,24 @@ impl Shapelet {
     }
 }
 
+/// Accumulate squared Euclidean distance between `window_z` and `shapelet_z`
+/// with early-abandon against `best_sq`.
+///
+/// Returns `Some(acc)` if the full distance was computed without exceeding
+/// `best_sq`, or `None` if the window was abandoned early.
+#[inline]
+fn window_sq_dist(shapelet_z: &[f64], window_z: &[f64], best_sq: f64) -> Option<f64> {
+    let mut acc = 0.0;
+    for k in 0..shapelet_z.len() {
+        let diff = window_z[k] - shapelet_z[k];
+        acc += diff * diff;
+        if acc > best_sq {
+            return None;
+        }
+    }
+    Some(acc)
+}
+
 /// Shapelet distance `sdist`: the minimum over sliding windows of the
 /// z-normalized Euclidean distance between the (pre-normalized) shapelet and
 /// each per-window-normalized window of `series`.
@@ -284,25 +302,14 @@ pub fn shapelet_distance(
         let window = &series[t..t + l];
         z_normalize_into(window, &mut window_z);
 
-        // Accumulate squared Euclidean distance with early abandon.
-        let mut acc = 0.0;
-        let mut abandoned = false;
-        for k in 0..l {
-            let diff = window_z[k] - shapelet_z[k];
-            acc += diff * diff;
-            if acc > best_sq {
-                abandoned = true;
-                break;
+        // Squared distance with early abandon.
+        if let Some(acc) = window_sq_dist(shapelet_z, &window_z, best_sq) {
+            // acc <= best_sq here. Strict `<` keeps first-minimum offset on ties.
+            if !found || acc < best_sq {
+                best_sq = acc;
+                best_offset = t;
+                found = true;
             }
-        }
-        if abandoned {
-            continue;
-        }
-        // acc <= best_sq here. Strict `<` keeps the first-minimum offset on ties.
-        if !found || acc < best_sq {
-            best_sq = acc;
-            best_offset = t;
-            found = true;
         }
     }
 

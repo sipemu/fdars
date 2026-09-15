@@ -343,6 +343,149 @@ fn decode_candidate(
     }
 }
 
+/// Resolved, validated parameters extracted from `discover_shapelets` arguments.
+struct DiscoveryParams {
+    n_classes: usize,
+    labels_dense: Vec<usize>,
+    max_length: usize,
+    max_shapelets: usize,
+}
+
+/// Validate inputs and resolve configuration sentinels for [`discover_shapelets`].
+///
+/// Returns `DiscoveryParams` on success or an `FdarError` if any input is invalid.
+/// Build a dense 0..n_classes label map and validate class count.
+///
+/// Returns `(n_classes, labels_dense)` where `labels_dense[i]` is the
+/// 0-based class index for observation `i`.  Returns an error if fewer
+/// than 2 distinct classes are present.
+fn remap_labels(labels: &[usize]) -> Result<(usize, Vec<usize>), FdarError> {
+    let mut distinct: Vec<usize> = labels.to_vec();
+    distinct.sort_unstable();
+    distinct.dedup();
+    let n_classes = distinct.len();
+    if n_classes < 2 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "labels",
+            message: format!("at least 2 distinct classes required, found {n_classes}"),
+        });
+    }
+    let remap = |y: usize| distinct.iter().position(|&d| d == y).unwrap();
+    let labels_dense: Vec<usize> = labels.iter().map(|&y| remap(y)).collect();
+    Ok((n_classes, labels_dense))
+}
+
+fn validate_and_resolve(
+    n_series: usize,
+    ncols: usize,
+    labels: &[usize],
+    config: &ShapeletDiscoveryConfig,
+) -> Result<DiscoveryParams, FdarError> {
+    if labels.len() != n_series {
+        return Err(FdarError::InvalidDimension {
+            parameter: "labels",
+            expected: format!("{n_series} labels (one per curve)"),
+            actual: format!("{} labels", labels.len()),
+        });
+    }
+    if n_series == 0 || ncols == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least one curve with at least one point".to_string(),
+            actual: format!("{n_series}x{ncols}"),
+        });
+    }
+
+    let (n_classes, labels_dense) = remap_labels(labels)?;
+
+    if config.min_length < 1 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "min_length",
+            message: "min_length must be >= 1".to_string(),
+        });
+    }
+    // Resolve max_length sentinel.
+    let max_length = if config.max_length == 0 {
+        ncols
+    } else {
+        config.max_length
+    };
+    if config.min_length > max_length {
+        return Err(FdarError::InvalidParameter {
+            parameter: "min_length",
+            message: format!(
+                "min_length ({}) > max_length ({max_length})",
+                config.min_length
+            ),
+        });
+    }
+    if max_length > ncols {
+        return Err(FdarError::InvalidParameter {
+            parameter: "max_length",
+            message: format!("max_length ({max_length}) > series length ({ncols})"),
+        });
+    }
+    // Resolve max_shapelets sentinel.
+    let max_shapelets = if config.max_shapelets == 0 {
+        (10 * n_series).min(1000)
+    } else {
+        config.max_shapelets
+    };
+    if max_shapelets < 1 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "max_shapelets",
+            message: "max_shapelets must be >= 1".to_string(),
+        });
+    }
+
+    Ok(DiscoveryParams {
+        n_classes,
+        labels_dense,
+        max_length,
+        max_shapelets,
+    })
+}
+
+/// Greedy shapelet selection with self-similarity pruning.
+///
+/// Accepts an iterator of `(score, candidate)` pairs sorted best-first and
+/// returns at most `max_shapelets` non-overlapping shapelets.  Candidates from
+/// the same series whose windows overlap an already-accepted shapelet are
+/// skipped.
+fn greedy_select_shapelets(
+    ranked: impl IntoIterator<Item = (f64, Candidate)>,
+    series_rows: &[Vec<f64>],
+    max_shapelets: usize,
+) -> Vec<Shapelet> {
+    let mut accepted_ranges: std::collections::HashMap<usize, Vec<(usize, usize)>> =
+        std::collections::HashMap::new();
+    let mut selected: Vec<Shapelet> = Vec::with_capacity(max_shapelets);
+
+    for (score, cand) in ranked {
+        if selected.len() >= max_shapelets {
+            break;
+        }
+        let start = cand.start;
+        let end = cand.start + cand.length;
+        let overlaps = accepted_ranges
+            .get(&cand.series_idx)
+            .is_some_and(|ranges| ranges.iter().any(|&(s, e)| !(end <= s || e <= start)));
+        if overlaps {
+            continue;
+        }
+        let src = &series_rows[cand.series_idx];
+        let mut shp = Shapelet::from_source(src, cand.series_idx, cand.start, cand.length)
+            .expect("candidate window is in-range by construction");
+        shp.quality = score;
+        accepted_ranges
+            .entry(cand.series_idx)
+            .or_default()
+            .push((start, end));
+        selected.push(shp);
+    }
+    selected
+}
+
 /// Discover a non-redundant [`ShapeletSet`] from a labeled training curve set.
 ///
 /// Enumerates candidate subsequences over `[config.min_length, config.max_length]`
@@ -407,75 +550,12 @@ pub fn discover_shapelets(
 ) -> Result<ShapeletSet, FdarError> {
     let (n_series, ncols) = data.shape();
 
-    // --- validation ---
-    if labels.len() != n_series {
-        return Err(FdarError::InvalidDimension {
-            parameter: "labels",
-            expected: format!("{n_series} labels (one per curve)"),
-            actual: format!("{} labels", labels.len()),
-        });
-    }
-    if n_series == 0 || ncols == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: "at least one curve with at least one point".to_string(),
-            actual: format!("{n_series}x{ncols}"),
-        });
-    }
-
-    // Distinct classes + a dense 0..n_classes remap.
-    let mut distinct: Vec<usize> = labels.to_vec();
-    distinct.sort_unstable();
-    distinct.dedup();
-    let n_classes = distinct.len();
-    if n_classes < 2 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "labels",
-            message: format!("at least 2 distinct classes required, found {n_classes}"),
-        });
-    }
-    let remap = |y: usize| distinct.iter().position(|&d| d == y).unwrap();
-    let labels_dense: Vec<usize> = labels.iter().map(|&y| remap(y)).collect();
-
-    if config.min_length < 1 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "min_length",
-            message: "min_length must be >= 1".to_string(),
-        });
-    }
-    // Resolve max_length sentinel.
-    let max_length = if config.max_length == 0 {
-        ncols
-    } else {
-        config.max_length
-    };
-    if config.min_length > max_length {
-        return Err(FdarError::InvalidParameter {
-            parameter: "min_length",
-            message: format!(
-                "min_length ({}) > max_length ({max_length})",
-                config.min_length
-            ),
-        });
-    }
-    if max_length > ncols {
-        return Err(FdarError::InvalidParameter {
-            parameter: "max_length",
-            message: format!("max_length ({max_length}) > series length ({ncols})"),
-        });
-    }
-    // Resolve max_shapelets sentinel.
-    let max_shapelets = if config.max_shapelets == 0 {
-        (10 * n_series).min(1000)
-    } else {
-        config.max_shapelets
-    };
-    if max_shapelets < 1 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "max_shapelets",
-            message: "max_shapelets must be >= 1".to_string(),
-        });
-    }
+    let DiscoveryParams {
+        n_classes,
+        labels_dense,
+        max_length,
+        max_shapelets,
+    } = validate_and_resolve(n_series, ncols, labels, config)?;
 
     // --- candidate generation (seed-fixed, order-deterministic) ---
     let candidates = generate_candidates(
@@ -535,35 +615,7 @@ pub fn discover_shapelets(
         })
     });
 
-    // --- greedy selection + self-similarity pruning ---
-    // Track, per series, the accepted [start, end) intervals so we can reject
-    // overlapping same-series candidates.
-    let mut accepted_ranges: std::collections::HashMap<usize, Vec<(usize, usize)>> =
-        std::collections::HashMap::new();
-    let mut selected: Vec<Shapelet> = Vec::with_capacity(max_shapelets);
-
-    for (score, cand) in ranked {
-        if selected.len() >= max_shapelets {
-            break;
-        }
-        let start = cand.start;
-        let end = cand.start + cand.length;
-        let overlaps = accepted_ranges
-            .get(&cand.series_idx)
-            .is_some_and(|ranges| ranges.iter().any(|&(s, e)| !(end <= s || e <= start)));
-        if overlaps {
-            continue;
-        }
-        let src = &series_rows[cand.series_idx];
-        let mut shp = Shapelet::from_source(src, cand.series_idx, cand.start, cand.length)
-            .expect("candidate window is in-range by construction");
-        shp.quality = score;
-        accepted_ranges
-            .entry(cand.series_idx)
-            .or_default()
-            .push((start, end));
-        selected.push(shp);
-    }
+    let selected = greedy_select_shapelets(ranked, &series_rows, max_shapelets);
 
     Ok(ShapeletSet {
         shapelets: selected,
