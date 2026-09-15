@@ -190,6 +190,35 @@ impl ElasticLogisticResult {
     }
 }
 
+/// Validate that labels form the contiguous range `0..K` and return `k`.
+fn validate_contiguous_labels(y: &[usize]) -> Result<Vec<usize>, crate::FdarError> {
+    let mut sorted: Vec<usize> = y.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    let k = sorted.len();
+    if k < 2 {
+        return Err(crate::FdarError::InvalidParameter {
+            parameter: "y",
+            message: format!(
+                "at least 2 distinct classes required; found {} distinct label(s)",
+                k
+            ),
+        });
+    }
+    for (idx, &label) in sorted.iter().enumerate() {
+        if label != idx {
+            return Err(crate::FdarError::InvalidParameter {
+                parameter: "y",
+                message: format!(
+                    "labels must form the contiguous range 0..{} but found label {} at position {}",
+                    k, label, idx
+                ),
+            });
+        }
+    }
+    Ok(sorted)
+}
+
 // ─── Elastic Multinomial ─────────────────────────────────────────────────────
 
 /// Result of elastic multinomial logistic regression (one-vs-rest, K ≥ 2 classes).
@@ -276,35 +305,10 @@ pub fn elastic_multinomial(
         });
     }
 
-    let mut sorted_labels: Vec<usize> = y.to_vec();
-    sorted_labels.sort_unstable();
-    sorted_labels.dedup();
-    let k = sorted_labels.len();
-
-    if k < 2 {
-        return Err(crate::FdarError::InvalidParameter {
-            parameter: "y",
-            message: format!(
-                "at least 2 distinct classes required; found {} distinct label(s)",
-                k
-            ),
-        });
-    }
-    // Labels must form contiguous 0..K
-    for (idx, &label) in sorted_labels.iter().enumerate() {
-        if label != idx {
-            return Err(crate::FdarError::InvalidParameter {
-                parameter: "y",
-                message: format!(
-                    "labels must form the contiguous range 0..{} but found label {} at position {}",
-                    k, label, idx
-                ),
-            });
-        }
-    }
+    let classes = validate_contiguous_labels(y)?;
+    let k = classes.len();
 
     // ── Fit K binary OvR models ──────────────────────────────────────────────
-    let classes = sorted_labels;
     let mut class_models: Vec<ElasticLogisticResult> = Vec::with_capacity(k);
     for &class_k in &classes {
         let labels_k: Vec<i8> = y
@@ -323,37 +327,10 @@ pub fn elastic_multinomial(
             train_probabilities[(row_i, col_k)] = model_k.probabilities[row_i];
         }
     }
-    // Row-normalise so each row sums to 1; guard zero-sum row → uniform 1/K
-    for row_i in 0..n {
-        let row_sum: f64 = (0..k).map(|col| train_probabilities[(row_i, col)]).sum();
-        if row_sum < 1e-15 {
-            // Degenerate row: assign uniform probability
-            for col in 0..k {
-                train_probabilities[(row_i, col)] = 1.0 / k as f64;
-            }
-        } else {
-            let scale = 1.0 / row_sum;
-            for col in 0..k {
-                train_probabilities[(row_i, col)] *= scale;
-            }
-        }
-    }
+    row_normalise(&mut train_probabilities, n, k);
 
     // ── Predicted classes and accuracy ───────────────────────────────────────
-    let predicted_classes: Vec<usize> = (0..n)
-        .map(|row_i| {
-            let mut best_k = 0;
-            let mut best_p = train_probabilities[(row_i, 0)];
-            for col in 1..k {
-                let p = train_probabilities[(row_i, col)];
-                if p > best_p {
-                    best_p = p;
-                    best_k = col;
-                }
-            }
-            classes[best_k]
-        })
-        .collect();
+    let predicted_classes = row_argmax_classes(&train_probabilities, &classes, n, k);
 
     let train_accuracy = predicted_classes
         .iter()
@@ -407,36 +384,8 @@ pub fn predict_elastic_multinomial(
         }
     }
 
-    // Row-normalise
-    for row_i in 0..n_new {
-        let row_sum: f64 = (0..k).map(|col| prob_matrix[(row_i, col)]).sum();
-        if row_sum < 1e-15 {
-            for col in 0..k {
-                prob_matrix[(row_i, col)] = 1.0 / k as f64;
-            }
-        } else {
-            let scale = 1.0 / row_sum;
-            for col in 0..k {
-                prob_matrix[(row_i, col)] *= scale;
-            }
-        }
-    }
-
-    // Argmax → class label
-    (0..n_new)
-        .map(|row_i| {
-            let mut best_k = 0;
-            let mut best_p = prob_matrix[(row_i, 0)];
-            for col in 1..k {
-                let p = prob_matrix[(row_i, col)];
-                if p > best_p {
-                    best_p = p;
-                    best_k = col;
-                }
-            }
-            fit.classes[best_k]
-        })
-        .collect()
+    row_normalise(&mut prob_matrix, n_new, k);
+    row_argmax_classes(&prob_matrix, &fit.classes, n_new, k)
 }
 
 impl ElasticMultinomialResult {
@@ -447,6 +396,43 @@ impl ElasticMultinomialResult {
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
+
+/// Row-normalise an n×k probability matrix in place.
+///
+/// Rows whose sum < 1e-15 are set to uniform 1/k (degenerate guard).
+fn row_normalise(prob: &mut FdMatrix, n: usize, k: usize) {
+    for row_i in 0..n {
+        let row_sum: f64 = (0..k).map(|col| prob[(row_i, col)]).sum();
+        if row_sum < 1e-15 {
+            for col in 0..k {
+                prob[(row_i, col)] = 1.0 / k as f64;
+            }
+        } else {
+            let scale = 1.0 / row_sum;
+            for col in 0..k {
+                prob[(row_i, col)] *= scale;
+            }
+        }
+    }
+}
+
+/// Find per-row argmax and map to class labels.
+fn row_argmax_classes(prob: &FdMatrix, classes: &[usize], n: usize, k: usize) -> Vec<usize> {
+    (0..n)
+        .map(|row_i| {
+            let mut best_k = 0;
+            let mut best_p = prob[(row_i, 0)];
+            for col in 1..k {
+                let p = prob[(row_i, col)];
+                if p > best_p {
+                    best_p = p;
+                    best_k = col;
+                }
+            }
+            classes[best_k]
+        })
+        .collect()
+}
 
 /// Compute logistic loss with L2 penalty.
 fn logistic_loss(prob: &[f64], y: &[i8], beta: &[f64], lambda: f64) -> f64 {

@@ -390,7 +390,7 @@ fn run_one_fold<F, P>(
     fold: usize,
     cv_type: CvType,
     metric_fns: &[MetricFn],
-    oof_preds: &mut Vec<f64>,
+    oof_preds: &mut [f64],
 ) -> Option<(CvMetrics, HashMap<String, f64>)>
 where
     F: Fn(&FdMatrix, &[f64]) -> Box<dyn Any>,

@@ -312,6 +312,56 @@ fn compute_beta_se_2d(
 // GCV lambda selection
 // ---------------------------------------------------------------------------
 
+/// Evaluate GCV for one (ls, lt) candidate pair.
+///
+/// Returns `Some(gcv)` when smoothing succeeds, `None` when Cholesky fails.
+/// Preserves FP accumulation order: beta_ols → smooth → residuals → gcv.
+fn eval_gcv_candidate(
+    ls: f64,
+    lt: f64,
+    m1: usize,
+    m2: usize,
+    p_total: usize,
+    m_total: usize,
+    beta_ols: &FdMatrix,
+    design: &FdMatrix,
+    data: &FdMatrix,
+    trace_h: f64,
+) -> Option<f64> {
+    if ls == 0.0 && lt == 0.0 {
+        let (_, residuals) = compute_fitted_residuals(design, beta_ols, data);
+        return Some(compute_gcv(&residuals, trace_h));
+    }
+    let p2d = penalty_matrix_2d(m1, m2, ls, lt);
+    let mut beta_smooth = FdMatrix::zeros(p_total, m_total);
+    for j in 0..p_total {
+        let raw: Vec<f64> = (0..m_total).map(|g| beta_ols[(j, g)]).collect();
+        match smooth_coefficient_surface(&raw, &p2d, m_total) {
+            Ok(smoothed) => {
+                for g in 0..m_total {
+                    beta_smooth[(j, g)] = smoothed[g];
+                }
+            }
+            Err(_) => return None,
+        }
+    }
+    let (_, residuals) = compute_fitted_residuals(design, &beta_smooth, data);
+    Some(compute_gcv(&residuals, trace_h))
+}
+
+/// Compute the OLS beta matrix: beta_ols[:,g] = (X'X)^{-1} X'y[:,g].
+fn compute_ols_beta(l_xtx: &[f64], xty: &FdMatrix, p_total: usize, m_total: usize) -> FdMatrix {
+    let mut beta_ols = FdMatrix::zeros(p_total, m_total);
+    for g in 0..m_total {
+        let b: Vec<f64> = (0..p_total).map(|j| xty[(j, g)]).collect();
+        let x = cholesky_forward_back(l_xtx, &b, p_total);
+        for j in 0..p_total {
+            beta_ols[(j, g)] = x[j];
+        }
+    }
+    beta_ols
+}
+
 /// Select (lambda_s, lambda_t) via GCV over a 2D grid of candidate values.
 fn select_lambdas_gcv(
     xtx: &[f64],
@@ -327,31 +377,14 @@ fn select_lambdas_gcv(
     let p_total = design.ncols();
     let m_total = m1 * m2;
 
-    let ls_candidates: Vec<f64> = if let Some(ls) = fix_lambda_s {
-        vec![ls]
-    } else {
-        candidates.to_vec()
-    };
-    let lt_candidates: Vec<f64> = if let Some(lt) = fix_lambda_t {
-        vec![lt]
-    } else {
-        candidates.to_vec()
-    };
+    let ls_candidates: Vec<f64> = fix_lambda_s.map_or_else(|| candidates.to_vec(), |ls| vec![ls]);
+    let lt_candidates: Vec<f64> = fix_lambda_t.map_or_else(|| candidates.to_vec(), |lt| vec![lt]);
 
     // Pre-compute OLS inverse and raw beta
     let Ok(l_xtx) = cholesky_factor(xtx, p_total) else {
         return (0.0, 0.0);
     };
-
-    // beta_ols: p_total x m_total
-    let mut beta_ols = FdMatrix::zeros(p_total, m_total);
-    for g in 0..m_total {
-        let b: Vec<f64> = (0..p_total).map(|j| xty[(j, g)]).collect();
-        let x = cholesky_forward_back(&l_xtx, &b, p_total);
-        for j in 0..p_total {
-            beta_ols[(j, g)] = x[j];
-        }
-    }
+    let beta_ols = compute_ols_beta(&l_xtx, xty, p_total, m_total);
 
     let trace_h = trace_hat_ols(p_total);
     let mut best_ls = 0.0;
@@ -360,47 +393,94 @@ fn select_lambdas_gcv(
 
     for &ls in &ls_candidates {
         for &lt in &lt_candidates {
-            if ls == 0.0 && lt == 0.0 {
-                // No smoothing: use raw OLS
-                let (_, residuals) = compute_fitted_residuals(design, &beta_ols, data);
-                let gcv = compute_gcv(&residuals, trace_h);
+            if let Some(gcv) = eval_gcv_candidate(
+                ls, lt, m1, m2, p_total, m_total, &beta_ols, design, data, trace_h,
+            ) {
                 if gcv < best_gcv {
                     best_gcv = gcv;
                     best_ls = ls;
                     best_lt = lt;
                 }
-                continue;
-            }
-
-            let p2d = penalty_matrix_2d(m1, m2, ls, lt);
-            let mut beta_smooth = FdMatrix::zeros(p_total, m_total);
-            let mut ok = true;
-            for j in 0..p_total {
-                let raw: Vec<f64> = (0..m_total).map(|g| beta_ols[(j, g)]).collect();
-                if let Ok(smoothed) = smooth_coefficient_surface(&raw, &p2d, m_total) {
-                    for g in 0..m_total {
-                        beta_smooth[(j, g)] = smoothed[g];
-                    }
-                } else {
-                    ok = false;
-                    break;
-                }
-            }
-            if !ok {
-                continue;
-            }
-
-            let (_, residuals) = compute_fitted_residuals(design, &beta_smooth, data);
-            let gcv = compute_gcv(&residuals, trace_h);
-            if gcv < best_gcv {
-                best_gcv = gcv;
-                best_ls = ls;
-                best_lt = lt;
             }
         }
     }
 
     (best_ls, best_lt)
+}
+
+// ---------------------------------------------------------------------------
+// fosr_2d helpers
+// ---------------------------------------------------------------------------
+
+/// Validate fosr_2d inputs. Returns `(n, p, m_total)` on success.
+fn validate_fosr_2d_inputs(
+    data: &FdMatrix,
+    predictors: &FdMatrix,
+    grid: &Grid2d,
+) -> Result<(usize, usize, usize), FdarError> {
+    let (n, m_data) = data.shape();
+    let p = predictors.ncols();
+    let m1 = grid.m1();
+    let m2 = grid.m2();
+    let m_total = grid.total();
+    if m1 == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "grid",
+            message: "argvals_s must not be empty".to_string(),
+        });
+    }
+    if m2 == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "grid",
+            message: "argvals_t must not be empty".to_string(),
+        });
+    }
+    if m_data != m_total {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("{m_total} columns (grid m1*m2 = {m1}*{m2})"),
+            actual: format!("{m_data} columns"),
+        });
+    }
+    if predictors.nrows() != n {
+        return Err(FdarError::InvalidDimension {
+            parameter: "predictors",
+            expected: format!("{n} rows (matching data)"),
+            actual: format!("{} rows", predictors.nrows()),
+        });
+    }
+    if n < p + 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: format!("at least {} observations (p + 2)", p + 2),
+            actual: format!("{n} observations"),
+        });
+    }
+    Ok((n, p, m_total))
+}
+
+/// Apply the 2D penalty smoothing to each row of beta_ols.
+///
+/// Returns the smoothed matrix; propagates Cholesky failures.
+fn apply_2d_smoothing(
+    beta_ols: &FdMatrix,
+    p_total: usize,
+    m_total: usize,
+    m1: usize,
+    m2: usize,
+    lambda_s: f64,
+    lambda_t: f64,
+) -> Result<FdMatrix, FdarError> {
+    let p2d = penalty_matrix_2d(m1, m2, lambda_s, lambda_t);
+    let mut smoothed = FdMatrix::zeros(p_total, m_total);
+    for j in 0..p_total {
+        let raw: Vec<f64> = (0..m_total).map(|g| beta_ols[(j, g)]).collect();
+        let s = smooth_coefficient_surface(&raw, &p2d, m_total)?;
+        for g in 0..m_total {
+            smoothed[(j, g)] = s[g];
+        }
+    }
+    Ok(smoothed)
 }
 
 // ---------------------------------------------------------------------------
@@ -472,47 +552,9 @@ pub fn fosr_2d(
     lambda_s: f64,
     lambda_t: f64,
 ) -> Result<Fosr2dResult, FdarError> {
-    let (n, m_data) = data.shape();
-    let p = predictors.ncols();
+    let (n, p, m_total) = validate_fosr_2d_inputs(data, predictors, grid)?;
     let m1 = grid.m1();
     let m2 = grid.m2();
-    let m_total = grid.total();
-
-    // ---- Validate inputs ----
-
-    if m1 == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "grid",
-            message: "argvals_s must not be empty".to_string(),
-        });
-    }
-    if m2 == 0 {
-        return Err(FdarError::InvalidParameter {
-            parameter: "grid",
-            message: "argvals_t must not be empty".to_string(),
-        });
-    }
-    if m_data != m_total {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: format!("{m_total} columns (grid m1*m2 = {m1}*{m2})"),
-            actual: format!("{m_data} columns"),
-        });
-    }
-    if predictors.nrows() != n {
-        return Err(FdarError::InvalidDimension {
-            parameter: "predictors",
-            expected: format!("{n} rows (matching data)"),
-            actual: format!("{} rows", predictors.nrows()),
-        });
-    }
-    if n < p + 2 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data",
-            expected: format!("at least {} observations (p + 2)", p + 2),
-            actual: format!("{n} observations"),
-        });
-    }
 
     // ---- Step 1: Build design and compute OLS ----
 
@@ -522,29 +564,12 @@ pub fn fosr_2d(
     let xty = compute_xty_matrix(&design, data);
 
     let l_xtx = cholesky_factor(&xtx, p_total)?;
-
-    // Pointwise OLS: beta_ols[:,g] = (X'X)^{-1} X' y[:,g]
-    let mut beta_ols = FdMatrix::zeros(p_total, m_total);
-    for g in 0..m_total {
-        let b: Vec<f64> = (0..p_total).map(|j| xty[(j, g)]).collect();
-        let x = cholesky_forward_back(&l_xtx, &b, p_total);
-        for j in 0..p_total {
-            beta_ols[(j, g)] = x[j];
-        }
-    }
+    let beta_ols = compute_ols_beta(&l_xtx, &xty, p_total, m_total);
 
     // ---- Step 2: Determine lambda values ----
 
-    let fix_ls = if lambda_s >= 0.0 {
-        Some(lambda_s)
-    } else {
-        None
-    };
-    let fix_lt = if lambda_t >= 0.0 {
-        Some(lambda_t)
-    } else {
-        None
-    };
+    let fix_ls = (lambda_s >= 0.0).then_some(lambda_s);
+    let fix_lt = (lambda_t >= 0.0).then_some(lambda_t);
 
     let (lambda_s_final, lambda_t_final) = if fix_ls.is_some() && fix_lt.is_some() {
         (lambda_s, lambda_t)
@@ -557,16 +582,15 @@ pub fn fosr_2d(
     let beta_smooth = if lambda_s_final == 0.0 && lambda_t_final == 0.0 {
         beta_ols
     } else {
-        let p2d = penalty_matrix_2d(m1, m2, lambda_s_final, lambda_t_final);
-        let mut smoothed = FdMatrix::zeros(p_total, m_total);
-        for j in 0..p_total {
-            let raw: Vec<f64> = (0..m_total).map(|g| beta_ols[(j, g)]).collect();
-            let s = smooth_coefficient_surface(&raw, &p2d, m_total)?;
-            for g in 0..m_total {
-                smoothed[(j, g)] = s[g];
-            }
-        }
-        smoothed
+        apply_2d_smoothing(
+            &beta_ols,
+            p_total,
+            m_total,
+            m1,
+            m2,
+            lambda_s_final,
+            lambda_t_final,
+        )?
     };
 
     // ---- Step 4: Compute diagnostics ----
