@@ -26,7 +26,7 @@
     {
       "number": "110",
       "name": "pmat CI Guardrail",
-      "status": "pending"
+      "status": "complete"
     },
     {
       "number": "111",
@@ -36,8 +36,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 110)",
-    "reason": "Phase 110 of 6 — needs a plan"
+    "label": "Advance to the next step (plan phase 111)",
+    "reason": "Phase 111 of 6 — needs a plan"
   },
-  "updated_at": "2026-09-15T18:53:00.657Z"
+  "updated_at": "2026-09-15T18:57:51.060Z"
 }

@@ -32,7 +32,7 @@ This milestone drives `pmat quality-gate` to **PASS** (0 violations), fixes the 
 
 ### CI Guardrail
 
-- [ ] **CI-01**: A pmat quality-gate CI job is added (GitHub Actions) that installs pmat and runs `pmat quality-gate` (and/or a complexity-threshold check) against `fdars-core`, failing the build if pmat violations return — mirroring the v0.43.0 `determinism-guardrail` pattern. Documented so contributors can reproduce it locally.
+- [x] **CI-01**: A pmat quality-gate CI job is added (GitHub Actions) that installs pmat and runs `pmat quality-gate` (and/or a complexity-threshold check) against `fdars-core`, failing the build if pmat violations return — mirroring the v0.43.0 `determinism-guardrail` pattern. Documented so contributors can reproduce it locally.
 
 ### Release
 
@@ -76,7 +76,7 @@ Which phases cover which requirements.
 | QUAL-04 | Phase 108 | Complete |
 | QUAL-05 | Phase 108 | Complete |
 | QUAL-03 | Phase 109 | Complete |
-| CI-01 | Phase 110 | Pending |
+| CI-01 | Phase 110 | Complete |
 | REL-01 | Phase 111 | Pending |
 
 **Coverage:**

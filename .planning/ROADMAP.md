@@ -28,7 +28,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 - [x] **Phase 107: SPM Complexity Cluster** - Decompose the dense `src/spm/` cluster under pmat thresholds (QUAL-02) (completed 2026-09-14)
 - [x] **Phase 108: Entropy Extraction & SATD/Unwrap Cleanup** - Extract repeated patterns; reword SATD false-positives; fix the critical unwrap (QUAL-04 + QUAL-05) (completed 2026-09-14)
 - [x] **Phase 109: Complexity Tail & Quality-Gate Green** - Clear all remaining complexity violations so `pmat quality-gate` reports 0 findings (QUAL-03) (completed 2026-09-15)
-- [ ] **Phase 110: pmat CI Guardrail** - Add a GitHub Actions pmat quality-gate job that fails the build if violations return (CI-01)
+- [x] **Phase 110: pmat CI Guardrail** - Add a GitHub Actions pmat quality-gate job that fails the build if violations return (CI-01) (completed 2026-09-15)
 - [ ] **Phase 111: Release Preparation & Verification** - Bump 0.45.0 → 0.46.0, CHANGELOG, all gates green incl. `pmat quality-gate` + `cargo package` (REL-01)
 
 ## Phase Details
@@ -157,7 +157,7 @@ Phases 106, 107, and 108 are independent and may run in parallel (or in any orde
 | 107. SPM Complexity Cluster | 4/4 | Complete    | 2026-09-14 |
 | 108. Entropy Extraction & SATD/Unwrap Cleanup | 4/4 | Complete    | 2026-09-14 |
 | 109. Complexity Tail & Quality-Gate Green | 14/14 | Complete    | 2026-09-15 |
-| 110. pmat CI Guardrail | 0/TBD | Not started | - |
+| 110. pmat CI Guardrail | 1/0 | Complete    | 2026-09-15 |
 | 111. Release Preparation & Verification | 0/TBD | Not started | - |
 
 ## Shipped Milestones
