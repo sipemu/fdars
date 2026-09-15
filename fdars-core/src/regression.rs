@@ -347,6 +347,33 @@ fn extract_pc_components(
     Some((singular_values, rotation, scores))
 }
 
+/// Scale each column of a matrix by the corresponding sqrt(weight).
+fn scale_by_sqrt_weights(src: &FdMatrix, sqrt_weights: &[f64], n: usize, m: usize) -> FdMatrix {
+    let mut out = src.clone();
+    for i in 0..n {
+        for j in 0..m {
+            out[(i, j)] *= sqrt_weights[j];
+        }
+    }
+    out
+}
+
+/// Divide each column of rotation by the corresponding sqrt(weight).
+fn unscale_rotation_by_sqrt_weights(
+    rotation: &mut FdMatrix,
+    sqrt_weights: &[f64],
+    ncomp: usize,
+    m: usize,
+) {
+    for k in 0..ncomp {
+        for j in 0..m {
+            if sqrt_weights[j] > 1e-15 {
+                rotation[(j, k)] /= sqrt_weights[j];
+            }
+        }
+    }
+}
+
 /// Perform functional PCA via SVD on centered data with integration weights.
 ///
 /// Uses Simpson's-rule weights derived from `argvals` so that the resulting
@@ -426,12 +453,7 @@ pub fn fdata_to_pc(
     let sqrt_weights: Vec<f64> = weights.iter().map(|w| w.sqrt()).collect();
 
     // Scale centered data by sqrt(weights) for weighted SVD
-    let mut weighted = centered.clone();
-    for i in 0..n {
-        for j in 0..m {
-            weighted[(i, j)] *= sqrt_weights[j];
-        }
-    }
+    let weighted = scale_by_sqrt_weights(&centered, &sqrt_weights, n, m);
 
     // Feature-gated SVD: faer thin_svd (zero-copy MatRef) under `linalg`,
     // retained nalgebra path under `cfg(not(feature = "linalg"))`.
@@ -481,13 +503,7 @@ pub fn fdata_to_pc(
     fix_svd_signs(&mut rotation, &mut scores, ncomp);
 
     // Unscale loadings: divide by sqrt(weights) to get actual eigenfunctions
-    for k in 0..ncomp {
-        for j in 0..m {
-            if sqrt_weights[j] > 1e-15 {
-                rotation[(j, k)] /= sqrt_weights[j];
-            }
-        }
-    }
+    unscale_rotation_by_sqrt_weights(&mut rotation, &sqrt_weights, ncomp, m);
 
     Ok(FpcaResult {
         singular_values,

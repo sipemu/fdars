@@ -767,62 +767,71 @@ pub struct SeqTransformOutliers {
     pub union_outliers: Vec<usize>,
 }
 
+/// Apply T1 (vertical centering) transform.
+fn apply_t1(current: &FdMatrix, n: usize, m: usize) -> Result<FdMatrix, FdarError> {
+    let mut cm = vec![0.0; n * m];
+    for i in 0..n {
+        let mut mean = 0.0;
+        for j in 0..m {
+            mean += current[(i, j)];
+        }
+        mean /= m as f64;
+        for j in 0..m {
+            cm[i + j * n] = current[(i, j)] - mean;
+        }
+    }
+    FdMatrix::from_column_major(cm, n, m)
+}
+
+/// Apply T2 (L2 normalization) transform.
+fn apply_t2(current: &FdMatrix, n: usize, m: usize) -> Result<FdMatrix, FdarError> {
+    let mut cm = vec![0.0; n * m];
+    for i in 0..n {
+        let mut norm = 0.0;
+        for j in 0..m {
+            norm += current[(i, j)].powi(2);
+        }
+        let norm = norm.sqrt();
+        if norm < 1e-15 {
+            return Err(FdarError::ComputationFailed {
+                operation: "T2 normalization",
+                detail: format!("zero-norm curve at row {i}"),
+            });
+        }
+        for j in 0..m {
+            cm[i + j * n] = current[(i, j)] / norm;
+        }
+    }
+    FdMatrix::from_column_major(cm, n, m)
+}
+
+/// Apply D1/D2 (lag-1 first difference) transform.
+fn apply_diff(current: &FdMatrix, n: usize, m: usize) -> Result<FdMatrix, FdarError> {
+    if m < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 2 columns for lag-1 differencing".to_string(),
+            actual: format!("{m} columns"),
+        });
+    }
+    let m2 = m - 1;
+    let mut cm = vec![0.0; n * m2];
+    for i in 0..n {
+        for k in 0..m2 {
+            cm[i + k * n] = current[(i, k + 1)] - current[(i, k)];
+        }
+    }
+    FdMatrix::from_column_major(cm, n, m2)
+}
+
 /// Apply a single [`SeqTransform`] to a matrix, returning the transformed matrix.
 fn seq_transform_apply(current: &FdMatrix, t: SeqTransform) -> Result<FdMatrix, FdarError> {
     let (n, m) = current.shape();
     match t {
         SeqTransform::T0 => Ok(current.clone()),
-        SeqTransform::T1 => {
-            let mut cm = vec![0.0; n * m];
-            for i in 0..n {
-                let mut mean = 0.0;
-                for j in 0..m {
-                    mean += current[(i, j)];
-                }
-                mean /= m as f64;
-                for j in 0..m {
-                    cm[i + j * n] = current[(i, j)] - mean;
-                }
-            }
-            FdMatrix::from_column_major(cm, n, m)
-        }
-        SeqTransform::T2 => {
-            let mut cm = vec![0.0; n * m];
-            for i in 0..n {
-                let mut norm = 0.0;
-                for j in 0..m {
-                    norm += current[(i, j)].powi(2);
-                }
-                let norm = norm.sqrt();
-                if norm < 1e-15 {
-                    return Err(FdarError::ComputationFailed {
-                        operation: "T2 normalization",
-                        detail: format!("zero-norm curve at row {i}"),
-                    });
-                }
-                for j in 0..m {
-                    cm[i + j * n] = current[(i, j)] / norm;
-                }
-            }
-            FdMatrix::from_column_major(cm, n, m)
-        }
-        SeqTransform::D1 | SeqTransform::D2 => {
-            if m < 2 {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "data",
-                    expected: "at least 2 columns for lag-1 differencing".to_string(),
-                    actual: format!("{m} columns"),
-                });
-            }
-            let m2 = m - 1;
-            let mut cm = vec![0.0; n * m2];
-            for i in 0..n {
-                for k in 0..m2 {
-                    cm[i + k * n] = current[(i, k + 1)] - current[(i, k)];
-                }
-            }
-            FdMatrix::from_column_major(cm, n, m2)
-        }
+        SeqTransform::T1 => apply_t1(current, n, m),
+        SeqTransform::T2 => apply_t2(current, n, m),
+        SeqTransform::D1 | SeqTransform::D2 => apply_diff(current, n, m),
     }
 }
 

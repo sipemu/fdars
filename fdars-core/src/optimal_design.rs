@@ -585,6 +585,62 @@ fn trajectory_criterion(model: &PaceFpcaResult, selected: &[usize]) -> Result<f6
     Ok(mse)
 }
 
+/// Compute the posterior FPC-score covariance `Cov = Λ − Λ Φ_dᵀ Σ_d⁻¹ Φ_d Λ`.
+fn posterior_covariance(
+    model: &PaceFpcaResult,
+    l: &[f64],
+    phi_d: &[f64],
+    p: usize,
+    ncomp: usize,
+) -> Vec<f64> {
+    let mut sigma_inv_phi_lam = vec![0.0_f64; p * ncomp];
+    let mut phi_col = vec![0.0_f64; p];
+    for k in 0..ncomp {
+        for (i, c) in phi_col.iter_mut().enumerate() {
+            *c = phi_d[i * ncomp + k];
+        }
+        let sol = cholesky_forward_back(l, &phi_col, p);
+        for j in 0..p {
+            sigma_inv_phi_lam[j * ncomp + k] = model.eigenvalues[k] * sol[j];
+        }
+    }
+    let mut a_mat = vec![0.0_f64; ncomp * ncomp];
+    for k in 0..ncomp {
+        for ll in 0..ncomp {
+            let s: f64 = (0..p)
+                .map(|j| phi_d[j * ncomp + k] * sigma_inv_phi_lam[j * ncomp + ll])
+                .sum();
+            a_mat[k * ncomp + ll] = model.eigenvalues[k] * s;
+        }
+    }
+    let mut cov = vec![0.0_f64; ncomp * ncomp];
+    for k in 0..ncomp {
+        for ll in 0..ncomp {
+            let prior = if k == ll { model.eigenvalues[k] } else { 0.0 };
+            cov[k * ncomp + ll] = prior - a_mat[k * ncomp + ll];
+        }
+    }
+    cov
+}
+
+/// Evaluate A- or D-optimality on a precomputed posterior covariance matrix.
+fn eval_optimality_criterion(
+    cov: Vec<f64>,
+    ncomp: usize,
+    kind: OptimalityKind,
+) -> Result<f64, FdarError> {
+    match kind {
+        OptimalityKind::A => {
+            let tr: f64 = (0..ncomp).map(|k| cov[k * ncomp + k]).sum();
+            Ok(tr)
+        }
+        OptimalityKind::D => {
+            let l_cov = factor_posterior_cov_with_retry(cov, ncomp)?;
+            Ok(log_det_from_cholesky(&l_cov, ncomp))
+        }
+    }
+}
+
 /// Score criterion (FOD-02): A- or D-optimal summary of the K×K posterior FPC
 /// score covariance `Cov(ξ | Y_S) = Λ − Λ Φ_dᵀ Σ_d⁻¹ Φ_d Λ`.
 fn score_criterion(
@@ -619,59 +675,8 @@ fn score_criterion(
     let l = factor_sigma_design_with_retry(build_sigma_design(model, selected), p)?;
     let phi_d = build_phi_d(model, selected); // p × ncomp, row-major
 
-    // sigma_inv_phi_lam[j,k] = λ_k · (Σ_d⁻¹ Φ_d[:,k])[j]  (mirror pace_fpca.rs:525–545).
-    let mut sigma_inv_phi_lam = vec![0.0_f64; p * ncomp];
-    let mut phi_col = vec![0.0_f64; p];
-    for k in 0..ncomp {
-        for (i, c) in phi_col.iter_mut().enumerate() {
-            *c = phi_d[i * ncomp + k];
-        }
-        let sol = cholesky_forward_back(&l, &phi_col, p);
-        for j in 0..p {
-            sigma_inv_phi_lam[j * ncomp + k] = model.eigenvalues[k] * sol[j];
-        }
-    }
-
-    // A_mat[k,l] = λ_k · Σ_j Φ_d[j,k] · sigma_inv_phi_lam[j,l]  (pace_fpca.rs:547–558).
-    let mut a_mat = vec![0.0_f64; ncomp * ncomp];
-    for k in 0..ncomp {
-        for l in 0..ncomp {
-            let mut s = 0.0_f64;
-            for j in 0..p {
-                s += phi_d[j * ncomp + k] * sigma_inv_phi_lam[j * ncomp + l];
-            }
-            a_mat[k * ncomp + l] = model.eigenvalues[k] * s;
-        }
-    }
-
-    // Posterior covariance Cov[k,l] = (k==l ? λ_k : 0) − A_mat[k,l].
-    let mut cov = vec![0.0_f64; ncomp * ncomp];
-    for k in 0..ncomp {
-        for l in 0..ncomp {
-            let prior = if k == l { model.eigenvalues[k] } else { 0.0 };
-            cov[k * ncomp + l] = prior - a_mat[k * ncomp + l];
-        }
-    }
-
-    match kind {
-        OptimalityKind::A => {
-            // trace(Cov) = Σ_k Cov[k,k].
-            let tr: f64 = (0..ncomp).map(|k| cov[k * ncomp + k]).sum();
-            Ok(tr)
-        }
-        OptimalityKind::D => {
-            // log det(Cov) via Cholesky. Returned un-negated and monotone
-            // non-increasing (its sign depends on the eigenvalue scale). Do NOT negate.
-            //
-            // Mirror the Σ_d ridge-retry: the Schur complement Cov is PD in exact
-            // arithmetic, but when Σ_d was itself ridge-adjusted (tiny sigma2), FP
-            // cancellation in `(λ_k : 0) − A_mat` can push a diagonal entry to
-            // (near-)zero and make the Cholesky fail. A tiny ridge rescues it so D-opt
-            // succeeds wherever A-opt does. Never panics.
-            let l_cov = factor_posterior_cov_with_retry(cov, ncomp)?;
-            Ok(log_det_from_cholesky(&l_cov, ncomp))
-        }
-    }
+    let cov = posterior_covariance(model, &l, &phi_d, p, ncomp);
+    eval_optimality_criterion(cov, ncomp, kind)
 }
 
 #[cfg(test)]

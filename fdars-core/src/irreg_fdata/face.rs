@@ -260,6 +260,72 @@ fn cross_cov_surface(
 /// positive. Returns [`FdarError::ComputationFailed`] if the `G_total²` block
 /// allocation would overflow `usize`.
 #[must_use = "mface_covariance returns the block covariance; ignoring it wastes the computation"]
+/// Fill diagonal blocks of the block covariance matrix with per-variable FACE covariance.
+#[allow(clippy::too_many_arguments)]
+fn fill_diag_blocks(
+    variables: &[IrregFdata],
+    grids: &[Vec<f64>],
+    offsets: &[usize],
+    block_data: &mut Vec<f64>,
+    p_count: usize,
+    g_total: usize,
+    bandwidth: f64,
+) -> Result<(), FdarError> {
+    for p in 0..p_count {
+        let diag = face_covariance(&variables[p], &grids[p], bandwidth)?;
+        let op = offsets[p];
+        let gp = grids[p].len();
+        for col in 0..gp {
+            for row in 0..gp {
+                block_data[(op + row) + (op + col) * g_total] = diag[(row, col)];
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Fill off-diagonal blocks (p < q) of the block covariance matrix with cross-covariance.
+#[allow(clippy::too_many_arguments)]
+fn fill_offdiag_blocks(
+    variables: &[IrregFdata],
+    centered: &[Vec<f64>],
+    grids: &[Vec<f64>],
+    offsets: &[usize],
+    block_data: &mut Vec<f64>,
+    p_count: usize,
+    g_total: usize,
+    n: usize,
+    bandwidth: f64,
+) {
+    for p in 0..p_count {
+        for q in (p + 1)..p_count {
+            let cross = cross_cov_surface(
+                &variables[p].offsets,
+                &variables[p].argvals,
+                &centered[p],
+                &variables[q].offsets,
+                &variables[q].argvals,
+                &centered[q],
+                n,
+                &grids[p],
+                &grids[q],
+                bandwidth,
+            );
+            let op = offsets[p];
+            let oq = offsets[q];
+            let gp = grids[p].len();
+            let gq = grids[q].len();
+            for col in 0..gq {
+                for row in 0..gp {
+                    let val = cross[(row, col)];
+                    block_data[(op + row) + (oq + col) * g_total] = val;
+                    block_data[(oq + col) + (op + row) * g_total] = val;
+                }
+            }
+        }
+    }
+}
+
 pub fn mface_covariance(
     variables: &[IrregFdata],
     grids: &[Vec<f64>],
@@ -334,45 +400,28 @@ pub fn mface_covariance(
     let mut block_data = vec![0.0_f64; g_total * g_total];
 
     // Diagonal blocks: per-variable FACE covariance.
-    for p in 0..p_count {
-        let diag = face_covariance(&variables[p], &grids[p], bandwidth)?;
-        let op = offsets[p];
-        let gp = grids[p].len();
-        for col in 0..gp {
-            for row in 0..gp {
-                block_data[(op + row) + (op + col) * g_total] = diag[(row, col)];
-            }
-        }
-    }
+    fill_diag_blocks(
+        &variables,
+        &grids,
+        &offsets,
+        &mut block_data,
+        p_count,
+        g_total,
+        bandwidth,
+    )?;
 
     // Off-diagonal upper triangle p < q: cross-covariance + symmetric transpose.
-    for p in 0..p_count {
-        for q in (p + 1)..p_count {
-            let cross = cross_cov_surface(
-                &variables[p].offsets,
-                &variables[p].argvals,
-                &centered[p],
-                &variables[q].offsets,
-                &variables[q].argvals,
-                &centered[q],
-                n,
-                &grids[p],
-                &grids[q],
-                bandwidth,
-            );
-            let op = offsets[p];
-            let oq = offsets[q];
-            let gp = grids[p].len();
-            let gq = grids[q].len();
-            for col in 0..gq {
-                for row in 0..gp {
-                    let val = cross[(row, col)];
-                    block_data[(op + row) + (oq + col) * g_total] = val;
-                    block_data[(oq + col) + (op + row) * g_total] = val; // symmetric
-                }
-            }
-        }
-    }
+    fill_offdiag_blocks(
+        &variables,
+        &centered,
+        &grids,
+        &offsets,
+        &mut block_data,
+        p_count,
+        g_total,
+        n,
+        bandwidth,
+    );
 
     let block_cov = FdMatrix::from_column_major(block_data, g_total, g_total).map_err(|e| {
         FdarError::ComputationFailed {

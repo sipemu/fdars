@@ -46,6 +46,73 @@ use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use nalgebra::DMatrix;
 
+/// Compute iterated finite-difference derivatives up to `order`.
+/// Returns `derivs` where `derivs[k]` is the k-th derivative of all curves.
+fn compute_derivatives(
+    data: &FdMatrix,
+    argvals: &[f64],
+    order: usize,
+    n: usize,
+    n_pts: usize,
+) -> Vec<FdMatrix> {
+    let mut derivs: Vec<FdMatrix> = Vec::with_capacity(order + 1);
+    derivs.push(data.clone());
+    for _ in 0..order {
+        let prev = derivs.last().unwrap();
+        let mut next = FdMatrix::zeros(n, n_pts);
+        for i in 0..n {
+            let row: Vec<f64> = (0..n_pts).map(|j| prev[(i, j)]).collect();
+            let grad = crate::helpers::gradient(&row, argvals);
+            for j in 0..n_pts {
+                next[(i, j)] = grad[j];
+            }
+        }
+        derivs.push(next);
+    }
+    derivs
+}
+
+/// Solve the pointwise least-squares system at grid point `j` and store results
+/// into `coefficients[k][j]`.
+fn solve_pointwise_pda(
+    derivs: &[FdMatrix],
+    j: usize,
+    n: usize,
+    order: usize,
+    coefficients: &mut Vec<Vec<f64>>,
+) {
+    let mut x_j = DMatrix::<f64>::zeros(n, order);
+    for i in 0..n {
+        for k in 0..order {
+            x_j[(i, k)] = derivs[k][(i, j)];
+        }
+    }
+    let y_j: Vec<f64> = (0..n).map(|i| -derivs[order][(i, j)]).collect();
+    let y_vec = nalgebra::DVector::from_vec(y_j);
+    let svd = nalgebra::SVD::new(x_j, true, true);
+    let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
+    let threshold = 1e-10 * max_sv;
+    if let (Some(u), Some(v_t)) = (svd.u.as_ref(), svd.v_t.as_ref()) {
+        let ns = order.min(svd.singular_values.len());
+        let u_t_y: Vec<f64> = (0..ns)
+            .map(|s| (0..n).map(|i| u[(i, s)] * y_vec[i]).sum::<f64>())
+            .collect();
+        let mut beta_j = vec![0.0_f64; order];
+        for k in 0..order {
+            let mut val = 0.0_f64;
+            for s in 0..ns {
+                if svd.singular_values[s] > threshold {
+                    val += v_t[(s, k)] * u_t_y[s] / svd.singular_values[s];
+                }
+            }
+            beta_j[k] = val;
+        }
+        for k in 0..order {
+            coefficients[k][j] = beta_j[k];
+        }
+    }
+}
+
 // ─── Lfd ────────────────────────────────────────────────────────────────────
 
 /// A linear differential operator of the form
@@ -295,71 +362,14 @@ pub fn principal_differential_analysis(
     }
 
     // Compute derivative FdMatrices D⁰x, D¹x, …, D^{order}x.
-    // derivs[k] is the k-th derivative of all curves, same shape as data.
-    let mut derivs: Vec<FdMatrix> = Vec::with_capacity(order + 1);
-    derivs.push(data.clone()); // D⁰x = x
-
-    for _ in 0..order {
-        let prev = derivs.last().unwrap();
-        let mut next = FdMatrix::zeros(n, n_pts);
-        for i in 0..n {
-            let row: Vec<f64> = (0..n_pts).map(|j| prev[(i, j)]).collect();
-            let grad = crate::helpers::gradient(&row, argvals);
-            for j in 0..n_pts {
-                next[(i, j)] = grad[j];
-            }
-        }
-        derivs.push(next);
-    }
+    let derivs = compute_derivatives(data, argvals, order, n, n_pts);
 
     // Initialize coefficient storage: coefficients[k] = β_k(t), length n_pts.
     let mut coefficients: Vec<Vec<f64>> = vec![vec![0.0; n_pts]; order];
 
     // At each grid point t_j, solve the pointwise least-squares system.
     for j in 0..n_pts {
-        // Build n × order design matrix X_j: column k = D^k x at t_j, for k=0..order-1.
-        let mut x_j = DMatrix::<f64>::zeros(n, order);
-        for i in 0..n {
-            for k in 0..order {
-                x_j[(i, k)] = derivs[k][(i, j)];
-            }
-        }
-
-        // Target y_j = -(D^order x) at t_j.
-        let y_j: Vec<f64> = (0..n).map(|i| -derivs[order][(i, j)]).collect();
-        let y_vec = nalgebra::DVector::from_vec(y_j);
-
-        // Solve via SVD pseudoinverse: β = pinv(X_j) · y_j.
-        let svd = nalgebra::SVD::new(x_j, true, true);
-        let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
-        let threshold = 1e-10 * max_sv;
-
-        // Compute the pseudoinverse action: pinv(X) y = V · diag(1/σ) · U^T · y.
-        if let (Some(u), Some(v_t)) = (svd.u.as_ref(), svd.v_t.as_ref()) {
-            // u_t_y = U^T · y  (shape: order × 1, using only relevant rows)
-            let u_t_y: Vec<f64> = (0..order.min(svd.singular_values.len()))
-                .map(|s| (0..n).map(|i| u[(i, s)] * y_vec[i]).sum::<f64>())
-                .collect();
-
-            // Apply 1/σ filter and accumulate via V^T rows.
-            let mut beta_j = vec![0.0_f64; order];
-            for k in 0..order {
-                let mut val = 0.0_f64;
-                for s in 0..order.min(svd.singular_values.len()) {
-                    if svd.singular_values[s] > threshold {
-                        // v_t[(s, k)] is the (s, k) entry of V^T.
-                        val += v_t[(s, k)] * u_t_y[s] / svd.singular_values[s];
-                    }
-                }
-                beta_j[k] = val;
-            }
-
-            for k in 0..order {
-                coefficients[k][j] = beta_j[k];
-            }
-        }
-        // If SVD factorization failed entirely (u or v_t missing), coefficients
-        // remain zero — a conservative fallback that avoids NaN/panic.
+        solve_pointwise_pda(&derivs, j, n, order, &mut coefficients);
     }
 
     Ok(PdaResult {
