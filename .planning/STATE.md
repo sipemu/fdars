@@ -5,17 +5,17 @@ milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
 current_phase: 109
 current_phase_name: Complexity Tail & Quality-Gate Green
 current_plan: 4
-status: executing
-stopped_at: Completed 109-13-PLAN.md
-last_updated: "2026-09-15T18:14:09.942Z"
+status: verifying
+stopped_at: Completed 109-14-PLAN.md — FINAL plan of v0.46.0
+last_updated: "2026-09-15T18:37:20.785Z"
 last_activity: 2026-09-14
 last_activity_desc: Phase 109 execution resumed (wave continue)
-state_head: 73f43029f28d76774d10822b2102beb583035079
+state_head: 96e0ea56eaa5b2c26856e10f5319d96e6fde15c5
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 26
-  completed_plans: 25
+  completed_plans: 26
 ---
 
 # Project State
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-09-13)
 Phase: 109 (Complexity Tail & Quality-Gate Green) — EXECUTING
 Current Plan: 4
 Total Plans in Phase: 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-14 — Phase 109 execution resumed (wave continue)
 
 ## Milestone Roadmap (v0.46.0)
@@ -109,6 +109,7 @@ Six phases (106–111), 7 requirements — a **quality/refactor** milestone (NOT
 | Phase 109 P11 | 40 | 3 tasks | 4 files |
 | Phase 109 P12 | 7 | 2 tasks | 6 files |
 | Phase 109 P13 | 60 | 3 tasks | 8 files |
+| Phase 109 P14 | 2 sessions | 4 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -165,6 +166,8 @@ Decisions relevant to current work (v0.46.0):
 - [Phase 109]: soft_dtw_backward: bug-preserving extraction — endpoint-seed zero-gradient bug preserved verbatim in sdtw_backward_cell
 - [Phase 109]: depth/dispatch.rs: require_n + depth_dispatch_n2 eliminates 7 repeated n-guard arms in functional_depth
 - [Phase 109]: multires/phase_boxplot/warp_stats: single and multi-seam decomposition clears cog 28-50 singletons; ptr_arg auto-fix on &mut Vec->slice per 109-01 precedent
+- [Phase 109]: All 15 high-complexity functions decomposed to cog<=23 via private helpers only; pmat gate passes with 0 violations
+- [Phase 109]: RNG draw order preserved in fvarma_core and discover_shapelets by keeping helpers pure (no rng parameter)
 
 ### Pending Todos
 
@@ -190,8 +193,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-15T18:14:09.889Z
-Stopped at: Completed 109-13-PLAN.md
+Last session: 2026-09-15T18:37:20.753Z
+Stopped at: Completed 109-14-PLAN.md — FINAL plan of v0.46.0
 Resume file: None
 
 ## Operator Next Steps
