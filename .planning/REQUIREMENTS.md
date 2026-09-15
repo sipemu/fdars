@@ -36,7 +36,7 @@ This milestone drives `pmat quality-gate` to **PASS** (0 violations), fixes the 
 
 ### Release
 
-- [ ] **REL-01**: Crate bumped 0.45.0 → 0.46.0 with `[0.46.0]` in both CHANGELOGs (root + crate). All whole-crate gates green — `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, `--features serde` build guard, all 28 examples + doctests, `cargo package` — **plus** `pmat quality-gate` passing. The `git tag v0.46.0` → crates.io publish is the DEFERRED operator step.
+- [x] **REL-01**: Crate bumped 0.45.0 → 0.46.0 with `[0.46.0]` in both CHANGELOGs (root + crate). All whole-crate gates green — `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, `--features serde` build guard, all 28 examples + doctests, `cargo package` — **plus** `pmat quality-gate` passing. The `git tag v0.46.0` → crates.io publish is the DEFERRED operator step.
 
 ## Future Requirements
 
@@ -77,7 +77,7 @@ Which phases cover which requirements.
 | QUAL-05 | Phase 108 | Complete |
 | QUAL-03 | Phase 109 | Complete |
 | CI-01 | Phase 110 | Complete |
-| REL-01 | Phase 111 | Pending |
+| REL-01 | Phase 111 | Complete |
 
 **Coverage:**
 
