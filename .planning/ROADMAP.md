@@ -116,7 +116,7 @@ With **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0,
 - [x] 109-10-PLAN.md — gmm/subspace, density_fda, conformal/cv (6 fns)
 - [x] 109-11-PLAN.md — smooth_basis, soft_dtw, fts/spectral, depth/dispatch (8 fns)
 - [x] 109-12-PLAN.md — alignment singletons geodesic/lambda_cv/mod/multires/phase_boxplot/warp_stats (6 fns)
-- [ ] 109-13-PLAN.md — regression/depth/cv/2D-FOSR singleton batch (9 fns)
+- [x] 109-13-PLAN.md — regression/depth/cv/2D-FOSR singleton batch (9 fns)
 - [ ] 109-14-PLAN.md — FINAL: explainability/shapelet/simulation/etc. singleton batch (15 fns) + whole-crate `pmat quality-gate` → 0
 
 ### Phase 110: pmat CI Guardrail
