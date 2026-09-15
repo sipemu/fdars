@@ -55,6 +55,95 @@ fn rank_slice(vals: &[f64]) -> Vec<f64> {
     ranks
 }
 
+/// Validate TVD inputs; returns `(n, m)` on success.
+fn validate_tvd_inputs(
+    data_obj: &FdMatrix,
+    data_ori: &FdMatrix,
+) -> Result<(usize, usize), FdarError> {
+    let (n, m) = (data_ori.nrows(), data_ori.ncols());
+    if n == 0 || m == 0 || data_obj.nrows() == 0 || data_obj.ncols() == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data_ori",
+            expected: "non-empty matrix".to_string(),
+            actual: format!("{n}x{m}"),
+        });
+    }
+    if data_obj.ncols() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data_obj",
+            expected: format!("same number of columns as data_ori ({m})"),
+            actual: format!("{}", data_obj.ncols()),
+        });
+    }
+    if n < 3 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data_ori",
+            expected: "at least 3 curves for total variation depth".to_string(),
+            actual: format!("{n}"),
+        });
+    }
+    Ok((n, m))
+}
+
+/// Compute per-curve MSS (shape component) for curve `i`.
+///
+/// `total_var = Σ_k |diff[i][k]|`. Returns 0.0 when flat (zero total variation).
+fn mss_for_curve(diff_i: &[f64], shape_i: &[f64]) -> f64 {
+    let total_var: f64 = diff_i.iter().map(|d| d.abs()).sum();
+    if total_var > 0.0 {
+        diff_i
+            .iter()
+            .zip(shape_i.iter())
+            .map(|(d, s)| s * d.abs() / total_var)
+            .sum()
+    } else {
+        0.0 // flat curve → zero total variation → MSS 0 (guarded division)
+    }
+}
+
+/// Build the normalised rank matrix `p[i][t] = rank(X[:,t])/n`.
+///
+/// Preserves column order (sequential `t` loop) exactly.
+fn build_rank_matrix(data_ori: &FdMatrix, n: usize, m: usize) -> Vec<Vec<f64>> {
+    let mut p = vec![vec![0.0_f64; m]; n];
+    let mut col = vec![0.0_f64; n];
+    for t in 0..m {
+        for i in 0..n {
+            col[i] = data_ori[(i, t)];
+        }
+        let ranks = rank_slice(&col);
+        for i in 0..n {
+            p[i][t] = ranks[i] / n as f64;
+        }
+    }
+    p
+}
+
+/// Build the first-difference array and the per-interval shape scores (q·(1-q)).
+///
+/// Returns `(diff[n][m-1], shape[n][m-1])` where `diff[i][k] = X_i(t_{k+1}) - X_i(t_k)`
+/// and `shape[i][k] = rank(diff[:,k])/n * (1 - rank(diff[:,k])/n)`.
+///
+/// Preserves column-rank order (sequential `k` loop) exactly.
+fn build_shape_arrays(data_ori: &FdMatrix, n: usize, m: usize) -> (Vec<Vec<f64>>, Vec<Vec<f64>>) {
+    let mut shape = vec![vec![0.0_f64; m - 1]; n];
+    let mut diff = vec![vec![0.0_f64; m - 1]; n];
+    let mut dcol = vec![0.0_f64; n];
+    for k in 0..m - 1 {
+        for i in 0..n {
+            let d = data_ori[(i, k + 1)] - data_ori[(i, k)];
+            diff[i][k] = d;
+            dcol[i] = d;
+        }
+        let ranks = rank_slice(&dcol);
+        for i in 0..n {
+            let q = ranks[i] / n as f64;
+            shape[i][k] = q * (1.0 - q);
+        }
+    }
+    (diff, shape)
+}
+
 /// Compute Total Variation Depth (TVD) and the Modified Shape Similarity index (MSS).
 ///
 /// **TVD** (magnitude): for each grid point rank the curves, normalize `p = rank/n`
@@ -89,75 +178,25 @@ pub(crate) fn total_variation_depth_1d(
     data_obj: &FdMatrix,
     data_ori: &FdMatrix,
 ) -> Result<TvdMssResult, FdarError> {
-    let (n, m) = (data_ori.nrows(), data_ori.ncols());
-    if n == 0 || m == 0 || data_obj.nrows() == 0 || data_obj.ncols() == 0 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data_ori",
-            expected: "non-empty matrix".to_string(),
-            actual: format!("{n}x{m}"),
-        });
-    }
-    if data_obj.ncols() != m {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data_obj",
-            expected: format!("same number of columns as data_ori ({m})"),
-            actual: format!("{}", data_obj.ncols()),
-        });
-    }
-    if n < 3 {
-        return Err(FdarError::InvalidDimension {
-            parameter: "data_ori",
-            expected: "at least 3 curves for total variation depth".to_string(),
-            actual: format!("{n}"),
-        });
-    }
+    let (n, m) = validate_tvd_inputs(data_obj, data_ori)?;
 
     // TVD rank pass: p[i][t] = rank(X_i(t)) / n.
-    let mut p = vec![vec![0.0_f64; m]; n];
-    let mut col = vec![0.0_f64; n];
-    for t in 0..m {
-        for i in 0..n {
-            col[i] = data_ori[(i, t)];
-        }
-        let ranks = rank_slice(&col);
-        for i in 0..n {
-            p[i][t] = ranks[i] / n as f64;
-        }
-    }
+    let p = build_rank_matrix(data_ori, n, m);
 
     // Shape rank pass over the m-1 first-difference columns.
     let has_intervals = m >= 2;
-    let mut shape = vec![vec![0.0_f64; m.saturating_sub(1)]; n];
-    let mut diff = vec![vec![0.0_f64; m.saturating_sub(1)]; n];
-    if has_intervals {
-        let mut dcol = vec![0.0_f64; n];
-        for k in 0..m - 1 {
-            for i in 0..n {
-                let d = data_ori[(i, k + 1)] - data_ori[(i, k)];
-                diff[i][k] = d;
-                dcol[i] = d;
-            }
-            let ranks = rank_slice(&dcol);
-            for i in 0..n {
-                let q = ranks[i] / n as f64;
-                shape[i][k] = q * (1.0 - q);
-            }
-        }
-    }
+    let (diff, shape) = if has_intervals {
+        build_shape_arrays(data_ori, n, m)
+    } else {
+        (vec![vec![]; n], vec![vec![]; n])
+    };
 
     // Per-curve accumulation (parallel over curves).
     let pairs: Vec<(f64, f64)> = iter_maybe_parallel!(0..n)
         .map(|i| {
             let tvd_i = (0..m).map(|t| p[i][t] * (1.0 - p[i][t])).sum::<f64>() / m as f64;
             let mss_i = if has_intervals {
-                let total_var: f64 = diff[i].iter().map(|d| d.abs()).sum();
-                if total_var > 0.0 {
-                    (0..m - 1)
-                        .map(|k| shape[i][k] * diff[i][k].abs() / total_var)
-                        .sum::<f64>()
-                } else {
-                    0.0 // flat curve → zero total variation → MSS 0 (guarded division)
-                }
+                mss_for_curve(&diff[i], &shape[i])
             } else {
                 0.0
             };

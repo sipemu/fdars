@@ -380,6 +380,49 @@ where
     )
 }
 
+/// Run one fold: fit + predict + fill oof_preds + return fold metrics.
+fn run_one_fold<F, P>(
+    data: &FdMatrix,
+    y: &[f64],
+    fit_fn: &F,
+    predict_fn: &P,
+    folds: &[usize],
+    fold: usize,
+    cv_type: CvType,
+    metric_fns: &[MetricFn],
+    oof_preds: &mut Vec<f64>,
+) -> Option<(CvMetrics, HashMap<String, f64>)>
+where
+    F: Fn(&FdMatrix, &[f64]) -> Box<dyn Any>,
+    P: Fn(&dyn Any, &FdMatrix) -> Vec<f64>,
+{
+    let (train_idx, test_idx) = fold_indices(folds, fold);
+    if train_idx.is_empty() || test_idx.is_empty() {
+        return None;
+    }
+    let train_data = subset_rows(data, &train_idx);
+    let train_y = subset_vec(y, &train_idx);
+    let test_data = subset_rows(data, &test_idx);
+    let test_y = subset_vec(y, &test_idx);
+
+    let model = fit_fn(&train_data, &train_y);
+    let preds = predict_fn(&*model, &test_data);
+
+    for (local_i, &orig_i) in test_idx.iter().enumerate() {
+        if local_i < preds.len() {
+            oof_preds[orig_i] = preds[local_i];
+        }
+    }
+
+    let fold_metric = compute_metrics(&test_y, &preds, cv_type);
+    let fold_custom = if !metric_fns.is_empty() {
+        evaluate_metrics(&test_y, &preds, metric_fns)
+    } else {
+        HashMap::new()
+    };
+    Some((fold_metric, fold_custom))
+}
+
 /// Generic k-fold + repeated CV with user-defined metrics.
 ///
 /// Same as [`cv_fdata`] but accepts a slice of [`MetricFn`] that are evaluated
@@ -451,28 +494,21 @@ where
         let mut fold_custom = Vec::with_capacity(n_folds);
 
         for fold in 0..n_folds {
-            let (train_idx, test_idx) = fold_indices(&folds, fold);
-            if train_idx.is_empty() || test_idx.is_empty() {
-                continue;
-            }
-
-            let train_data = subset_rows(data, &train_idx);
-            let train_y = subset_vec(y, &train_idx);
-            let test_data = subset_rows(data, &test_idx);
-            let test_y = subset_vec(y, &test_idx);
-
-            let model = fit_fn(&train_data, &train_y);
-            let preds = predict_fn(&*model, &test_data);
-
-            for (local_i, &orig_i) in test_idx.iter().enumerate() {
-                if local_i < preds.len() {
-                    oof_preds[orig_i] = preds[local_i];
+            if let Some((fm, fc)) = run_one_fold(
+                data,
+                y,
+                &fit_fn,
+                &predict_fn,
+                &folds,
+                fold,
+                cv_type,
+                metric_fns,
+                &mut oof_preds,
+            ) {
+                fold_metrics.push(fm);
+                if !metric_fns.is_empty() {
+                    fold_custom.push(fc);
                 }
-            }
-
-            fold_metrics.push(compute_metrics(&test_y, &preds, cv_type));
-            if !metric_fns.is_empty() {
-                fold_custom.push(evaluate_metrics(&test_y, &preds, metric_fns));
             }
         }
 

@@ -13,6 +13,36 @@ use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
+/// Check whether reference curve `j` lies entirely above, entirely below, or
+/// neither relative to target curve `i` across all `m` grid points.
+///
+/// Returns `(j_above, j_below)` — both can be `true` only if the two curves are identical.
+#[inline]
+fn containment_flags(
+    data_ori: &FdMatrix,
+    data_obj: &FdMatrix,
+    j: usize,
+    i: usize,
+    m: usize,
+) -> (bool, bool) {
+    let mut j_above = true;
+    let mut j_below = true;
+    for t in 0..m {
+        let x_j = data_ori[(j, t)];
+        let x_i = data_obj[(i, t)];
+        if x_j > x_i {
+            j_below = false;
+        }
+        if x_j < x_i {
+            j_above = false;
+        }
+        if !j_above && !j_below {
+            break;
+        }
+    }
+    (j_above, j_below)
+}
+
 /// Compute the Half-Region Depth (HRD) for 1D functional data.
 ///
 /// HRD is the roahd half-region composite of the two **global indicators**, the
@@ -63,21 +93,7 @@ pub(crate) fn half_region_depth_1d(
             let mut ei_count = 0.0_f64; // references entirely at or above X_i
             let mut hi_count = 0.0_f64; // references entirely at or below X_i
             for j in 0..nori {
-                let mut j_above = true; // X_j(t) >= X_i(t) for all t so far
-                let mut j_below = true; // X_j(t) <= X_i(t) for all t so far
-                for t in 0..m {
-                    let x_j = data_ori[(j, t)];
-                    let x_i = data_obj[(i, t)];
-                    if x_j > x_i {
-                        j_below = false;
-                    }
-                    if x_j < x_i {
-                        j_above = false;
-                    }
-                    if !j_above && !j_below {
-                        break;
-                    }
-                }
+                let (j_above, j_below) = containment_flags(data_ori, data_obj, j, i, m);
                 if j_above {
                     ei_count += 1.0;
                 }
