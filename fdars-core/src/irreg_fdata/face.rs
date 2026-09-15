@@ -266,7 +266,7 @@ fn fill_diag_blocks(
     variables: &[IrregFdata],
     grids: &[Vec<f64>],
     offsets: &[usize],
-    block_data: &mut Vec<f64>,
+    block_data: &mut [f64],
     p_count: usize,
     g_total: usize,
     bandwidth: f64,
@@ -291,7 +291,7 @@ fn fill_offdiag_blocks(
     centered: &[Vec<f64>],
     grids: &[Vec<f64>],
     offsets: &[usize],
-    block_data: &mut Vec<f64>,
+    block_data: &mut [f64],
     p_count: usize,
     g_total: usize,
     n: usize,
@@ -401,8 +401,8 @@ pub fn mface_covariance(
 
     // Diagonal blocks: per-variable FACE covariance.
     fill_diag_blocks(
-        &variables,
-        &grids,
+        variables,
+        grids,
         &offsets,
         &mut block_data,
         p_count,
@@ -412,9 +412,9 @@ pub fn mface_covariance(
 
     // Off-diagonal upper triangle p < q: cross-covariance + symmetric transpose.
     fill_offdiag_blocks(
-        &variables,
+        variables,
         &centered,
-        &grids,
+        grids,
         &offsets,
         &mut block_data,
         p_count,

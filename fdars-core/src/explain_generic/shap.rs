@@ -65,9 +65,9 @@ fn accumulate_shap_samples(
     n_samples: usize,
     rng_i: &mut rand::prelude::StdRng,
     f_base: f64,
-    coal_scores: &mut Vec<f64>,
-    ata: &mut Vec<f64>,
-    atb: &mut Vec<f64>,
+    coal_scores: &mut [f64],
+    ata: &mut [f64],
+    atb: &mut [f64],
 ) {
     for _ in 0..n_samples {
         let (coalition, s_size) = sample_random_coalition(rng_i, ncomp);

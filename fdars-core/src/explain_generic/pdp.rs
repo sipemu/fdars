@@ -16,8 +16,8 @@ fn fill_ice_row(
     p_scalar: usize,
     i: usize,
     n_grid: usize,
-    obs_scores: &mut Vec<f64>,
-    obs_z: &mut Vec<f64>,
+    obs_scores: &mut [f64],
+    obs_z: &mut [f64],
     ice_curves: &mut FdMatrix,
 ) {
     for k in 0..ncomp {
@@ -28,7 +28,7 @@ fn fill_ice_row(
             for j in 0..p_scalar {
                 obs_z[j] = sc[(i, j)];
             }
-            Some(obs_z.as_slice())
+            Some(&*obs_z)
         } else {
             None
         }

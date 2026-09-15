@@ -79,7 +79,7 @@ fn solve_pointwise_pda(
     j: usize,
     n: usize,
     order: usize,
-    coefficients: &mut Vec<Vec<f64>>,
+    coefficients: &mut [Vec<f64>],
 ) {
     let mut x_j = DMatrix::<f64>::zeros(n, order);
     for i in 0..n {
