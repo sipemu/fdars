@@ -1,324 +1,199 @@
-# Stack Research: Optimal Experimental Design for Sparse FDA (v0.35.0)
+# Stack Research: v0.47.0 Cross-Language Benchmark Harness + Optimization Pass
 
-**Domain:** Rust functional-data-analysis library — adding FOptDes (optimal sparse-measurement design) to fdars-core, built on the shipped `pace_fpca` estimator
-**Researched:** 2026-09-02
-**Confidence:** HIGH (codebase read = HIGH; fdapace R source read = HIGH; Ji–Müller 2017 formulas extracted from ar5iv HTML = MEDIUM cross-checked against BestDes_TR.R / BestDes_SR.R source = HIGH-verified)
-
----
-
-## Dependency Verdict: NO NEW CRATE DEPENDENCIES REQUIRED
-
-All v0.35.0 deliverables — trajectory-reconstruction design, score-prediction design, and design-criterion evaluation — can be built entirely on the existing dependency set. This is the primary finding.
-
-Explicit confirmation per deliverable:
-
-| Deliverable | Required new dep? | Rationale |
-|-------------|------------------|-----------|
-| Integrated BLUP prediction MSE criterion | NO | `cholesky_solve` + `simpsons_weights` cover the full computation; no matrix library beyond current use |
-| Greedy sequential design-point selection (trajectory) | NO | Repeated `cholesky_solve` on the growing p×p submatrix `Γ*(S,S)`; no rank-1 update required (R reference re-inverts each step; p is small, ≤ 20 design points) |
-| Score-prediction / A-optimality criterion | NO | Same `cholesky_solve` path; criterion is `C(S)ᵀ [Γ*(S,S)]⁻¹ C(S)` — one solve per candidate |
-| Quadrature for integrated prediction variance | NO | `simpsons_weights` already computes Simpson weights on any grid |
-| Eigenstructure input (`PaceFpcaResult`) | NO | `pace_fpca.rs` already produces `eigenvalues`, `eigenfunctions`, `sigma2`, `argvals` — passed by reference |
-| Covariance surface reconstruction (kernel G(s,t)) | NO | Reconstruct as `Σ_k λ_k φ_k(s)φ_k(t)` from `PaceFpcaResult` fields — pure arithmetic on existing `FdMatrix` |
-| Linear interpolation of eigenfunctions to candidate grid | NO | `helpers::linear_interp` already used in `pace_fpca.rs` for interpolating φ_k to observed times |
-| Parallelism for outer exhaustive-search variant | NO | `iter_maybe_parallel!` gates rayon on candidate-point sweeps |
-| `linalg` / faer | NOT NEEDED | All solves are on the p×p system (p ≤ 20); `linalg::cholesky_solve` (always available, no feature gate) is sufficient |
-| MSRV change | NONE | All operations are f64 arithmetic on existing types; MSRV remains 1.81 |
+**Domain:** Cross-language (Rust / Python / R) FDA performance benchmark harness, plus behavior-preserving Rust optimization pass on fdars-core
+**Researched:** 2026-09-19
+**Confidence:** MEDIUM (web search + direct codebase read; tool versions verified against PyPI/CRAN search results; criterion output format verified via docs; existing validation/ R infrastructure read directly)
 
 ---
 
-## Core Technologies
+## Boundary Rule — What Lives Where
 
-### Primary Technologies (all existing deps — zero Cargo.toml changes)
+The hard constraint from PROJECT.md is absolute:
 
-| Technology | Version in Cargo.toml | Role in v0.35.0 | Existing Usage Anchor |
-|------------|----------------------|-----------------|----------------------|
-| Rust (MSRV 1.81) | 1.81 min / 1.97 dev | All implementation | Entire codebase |
-| nalgebra | 0.33 | `DMatrix::symmetric_eigen()` used inside `pace_fpca.rs` to produce the eigenstructure consumed by FOptDes; no direct nalgebra call needed in FOptDes itself | `src/pace_fpca.rs:187`; `src/regression.rs` |
-| rand | 0.8 | Not needed by FOptDes core (design is deterministic given `PaceFpcaResult`); used if a random-start exhaustive fallback is added | `src/kernel_kmeans.rs:263` |
-| rayon | 1.10 (optional, `parallel` feature) | Parallelize the candidate-point sweep in the greedy inner loop via `iter_maybe_parallel!` | `src/pace_fpca.rs:434` |
+- The **cross-language harness lives OUTSIDE `fdars-core`** — in `benchmarks/` (external Python/R scripts + an orchestration script). No new entry in `fdars-core/Cargo.toml` of any kind.
+- The **Rust optimization pass** touches only `fdars-core/src/`. No new crate dependency (`[dependencies]` or `[dev-dependencies]`) is added to `Cargo.toml`. The existing `criterion 0.5` dev-dependency is sufficient for before/after measurement.
+- External CLI tools (`cargo install flamegraph`, system `perf`) are **not** Cargo.toml entries — they are development machine tools installed separately and are allowed.
 
-### Reused Internal Primitives (HIGH confidence — direct codebase read)
-
-| Primitive | Location | v0.35.0 Role | Reuse Type |
-|-----------|----------|-------------|------------|
-| `pace_fpca(data, config) -> PaceFpcaResult` | `src/pace_fpca.rs` | Prior input: caller runs `pace_fpca` once; FOptDes takes the result by reference | Caller-supplied, consumed by reference |
-| `PaceFpcaResult.eigenvalues: Vec<f64>` | `src/pace_fpca.rs:102` | λ_k values for covariance kernel reconstruction and criterion weighting | Field access |
-| `PaceFpcaResult.eigenfunctions: FdMatrix` | `src/pace_fpca.rs:105` | φ_k(t) values on the work grid; interpolated to candidate design points | Field access + `linear_interp` |
-| `PaceFpcaResult.sigma2: f64` | `src/pace_fpca.rs:117` | Ridge term σ² in Γ*(S,S) = G(S,S) + σ²I_p | Field access |
-| `PaceFpcaResult.argvals: Vec<f64>` | `src/pace_fpca.rs:115` | Work grid on which φ_k are defined; candidate design points are drawn from or mapped to this grid | Field access |
-| `helpers::simpsons_weights(grid: &[f64]) -> Vec<f64>` | `src/helpers.rs:76` | Quadrature weights for ∫ Var(x̂(t) \| U_S) dt — the integrated prediction MSE criterion | Direct call |
-| `helpers::linear_interp(grid, vals, t) -> f64` | `src/helpers.rs` | Interpolate φ_k(t_j) at candidate design points not on the work grid | Direct call (identical usage to `pace_fpca.rs:457`) |
-| `linalg::cholesky_solve(a, b, p) -> Result<Vec<f64>>` | `src/linalg.rs:131` | Solve Γ*(S,S) x = b for each criterion evaluation and for each candidate addition in the greedy loop | Direct call (same signature as in `pace_fpca.rs:493`) |
-| `linalg::cholesky_d(mat, d) -> Result<Vec<f64>>` | `src/linalg.rs:16` | Alternative Cholesky factor when the determinant / log-det is needed (D-optimality variant, if added later) | Direct call |
-| `linalg::cholesky_factor(a, p)` + `cholesky_forward_back(l, b, p)` | `src/linalg.rs:85,113` | Used internally by `cholesky_solve`; available if factoring once and solving multiple RHS is preferred (one factor, then k solves for k eigenfunctions) | Via `cholesky_solve` or direct |
-| `FdMatrix` | `src/matrix.rs` | Input format for functional data (not directly consumed by FOptDes, but `PaceFpcaResult.eigenfunctions` is an `FdMatrix`) | Existing type |
-| `FdarError` | `src/error.rs` | `Result<T, FdarError>` throughout | Existing type |
-| `iter_maybe_parallel!(0..n_candidates).map(...)` | `src/parallel.rs` | Parallelize criterion evaluation across all candidate grid points in greedy inner loop | Existing macro |
+This boundary appears in every section below under "External vs. Cargo-dep" tags.
 
 ---
 
-## Algorithm: Linear Algebra Operations Required
+## Recommended Stack
 
-This section specifies exactly what FOptDes must compute, derived from the Ji–Müller 2017 framework (verified against fdapace 0.5.9 `BestDes_TR.R` and `BestDes_SR.R` source).
+### Rust Side — Already Present, Nothing New
 
-### Shared Setup: Covariance Surface from Eigenstructure
+| Technology | Version | Purpose | Cargo dep? |
+|------------|---------|---------|------------|
+| criterion | 0.5 (existing dev-dep) | Before/after micro-benchmarks; the existing 24+ bench files cover the operations being optimized | Existing — no change |
+| rustc / cargo | 1.97.0 (dev) / MSRV 1.81 | Build + bench; `cargo bench --features linalg,parallel` is the primary benchmark invocation | External toolchain |
+| cargo-flamegraph | latest (cargo install) | CPU flamegraph for profiling optimization candidates; wraps `perf` on Linux | External CLI — NOT a Cargo dep |
+| perf (Linux) | system | CPU sampling profiler used by cargo-flamegraph | System tool |
+| samply | latest (cargo install) | Alternative profiler (Firefox Profiler UI); lighter to set up than perf on some systems | External CLI — NOT a Cargo dep |
 
-FOptDes does **not** re-run covariance smoothing. It reconstructs the truncated-FPCA approximation from `PaceFpcaResult`:
+**Why criterion 0.5 is sufficient for the Rust side:** The existing benchmark suite already covers FPCA, alignment (elastic_align_pair, karcher_mean), depth, smoothing, regression, and classification. Adding new bench functions for the elastic O(N²·M²) hotspot targets within the existing bench files requires zero Cargo.toml changes. Before/after wall-clock medians from criterion are the authoritative Rust-side numbers.
 
+**Why NOT dhat-heap:** `dhat 0.3.2` would require adding `[dev-dependencies] dhat = "0.3"` to `fdars-core/Cargo.toml`. This violates the no-new-Cargo-dep constraint. If heap allocation profiling is needed for the optimization pass, use `perf` with `--event=cache-misses` or heaptrack (external system tool) instead.
+
+**Why NOT cargo-criterion:** `cargo-criterion` provides stable `--message-format=json` stdout output, but it is a separate binary that requires installing. The orchestration script can instead parse `target/criterion/*/estimates.json` directly — these internal JSON files have been stable across criterion 0.4→0.5 in practice, even though they are technically private API.
+
+### Python Side — External, No Cargo Dependency
+
+| Technology | Version | Purpose | External vs. Cargo-dep |
+|------------|---------|---------|------------------------|
+| scikit-fda | 0.10.1 (pinned) | The Python baseline; already verified installed in `.planning/research/skfda-verify/venv/` | External — pip install |
+| pytest-benchmark | 5.3.0 | Time Python FDA operations; `--benchmark-json` produces structured JSON with all timing stats | External — pip install |
+| numpy | ≥1.24 (scikit-fda requirement) | Array operations; controls BLAS backend | External — pip install |
+| scipy | ≥1.9 (scikit-fda requirement) | LAPACK/BLAS for SVD, linear algebra | External — pip install |
+| uv | ≥0.4 | Lock the Python environment via `uv pip compile` → `benchmarks/requirements.lock` + `uv pip sync` for exact reproducible installs | External — system install |
+
+**Why pytest-benchmark over pyperf:** pytest-benchmark 5.3.0 integrates directly with pytest fixtures, which allows realistic setup (constructing `FDataGrid` objects once outside the timed loop), outputs `--benchmark-json` with full stats (min, median, stddev, rounds, iterations), and requires only one file per FDA operation. pyperf 2.10.0 provides stronger process-isolation guarantees, but the setup overhead for constructing matched N×M inputs across languages makes it harder to keep the datasets identical. Use pytest-benchmark with `--benchmark-disable-gc` and explicit `rounds=10` for the outer comparison runs.
+
+**Why NOT airspeed velocity (asv) 0.6.5:** asv is designed for tracking benchmarks across a project's commit history with its own virtual environment management and git context. It is significantly more complex to set up for a one-shot cross-language comparison. A simple pytest-benchmark script with JSON output is the right tool for this milestone.
+
+**Why NOT plain `timeit`:** timeit has no structured output format, no CLI JSON export, and no built-in statistical aggregation. pytest-benchmark wraps timeit internally but adds all of the above.
+
+### R Side — External, No Cargo Dependency
+
+| Technology | Version | Purpose | External vs. Cargo-dep |
+|------------|---------|---------|------------------------|
+| bench | 1.1.4 | Time R FDA package calls; returns tibble with min/median/mem_alloc/gc columns; export via `jsonlite::toJSON()` | External — install.packages() |
+| microbenchmark | 1.5.0 | Alternative timing (100 iterations, nanosecond precision); simpler than bench for pure timing without memory tracking | External — install.packages() |
+| jsonlite | ≥1.8 | Serialize bench/microbenchmark results to JSON for the orchestration collector | External — already in validation/R/install_deps.R |
+| renv | ≥1.0 | Lock R package versions via `renv::snapshot()` → `benchmarks/renv.lock`; `renv::restore()` for reproducibility | External — install.packages() |
+| fda | ≥6.1 | R FDA baseline — B-spline smoothing, FPCA, regression | External — already installed for validation |
+| fda.usc | ≥2.1 | R FDA baseline — depth, kNN classification, kernel regression | External — already installed for validation |
+| refund | ≥0.1-38 | R FDA baseline — FPCR, FLR, pfr | External — install.packages() |
+| fdapace | ≥0.5.9 | R FDA baseline — PACE FPCA, optimal design | External — install.packages() |
+| roahd | ≥1.4 | R FDA baseline — robust depth, band depth | External — already installed for validation |
+
+**Why bench over microbenchmark as the primary R timer:** bench::mark() tracks memory allocation and GC events alongside timing, which is relevant for R FDA operations that allocate large intermediate matrices. microbenchmark is the fallback for R versions < 4.0 or when the tibble output format creates complexity. Use `bench::mark(..., iterations = 50)` and export via `as.data.frame() |> jsonlite::toJSON()`.
+
+**renv lockfile:** The existing `validation/R/install_deps.R` covers `fda`, `fda.usc`, `roahd`, `fdasrvf` (all already present). New additions needed for v0.47.0: `bench`, `refund`, `fdapace`. Add all to `benchmarks/R/install_deps.R` (separate from the validation deps), lock with renv.
+
+### Orchestration — Python Script in `benchmarks/`
+
+| Technology | Version | Purpose | External vs. Cargo-dep |
+|------------|---------|---------|------------------------|
+| Python 3.x | 3.12+ (system) | Orchestration script that runs all three benchmark tiers and collects results | External — system Python |
+| subprocess | stdlib | Run `cargo bench`, Rscript, and pytest-benchmark as subprocesses | stdlib — no install |
+| json | stdlib | Parse criterion estimates.json and pytest-benchmark JSON output | stdlib — no install |
+| csv | stdlib | Write unified comparison table as CSV | stdlib — no install |
+| pathlib | stdlib | Path manipulation for result files | stdlib — no install |
+
+The orchestration script (`benchmarks/run_all.py`) is the integration point. It:
+1. Runs `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 cargo bench --features linalg,parallel --bench <bench_name> 2>&1` and captures stdout
+2. Parses `target/criterion/*/estimates.json` for median + confidence intervals
+3. Runs `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 pytest benchmarks/python/ --benchmark-json=benchmarks/results/python.json -v`
+4. Runs `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 Rscript benchmarks/R/run_benchmarks.R benchmarks/results/r.json`
+5. Joins all results by `(operation, n, m)` key into `benchmarks/results/comparison.csv` and `comparison.json`
+
+---
+
+## Version Capture — Reproducibility Mechanics
+
+### What to Capture at Benchmark Runtime
+
+Every benchmark run must record these into `benchmarks/results/env.json`:
+
+| Field | How to Capture |
+|-------|----------------|
+| `rustc_version` | `rustc --version` |
+| `cargo_version` | `cargo --version` |
+| `fdars_version` | `grep '^version' fdars-core/Cargo.toml` |
+| `criterion_version` | `grep 'criterion' fdars-core/Cargo.toml` |
+| `python_version` | `python3 --version` |
+| `scikit_fda_version` | `python3 -c "import skfda; print(skfda.__version__)"` |
+| `numpy_version` | `python3 -c "import numpy; print(numpy.__version__)"` |
+| `scipy_version` | `python3 -c "import scipy; print(scipy.__version__)"` |
+| `r_version` | `Rscript -e "cat(R.version.string)"` |
+| `r_pkg_versions` | `Rscript -e "cat(as.character(packageVersion('fda')), ...)"` for each R package |
+| `blas_backend` | `python3 -c "import numpy; numpy.show_config()"` or `Rscript -e "sessionInfo()"` |
+| `cpu_model` | `/proc/cpuinfo` or `lscpu` |
+| `os_version` | `uname -a` |
+| `rayon_num_threads` | Environment variable at time of run |
+| `openblas_num_threads` | Environment variable at time of run |
+| `timestamp` | ISO 8601 UTC |
+
+### Environment Variables to Set Before Any Run
+
+```bash
+# Pin BLAS threading for fair single-threaded comparison
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OMP_NUM_THREADS=1
+export BLIS_NUM_THREADS=1
+export MKL_DYNAMIC=FALSE
+export OMP_DYNAMIC=FALSE
+
+# Pin Rayon thread count for the parallel-disabled Rust comparison run
+# (run benches twice: once with RAYON_NUM_THREADS=1, once with default)
+# Default run: unset RAYON_NUM_THREADS (uses all cores)
+# Sequential comparison run: RAYON_NUM_THREADS=1
 ```
-G(s, t) ≈ Σ_{k=1}^{K} λ_k · φ_k(s) · φ_k(t)
+
+### Python Lock
+
+```bash
+uv pip compile benchmarks/python/requirements.in --output-file benchmarks/python/requirements.lock
+uv pip sync benchmarks/python/requirements.lock
 ```
 
-For any set of candidate design points `t_1, ..., t_p` (drawn from `PaceFpcaResult.argvals` or interpolated), the p×p submatrix is:
+`requirements.in` pins: `scikit-fda==0.10.1`, `pytest-benchmark==5.3.0`, `numpy`, `scipy`.
 
-```
-Γ(S, S)[i,j] = G(t_i, t_j) = Σ_k λ_k · φ_k(t_i) · φ_k(t_j)
-```
+### R Lock
 
-The ridge-regularized version adds σ²I:
-
-```
-Γ*(S, S) = Γ(S, S) + σ² · I_p
-```
-
-This is a p×p symmetric positive-definite matrix (p is the number of selected design points, at most 20 in practice).
-
-**Implementation:** Build `Γ*(S,S)` as a flat row-major `Vec<f64>` of length p²; compute by looping over k, accumulating `λ_k · φ_k(t_i) · φ_k(t_j)` with `φ_k` values from `linear_interp`, then add `σ²` to diagonal. No nalgebra DMatrix conversion needed.
-
-### Criterion 1: Trajectory-Recovery (Integrated BLUP Prediction MSE)
-
-Reference: `BestDes_TR.R::TRCri`, Ji–Müller 2017 §2.2.
-
-**Criterion value** (maximize R²_X, equivalently maximize the integrated quadratic form):
-
-```
-TRCri(S) = ∫_T γ(t, S)ᵀ · [Γ*(S,S)]⁻¹ · γ(t, S) dt
+```r
+# In benchmarks/R/ directory
+renv::init()
+renv::install(c("bench", "microbenchmark", "jsonlite", "fda", "fda.usc", "refund", "fdapace", "roahd"))
+renv::snapshot()  # writes benchmarks/renv.lock
 ```
 
-where `γ(t, S)` is the p-vector of covariances between X(t) and the design observations U_S:
+---
 
-```
-γ(t, S)[i] = G(t, t_i) = Σ_k λ_k · φ_k(t) · φ_k(t_i)
-```
+## Unified Output Format
 
-**Integral approximation** using the m-point work grid T with Simpson weights w:
+All three tiers produce a JSON record per operation with this schema:
 
-```
-TRCri(S) ≈ Σ_{j=1}^{m} w_j · γ(t_j, S)ᵀ · [Γ*(S,S)]⁻¹ · γ(t_j, S)
-         = Σ_j w_j · v_j · v_j      (where v_j = [Γ*(S,S)]⁻¹/² γ(t_j, S))
-```
-
-**Efficient computation:** Factor `Γ*(S,S) = L Lᵀ` (Cholesky) once. For each work-grid point j, forward-solve `L v_j = γ(t_j, S)` (cost O(p²) per grid point). Integrate `Σ_j w_j ||v_j||²`. Total cost per candidate set evaluation: O(p³) for factorization + O(m·p²) for the forward solves.
-
-```
-// In Rust pseudocode:
-let l = cholesky_factor(&gamma_star_ss, p)?;                  // p×p lower factor
-let mut criterion = 0.0_f64;
-for j in 0..m {
-    let gamma_tj_s: Vec<f64> = (0..p).map(|i| g(t_j, t_i)).collect();
-    let v = cholesky_forward_back(&l, &gamma_tj_s, p);        // forward-back solve
-    criterion += w[j] * v.iter().map(|x| x * x).sum::<f64>();
+```json
+{
+  "operation": "fpca",
+  "n": 200,
+  "m": 100,
+  "language": "rust",
+  "library": "fdars-core",
+  "library_version": "0.47.0",
+  "median_ns": 12345678,
+  "mean_ns": 12400000,
+  "stddev_ns": 150000,
+  "min_ns": 12100000,
+  "max_ns": 12900000,
+  "samples": 20,
+  "feature_flags": "linalg,parallel"
 }
 ```
 
-`linalg::cholesky_factor` + `linalg::cholesky_forward_back` are already `pub(crate)` in `src/linalg.rs` and cover this exactly.
+The Python orchestration script merges per-language JSON files into a single `comparison.json` + `comparison.csv` keyed on `(operation, n, m)`.
 
-### Criterion 2: Score-Prediction (Posterior Score Variance / A-Optimality)
+**Criterion → JSON conversion:** After `cargo bench`, parse `target/criterion/<group>/<bench_id>/new/estimates.json`. Fields: `mean.point_estimate`, `median.point_estimate`, `std_dev.point_estimate` — all in nanoseconds. The `sample.json` in the same directory has the raw iteration values.
 
-Reference: `BestDes_SR.R::SRCri`, Ji–Müller 2017 §3.
+**pytest-benchmark → JSON:** `--benchmark-json=benchmarks/results/python.json` writes a file with `benchmarks[].stats.{min,max,mean,median,stddev,rounds,iterations}` all in seconds. Multiply by 1e9 for nanoseconds to match criterion.
 
-**Criterion value** (maximize scalar quadratic form using cross-covariance of scores to response):
-
-```
-SRCri(S) = C(S)ᵀ · [Γ*(S,S)]⁻¹ · C(S)
-```
-
-where `C(S)` is the p-vector of covariances between the response Y and design observations U_S. For the PACE score-prediction variant without an external response, this generalizes to minimizing the posterior variance of FPC score ξ_k given U_S:
-
-```
-Var(ξ_k | U_S) = λ_k - λ_k · φ_k(S)ᵀ · [Γ*(S,S)]⁻¹ · (λ_k · φ_k(S))
-               = λ_k · (1 - λ_k · φ_k(S)ᵀ · [Γ*(S,S)]⁻¹ · φ_k(S))
-```
-
-A-optimality minimizes the trace:
-
-```
-AOptCri(S) = Σ_k Var(ξ_k | U_S) = Σ_k λ_k · (1 - λ_k · φ_k(S)ᵀ · [Γ*(S,S)]⁻¹ · φ_k(S))
-```
-
-**Implementation:** For each component k, compute `[Γ*(S,S)]⁻¹ · (λ_k · φ_k(S))` via one `cholesky_solve` call. The criterion is a sum of p scalar dot products. Total cost: O(p³) factorization + O(K·p²) solves, where K is the number of FPC components.
-
-### Greedy Sequential Selection (both criteria)
-
-Reference: `BestDes_TR.R` sequential branch; Ji–Müller 2017 §2.3.
-
-Algorithm:
-1. Start with empty selected set `S = {}`.
-2. For iteration 1..=desired_p:
-   a. For each candidate point `t_c` not in S, form `S' = S ∪ {t_c}`.
-   b. Build `Γ*(S', S')` (size (|S|+1)×(|S|+1)) — rebuild from scratch (cheap for small p).
-   c. Evaluate criterion on S'.
-   d. Select `t_c` with highest criterion value; add to S.
-3. Return final S.
-
-**No rank-1 / Sherman-Morrison update required.** The fdapace reference re-inverts from scratch at each step (`solve(ridgeCov[design,design])`). For p ≤ 20 and p candidate additions per step, total cost is O(p³ · m · p) = O(p⁴ · m) — negligible for m ≤ 200 and p ≤ 20.
-
-**Optional optimization:** A Schur complement / rank-1 update can be applied if performance profiling reveals it as a hot path (unlikely for this parameter regime). The Sherman-Morrison-Woodbury formula for adding one row/column to an SPD inverse is:
-
-```
-[Γ*(S∪{c}, S∪{c})]⁻¹  (block matrix inverse)
-= block inversion of [[Γ*(S,S), g_c], [g_cᵀ, g_cc + σ²]]
-```
-
-where `g_c = γ(S, t_c)` and `g_cc = G(t_c, t_c)`. The Schur complement of the new point is `s_c = G(t_c, t_c) + σ² - g_cᵀ [Γ*(S,S)]⁻¹ g_c`. This is a standard block-matrix inversion — implementable via `cholesky_solve` on the existing p×p factor — but the reference does not use it and it is not needed for correctness or performance at this scale.
-
-### Exhaustive Search (non-sequential, small p)
-
-For small `p` (≤ 4), exhaustive search over all C(m, p) combinations is feasible and finds the global optimum. Implement as an optional mode: `is_sequential: bool` in config (default `true`). Exhaustive mode parallelized over all combinations via `iter_maybe_parallel!`.
-
----
-
-## Existing Primitives: Complete Reuse Map
-
-### Already Present in fdars-core (HIGH confidence — direct codebase read)
-
-| Primitive | Location | v0.35.0 Reuse |
-|-----------|----------|--------------|
-| `pace_fpca(data, config) -> Result<PaceFpcaResult>` | `src/pace_fpca.rs:266` | Caller produces the prior; FOptDes consumes `&PaceFpcaResult` |
-| `PaceFpcaResult` (eigenvalues, eigenfunctions, sigma2, argvals, ncomp) | `src/pace_fpca.rs:99` | All fields consumed directly by FOptDes design criterion |
-| `linalg::cholesky_solve(a, b, p)` | `src/linalg.rs:131` | Solve `Γ*(S,S) x = b` for each criterion evaluation — identical call signature to `pace_fpca.rs:493` |
-| `linalg::cholesky_factor(a, p)` | `src/linalg.rs:85` | Factor once, solve multiple RHS (one per work-grid point in TRCri) |
-| `linalg::cholesky_forward_back(l, b, p)` | `src/linalg.rs:113` | Forward-back solve after one factorization — avoids re-factoring per grid point |
-| `helpers::simpsons_weights(grid)` | `src/helpers.rs:76` | Quadrature for ∫ criterion(t) dt |
-| `helpers::linear_interp(grid, vals, t)` | `src/helpers.rs` | Evaluate φ_k at candidate design points; same call as `pace_fpca.rs:457` |
-| `iter_maybe_parallel!(range).map(...)` | `src/parallel.rs` | Parallelize inner greedy candidate sweep |
-| `FdMatrix` | `src/matrix.rs` | `eigenfunctions` field type; `(j, k)` column-major indexing used to access φ_k(t_j) |
-| `FdarError` | `src/error.rs` | Error type throughout |
-| `#[cfg_attr(feature = "serde", derive(...))]` | project-wide convention | Apply to `OptDesConfig` and `OptDesResult` |
-| `#[must_use]` | project-wide convention | Apply to `foptdes()` (expensive computation) |
-
-### Not Required (confirmed absent from algorithm)
-
-| Primitive | Why Not Needed |
-|-----------|---------------|
-| `rustfft::FftPlanner` | No FFT in FOptDes; criterion is a quadratic form, not a convolution |
-| `nalgebra::DMatrix::symmetric_eigen()` | Eigendecomposition already done by `pace_fpca`; FOptDes receives λ_k and φ_k as inputs |
-| `nalgebra::SVD` | No SVD path in criterion evaluation |
-| `faer` (linalg feature) | All solves are on p×p matrices (p ≤ 20); `linalg::cholesky_solve` is always available without the `linalg` feature gate |
-| `rand` / `StdRng` | Design is deterministic given the FPCA prior; random starts only if an optional random-exhaustive mode is added |
-| `statrs` / `rand_distr` | No distribution sampling needed |
-| `cov_irreg` / `mean_irreg` | FOptDes reuses `PaceFpcaResult` — no re-smoothing |
-
----
-
-## Module Placement
-
-```
-src/optimal_design.rs           — single top-level module (matches PROJECT.md description)
-    OptDesConfig                — n_design_pts, is_sequential, criterion, ridge, work_grid (optional override)
-    OptDesResult                — selected_pts: Vec<f64>, criterion_value: f64, r2: f64, r2adj: f64
-    DesignCriterion enum        — TrajectoryRecovery, ScorePrediction
-    foptdes(prior, config)      — top-level entry point
-    fn build_gamma_star_ss(...)  — assemble Γ*(S,S) from eigenstructure
-    fn tr_criterion(...)         — integrate BLUP prediction variance for TRCri
-    fn score_criterion(...)      — A-optimal score posterior variance for SRCri
-    fn greedy_sequential(...)    — iterative point addition
-    fn exhaustive_search(...)    — optional, gated on config.is_sequential=false + small p
-```
-
-Crate-root re-export in `src/lib.rs`:
-```rust
-pub mod optimal_design;
-pub use optimal_design::{foptdes, OptDesConfig, OptDesResult, DesignCriterion};
-```
-
-Follows the single-file pattern of `pace_fpca.rs` (one public module, no sub-directory needed given the algorithm is self-contained in ~300 lines).
-
----
-
-## Reference Baseline — Pinned Version & Exact API
-
-### fdapace@0.5.9 — `FOptDes` (R CRAN)
-
-**Function signature (from CRAN refman, fdapace 0.5.9):**
-
-```r
-FOptDes(
-  Ly,              # list of observed values per subject
-  Lt,              # list of observation times per subject
-  Resp = NULL,     # scalar response vector (NULL → trajectory recovery mode)
-  p = 3,           # number of design points requested
-  optns = list(),  # FPCA options (bandwidth, ncomp, etc.)
-  isRegression = is.null(Resp),
-  isSequential = FALSE,   # FALSE = exhaustive search; TRUE = greedy sequential
-  RidgeCand = NULL        # ridge penalty candidates (NULL → CV selection)
-)
-```
-
-**Return value:** list with `OptDes` (vector of p optimal grid points), `R2` (coefficient of determination at optimum), `R2adj`, `OptRidge`.
-
-**Algorithm (from BestDes_TR.R source, verified):**
-1. Run `FPCA(Ly, Lt, optns)` internally to obtain covariance surface `Cov` and FPCA decomposition.
-2. Select ridge λ from `RidgeCand` by cross-validation (ensures `ridgeCov[design,design]` is PD for all candidate sets).
-3. `TRCri(design, Cov, ridge)`: compute `trapzRcpp(workGrid, diag(t(Cov[design,]) %*% solve(Cov[design,design] + λI) %*% Cov[design,]))`.
-4. Sequential or exhaustive search over candidate grid points maximizing `TRCri`.
-
-**Key difference from fdars v0.35.0 plan:** fdapace runs `FPCA` internally. In fdars, `pace_fpca` is already shipped and the caller passes `PaceFpcaResult`. This is the two-stage design — cleaner, avoids re-estimation, and matches the PROJECT.md spec exactly.
-
-**fdapace R² formula** (trajectory recovery):
-```
-R2 = TRCri(OptDes) / VarX
-where VarX = integral of diag(Cov) over workGrid (total functional variance)
-```
-
-**fdapace R²adj:**
-```
-R2adj = 1 - (1 - R2) * (m - 1) / (m - p - 1)
-where m = length(workGrid), p = number of design points
-```
-
-### Reference Paper
-
-Ji, H. & Müller, H.-G. (2017). Optimal Designs for Longitudinal and Functional Data. *Journal of the Royal Statistical Society: Series B*, 79(3), 859–876. arXiv:1604.05375.
-
----
-
-## Feature-Flag Considerations
-
-| Aspect | Recommendation |
-|--------|---------------|
-| Parallel inner greedy loop | YES — gate via `parallel` feature + `iter_maybe_parallel!` on the candidate sweep. Each candidate criterion evaluation is independent (no shared mutable state). |
-| `linalg` feature required? | NO — all solves use `linalg::cholesky_solve` from `src/linalg.rs`, which is always available (not behind the `linalg` Cargo feature gate). The `linalg` Cargo feature gates `faer` + `anofox-regression`, which FOptDes does not need. |
-| WASM compatibility | YES — pure f64 arithmetic; no FFT; rayon off on WASM. Same as `pace_fpca.rs`. |
-| `serde` feature | Apply `#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]` to `OptDesConfig` and `OptDesResult` following the project convention. |
-| MSRV 1.81 | PRESERVED — no post-1.81 stabilizations are used. All called functions (`cholesky_solve`, `simpsons_weights`, `linear_interp`, `iter_maybe_parallel!`) are stable on 1.81. |
-
----
-
-## MSRV and Feature Compatibility Matrix
-
-| Scenario | Works? | Notes |
-|----------|--------|-------|
-| Default features (`parallel`) | YES | Greedy inner loop parallelized; MSRV 1.81 |
-| No features (sequential only) | YES | All loops sequential-compatible; `cholesky_solve` always available |
-| `linalg` feature | YES | FOptDes adds nothing to `linalg`; features are orthogonal |
-| `serde` feature | YES | Add derive attributes to OptDesConfig / OptDesResult |
-| WASM (`js` feature) | YES | No FFT, no blocking dependencies; rayon off on WASM |
-| Rust 1.81 (MSRV) | YES | No stabilizations post-1.81 required |
+**R bench → JSON:** In the R script, `jsonlite::write_json(as.data.frame(result), path)` where `result` is from `bench::mark()`. The `median` column is in seconds (double); multiply by 1e9 for nanoseconds.
 
 ---
 
 ## Alternatives Considered
 
-| Decision | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| Sherman-Morrison rank-1 update in greedy loop | Rebuild Γ*(S,S) from scratch each step | Apply Schur complement / block-matrix inversion to avoid re-factoring | p ≤ 20: re-factoring costs O(p³) ≈ 8000 ops — negligible. Rank-1 update code is complex and the fdapace reference does not use it. Add only if profiling flags it. |
-| faer for SPD solve | `linalg::cholesky_solve` (always available) | `faer` Cholesky (via `linalg` feature) | `faer` requires MSRV 1.84 and the `linalg` feature gate. There is no performance benefit for 20×20 systems. `linalg::cholesky_solve` is correct and already used in `pace_fpca.rs`. |
-| nalgebra DMatrix for Γ*(S,S) | Flat `Vec<f64>` row-major | `nalgebra::DMatrix` | `linalg::cholesky_solve` already accepts a flat row-major slice. Converting to DMatrix adds a copy and a type boundary for no benefit at p ≤ 20. |
-| Re-run `pace_fpca` internally (like fdapace) | Accept `&PaceFpcaResult` as prior | Run FPCA internally | Two-stage design is cleaner, avoids re-estimation overhead, and matches the PROJECT.md spec. The caller can choose any FPCA variant; FOptDes is a pure design step. |
-| Trapezoidal rule for criterion integration | `simpsons_weights` (existing, Simpson's rule) | Hand-coded trapezoid | `simpsons_weights` is already the project-wide quadrature standard (used in `pace_fpca.rs`, `regression.rs`, `fdata.rs`). Higher-order accuracy for the same grid size. |
-| Enumerate combinations via `itertools::combinations` | Hand-rolled combination iterator | `itertools` crate | New dependency not justified; a simple recursive/index-based combination enumerator for the exhaustive mode is ~20 lines of Rust, well within the pattern of other crate utilities. |
+| Recommended | Alternative | When Alternative Wins |
+|-------------|-------------|----------------------|
+| pytest-benchmark 5.3.0 | pyperf 2.10.0 | If you need strong process-isolation guarantees for very fast (<1µs) Python operations. For FDA operations (milliseconds to seconds), pytest-benchmark's within-process isolation is sufficient. |
+| bench 1.1.4 | microbenchmark 1.5.0 | microbenchmark is better for R < 4.0, or when the tibble dependency chain is undesirable. Also simpler for quick interactive checks. Use microbenchmark as a fallback validator, bench as the primary. |
+| uv for Python locking | pip-tools / pip freeze | uv is faster and produces a cross-platform lock. pip freeze without compile is non-deterministic across Python versions. |
+| renv for R locking | Packrat (deprecated) | renv is the current r-lib standard; packrat is superseded. |
+| External Python orchestrator | Makefile | Python gives structured JSON/CSV collection and arithmetic (computing speedup ratios). A Makefile can drive the runs but cannot merge the output files without external tools. |
+| cargo-flamegraph (external CLI) | dhat crate (dev-dep) | dhat is useful for heap profiling, but it requires adding a dev-dependency to Cargo.toml which violates the no-new-dep constraint. Use heaptrack (system tool, no Cargo dep) if heap profiling is needed. |
+| Parse target/criterion/*/estimates.json | cargo-criterion --message-format=json | cargo-criterion requires a separate install step; parsing estimates.json is simpler and has been stable in practice across criterion 0.4→0.5. Use cargo-criterion if the estimates.json format becomes unstable. |
 
 ---
 
@@ -326,40 +201,104 @@ Ji, H. & Müller, H.-G. (2017). Optimal Designs for Longitudinal and Functional 
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| Re-estimating the covariance surface in FOptDes | Doubles computation time; caller already has `PaceFpcaResult` | Accept `&PaceFpcaResult` — the two-stage architecture specified in PROJECT.md |
-| `nalgebra::symmetric_eigen()` in FOptDes | Eigendecomposition is already done; FOptDes consumes λ_k and φ_k from the prior | Direct field access on `PaceFpcaResult.eigenvalues` and `PaceFpcaResult.eigenfunctions` |
-| The `linalg` Cargo feature for SPD solve | Requires MSRV 1.84, breaks CRAN compatibility, not needed for p ≤ 20 | `linalg::cholesky_solve` from `src/linalg.rs` (always available, MSRV 1.81) |
-| `itertools` or `combinations` crate | New dependency for a simple loop | A hand-rolled index-based combination enumerator (20 lines) |
-| Storing Γ*(S,S) as a nalgebra `DMatrix` | Unnecessary type boundary; `cholesky_solve` takes `&[f64]` | Flat `Vec<f64>` row-major — identical to how `pace_fpca.rs` builds `sigma_yi` |
-| D-optimality (log-det criterion) as primary criterion | Harder to interpret; not what Ji–Müller 2017 target; fdapace implements A/R² only | Integrated BLUP prediction MSE (TRCri) and score A-optimality (SRCri) |
+| `dhat` as `[dev-dependencies]` | Violates no-new-Cargo-dep constraint; adding it to `fdars-core/Cargo.toml` is forbidden | `heaptrack` (system tool) or `cargo-flamegraph` with allocation events via `perf` |
+| `asv` (airspeed velocity) | Over-engineered for a single-milestone comparison; requires git context, per-commit venvs, machine config files | `pytest-benchmark` with `--benchmark-json` |
+| Plain `timeit` in Python | No structured output, no statistical aggregation, no JSON export | `pytest-benchmark` which wraps timeit and adds all of these |
+| `cargo-criterion` as a Cargo dep | It is a binary, not a library — it is installed via `cargo install cargo-criterion`, NOT added to Cargo.toml | `cargo install cargo-criterion` OR just parse `target/criterion/*/estimates.json` |
+| Uncontrolled BLAS threading | OpenBLAS/MKL auto-detect CPU count; this inflates Python/R times on multi-core machines, making the comparison unfair vs. Rust's explicit `RAYON_NUM_THREADS` control | Set `OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1` for all runs |
+| Single-run timing in any language | Single runs are dominated by cache warmup, JIT effects (Python), and garbage collection | Use minimum 20 criterion samples (Rust), minimum 10 bench rounds (R), minimum 5 pytest-benchmark rounds (Python) with at least 3 warmup rounds |
+| Comparing debug-build Rust to release Python/R | Criterion already runs at `opt-level=3` under `cargo bench`, but manually invoking `cargo test --bench` can produce debug builds | Always use `cargo bench` (not `cargo test`); verify the output path contains `/release/deps/` not `/debug/deps/` |
+| `refund` + `fdapace` without checking they use the same BLAS | These R packages link to the R LAPACK/BLAS layer; thread count must be set before `library()` is called | Set `OPENBLAS_NUM_THREADS=1` as an environment variable before starting the Rscript process, not inside the script |
 
 ---
 
-## Version Compatibility
+## Directory Layout for the Harness
+
+```
+benchmarks/
+  run_all.py              # orchestration: runs Rust + Python + R, collects results
+  python/
+    requirements.in       # pinned: scikit-fda==0.10.1, pytest-benchmark==5.3.0
+    requirements.lock     # uv pip compile output (exact, reproducible)
+    bench_fpca.py         # pytest-benchmark: FPCA
+    bench_smoothing.py    # pytest-benchmark: B-spline smoothing
+    bench_depth.py        # pytest-benchmark: depth measures
+    bench_elastic.py      # pytest-benchmark: elastic alignment (Fisher-Rao)
+    bench_regression.py   # pytest-benchmark: scalar-on-function regression
+    shared_data.py        # shared N×M synthetic dataset generation (matches Rust generators)
+  R/
+    install_deps.R        # install bench, microbenchmark, jsonlite, fda, fda.usc, refund, fdapace, roahd
+    renv.lock             # renv::snapshot() output
+    run_benchmarks.R      # bench::mark() for all R FDA operations, writes JSON
+    shared_data.R         # matching synthetic dataset generation
+  results/
+    .gitkeep              # empty; results are generated artifacts, not committed
+  env_template.json       # schema for the captured environment record
+```
+
+The `results/` directory is excluded from git (`.gitignore`). The `python/requirements.lock` and `R/renv.lock` files ARE committed — they are the reproducibility guarantee.
+
+---
+
+## Rust-Side Profiling Workflow (Optimization Pass)
+
+The optimization pass does not add Cargo dependencies. The workflow is:
+
+1. **Identify candidate**: Run `cargo bench --features linalg,parallel` and compare criterion medians against the cross-language baseline. The elastic O(N²·M²) path in `alignment/` is the known anchor target.
+
+2. **Profile**: `cargo install flamegraph` (one-time), then:
+   ```bash
+   sudo sysctl -w kernel.perf_event_paranoid=1
+   TMPDIR=/home/simonm/.cache/fdars-bench-tmp \
+     cargo flamegraph --features linalg,parallel \
+       --bench alignment_benchmarks -- --bench elastic_align_pair
+   ```
+   Output: `flamegraph.svg` in the project root.
+
+3. **Optimize**: Edit `fdars-core/src/` only. The existing column-major `FdMatrix` layout, `iter_maybe_parallel!` macro, and `linalg::cholesky_solve` are the reuse targets. No new crate dependency.
+
+4. **Verify**: Full test suite must stay green: `cargo test --features linalg,parallel`. Then `cargo bench` before vs. after within criterion — criterion's built-in comparison mode flags regressions automatically.
+
+5. **Re-run harness**: Run `benchmarks/run_all.py` after the optimization to produce the final before/after cross-language numbers.
+
+---
+
+## Version Compatibility Notes
 
 | Package | Version | Compatibility Notes |
 |---------|---------|---------------------|
-| nalgebra | 0.33 | Provides eigenstructure via `pace_fpca.rs`; not directly called by FOptDes |
-| `linalg::cholesky_solve` | always available (no feature gate) | Stable since the function was added; `cholesky_factor` + `cholesky_forward_back` are `pub(crate)` in `src/linalg.rs` |
-| `helpers::simpsons_weights` | always available | Stable since `src/helpers.rs` was first added; used project-wide |
-| `helpers::linear_interp` | always available | Stable; used in `pace_fpca.rs:457` |
-| Rust MSRV | 1.81 | No change — FOptDes uses only features stable on 1.81 |
+| criterion | 0.5 (existing) | Uses `html_reports` feature; `estimates.json` schema stable since 0.4; `sample.json` contains raw nanosecond values |
+| scikit-fda | 0.10.1 | Requires numpy ≥ 1.24, scipy ≥ 1.9, scikit-learn ≥ 1.2; FisherRaoElasticRegistration API stable since 0.9 |
+| pytest-benchmark | 5.3.0 | Requires pytest ≥ 7; JSON schema stable since 3.x; `--benchmark-json` flag present since 3.0 |
+| pyperf | 2.10.0 | Optional fallback; JSON schema stable; not used in primary harness |
+| bench (R) | 1.1.4 | Requires R ≥ 4.0; tibble ≥ 3.2.1; `mem_alloc` column present since 1.1.0 |
+| microbenchmark (R) | 1.5.0 | No R version minimum beyond base; stable since 1.4.x |
+| renv (R) | ≥ 1.0 | renv.lock format changed between 0.x and 1.x — use 1.x format only |
+| uv | ≥ 0.4 | requirements.lock format stable; `uv pip compile` + `uv pip sync` workflow compatible with standard pip |
+| Rust MSRV | 1.81 | No change — optimization pass uses only existing stable APIs |
 
 ---
 
 ## Sources
 
-- fdapace 0.5.9 `R/FOptDes.R` — function signature, return values, ridge CV, criterion dispatch — fetched via rdrr.io — HIGH confidence (authoritative source, direct code read)
-- fdapace 0.5.9 `R/BestDes_TR.R` — `TRCri` matrix formula, greedy sequential algorithm, criterion computation — fetched via rdrr.io — HIGH confidence (authoritative source, direct code read)
-- fdapace 0.5.9 `R/BestDes_SR.R` — `SRCri` formula, scalar-response / A-optimality criterion, greedy algorithm — fetched via rdrr.io — HIGH confidence (authoritative source, direct code read)
-- Ji & Müller (2017) arXiv:1604.05375 (ar5iv HTML) — mathematical formulation of B(X(t)|U), prediction error variance, R²_X criterion, sequential selection rationale — extracted via WebFetch — MEDIUM confidence (HTML render of arxiv paper, formulas partially prose-described; cross-checked against fdapace source = HIGH-verified)
-- fdapace CRAN refman — `FOptDes` function signature and return values — https://cran.r-project.org/web/packages/fdapace/refman/fdapace.html — HIGH confidence (official CRAN documentation)
-- fdars-core/src/pace_fpca.rs — confirmed `PaceFpcaResult` fields (eigenvalues, eigenfunctions, sigma2, argvals, ncomp), `cholesky_solve` call signature, `linear_interp` usage pattern, `iter_maybe_parallel!` usage, ridge-retry logic — HIGH confidence (direct codebase read)
-- fdars-core/src/linalg.rs — confirmed `cholesky_solve(a, b, p)`, `cholesky_factor(a, p)`, `cholesky_forward_back(l, b, p)` are `pub(crate)`, always available (no feature gate), correct for row-major SPD inputs — HIGH confidence (direct codebase read)
-- fdars-core/src/helpers.rs — confirmed `simpsons_weights(argvals) -> Vec<f64>` and `linear_interp` signatures — HIGH confidence (direct codebase read)
-- fdars-core/Cargo.toml — confirmed MSRV = "1.81", nalgebra 0.33, `linalg` feature gates faer 0.23 (requires Rust 1.84), `parallel` feature gates rayon 1.10 — HIGH confidence (direct file read)
+- pytest-benchmark readthedocs (5.3.0) — version, `--benchmark-json` format, timing mechanics — web search result — MEDIUM confidence
+- pyperf readthedocs (2.10.0) — multi-process isolation, JSON output — web search result — MEDIUM confidence
+- asv readthedocs (0.6.5) — JSON result storage, per-machine tracking — web search result — MEDIUM confidence (ruled out for this use case)
+- scikit-fda readthedocs (0.10.1) — API surface (FPCA, smoothing, depth, elastic registration) — web search + direct install verification in `.planning/research/skfda-verify/version.txt` — MEDIUM confidence (verified at runtime)
+- R microbenchmark CRAN (1.5.0) — timing mechanics, nanosecond precision, OS-specific timers — web search result — MEDIUM confidence
+- R bench CRAN (1.1.4) — tibble output format, mem_alloc tracking — web search result — MEDIUM confidence
+- Intel/OpenBLAS threading docs — `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, `OMP_NUM_THREADS`, `MKL_DYNAMIC` — web search result — MEDIUM confidence
+- cargo-flamegraph GitHub (flamegraph-rs/flamegraph) — installation, perf wrapping, `--no-rosegment` requirement for lld/mold — web search result — MEDIUM confidence
+- dhat-rs (nnethercote/dhat-rs, 0.3.2) — heap profiling, dev-dependency usage — web search result — MEDIUM confidence (ruled out: violates no-new-Cargo-dep constraint)
+- criterion.rs docs / bheisler.github.io — `estimates.json` internal format, `cargo-criterion --message-format=json` stable API — web search result — MEDIUM confidence
+- `fdars-core/Cargo.toml` — criterion 0.5 existing dev-dep, MSRV 1.81, feature flags — direct codebase read — HIGH confidence
+- `fdars-core/benches/alignment_benchmarks.rs`, `perf_hotpaths.rs` — existing bench structure, TMPDIR workaround, `--features linalg,parallel` invocation — direct codebase read — HIGH confidence
+- `validation/R/install_deps.R` — existing R packages (fda, fda.usc, roahd, fdasrvf, jsonlite already installed) — direct codebase read — HIGH confidence
+- `.planning/research/skfda-verify/version.txt` — scikit-fda 0.10.1 confirmed installed and working in existing venv — direct file read — HIGH confidence
+- uv documentation — `uv pip compile` / `uv pip sync` lock workflow — web search result — MEDIUM confidence
+- renv documentation — `renv::snapshot()` lockfile format, 1.x API — web search result — MEDIUM confidence
 
 ---
 
-*Stack research for: v0.35.0 Optimal Experimental Design for Sparse FDA (FOptDes) in fdars-core*
-*Researched: 2026-09-02*
+*Stack research for: v0.47.0 cross-language FDA benchmark harness (Rust/Python/R) + behavior-preserving Rust optimization pass*
+*Researched: 2026-09-19*

@@ -1,597 +1,469 @@
 # Pitfalls Research
 
-**Domain:** Optimal Experimental Design on PACE/BLUP sparse-FDA model (FOptDes) — Rust numerical FDA library (fdars-core v0.35.0)
-**Researched:** 2026-09-02
-**Confidence:** HIGH
+**Domain:** Cross-language numerical benchmarking (fdars-core vs scikit-fda vs R FDA packages) + behavior-preserving Rust optimization pass — v0.47.0
+**Researched:** 2026-09-19
+**Confidence:** HIGH (project-specific patterns from codebase analysis + MEDIUM-verified web findings cross-checked against fdars constraints)
 
 ---
 
-## Critical Pitfalls
+## Critical Pitfalls — Part A: Cross-Language Benchmarking
 
-### Pitfall 1: Wrong Σ_yi Assembly — Missing σ² Ridge or Misidentifying Who Carries Noise
+### Pitfall A1: Measuring Python Cold-Start / Import Overhead Instead of Algorithm Compute
 
 **What goes wrong:**
-The observation covariance matrix for curve i at selected points S is:
+A Python benchmark script that imports `scikit-fda`, `numpy`, and `scipy` at the top and then times a single call to `FPCA().fit(data)` is measuring: module import time (~50–500ms depending on environment), NumPy BLAS library loading, C-extension initialization, and potentially JIT compilation of Numba/Cython paths — all folded into the "algorithm time". The result looks slow not because scikit-fda's FPCA is slow but because Python startup is slow.
 
-```
-Σ_yi = Φ_S diag(λ) Φ_Sᵀ + σ²I_{|S|}
-```
-
-where Φ_S is |S|×K (eigenfunctions at selected times), λ is the K-vector of eigenvalues, and σ²
-is the scalar measurement-error variance. Two common errors:
-
-1. **Omitting σ²I entirely** — Σ_yi becomes rank-at-most-K (singular for |S| > K). Cholesky
-   fails. Prediction intervals collapse to zero. The Woodbury/Schur update formula blows up.
-
-2. **Adding σ² to the full covariance surface before calling this formula** — double-counting.
-   `pace_fpca.rs` comments explicitly warn: "Do NOT subtract σ² from the surface before
-   eigendecomposition — σ² enters only as the ridge term σ²I in Σ_yi." The same discipline
-   must hold here: eigenvalues λ and eigenfunctions Φ come from the PACE eigendecomposition of
-   the *smoothed* covariance (which already absorbed σ²); only the per-curve Σ_yi for the
-   design problem gets the +σ²I ridge.
-
-3. **Using the work-grid covariance matrix (m×m) instead of the observation covariance** — the
-   full m×m matrix is never assembled for the design step; only the |S|×|S| block at candidate
-   points is needed.
+Concretely: `time.perf_counter()` around a single `fit()` call in a fresh process captures all of the above. Reported time may be 10–100x the actual compute time for small-to-medium datasets.
 
 **Why it happens:**
-Developers conflate the PACE covariance surface (m×m smoothed bivariate covariance from
-`cov_irreg`) with the per-design-point covariance Σ_yi needed for BLUP/optimal-design math.
-The PACE paper uses consistent notation but the two matrices serve different roles.
+Developers write the benchmark as a script that runs once, matching how they'd time a Rust `cargo run` call. But CPython has no JIT; every import runs interpreter code. The first call to any NumPy/scipy function also triggers BLAS thread pool initialization.
 
 **How to avoid:**
-- Copy the exact Σ_yi assembly from `pace_fpca.rs` lines 461–474: build Φ_S as |S|×K by
-  interpolating eigenfunctions at candidate times, then `Σ_S[row,col] = Σ_k φ_k(t_row) λ_k
-  φ_k(t_col)` plus δ_{row,col} σ²`.
-- Assert `sigma2 > 0` at the start of every design-criterion function (same guard as
-  `PaceFpcaConfig.sigma2` validation).
-- Add a test: with 1 design point and 1 eigenfunction, Σ_yi = λ φ(t)² + σ² is a scalar;
-  verify against hand-computed value.
+- Use `timeit` or `pytest-benchmark` / `pyperf` with explicit warm-up iterations before recording. Minimum: 3–5 warm-up executions per benchmark.
+- Separate import from compute: import all libraries at module load time, then time only the algorithm call.
+- Alternatively run each benchmark in a loop of at least 10 iterations and report the minimum (not mean) of the non-first iterations.
+- For R: `bench::mark()` already runs a garbage-collect + warm-up loop; `system.time()` on a single call does not — never use bare `system.time()` for cross-language comparison.
+- Capture Python and R `VERSION` strings in the environment record; cold-start overhead varies by Python version.
 
 **Warning signs:**
-- Cholesky fails immediately when |S| > K (singular Σ_yi without σ²I).
-- Predicted score variance is negative or the criterion is non-monotone as points are added.
-- `ComputationFailed` Cholesky errors on valid, non-degenerate inputs.
+- Python timings for small operations (N=50 curves, M=100 points) are >10ms — almost certainly measuring startup, not compute.
+- Running the same benchmark twice in the same process gives times that differ by more than 2x on the first vs second call.
+- Total benchmark wallclock time is dominated by a single initial call.
 
-**Phase to address:** Phase 64 (core criterion evaluation — design-criterion function). Gate:
-verify Σ_yi values numerically against hand-computed formula for a 2-eigenfunction synthetic.
-
----
-
-### Pitfall 2: Score Posterior Covariance — Inverting the Wrong Matrix
-
-**What goes wrong:**
-The posterior covariance of scores given selected observations Y_S is:
-
-```
-Cov(ξ | Y_S) = (diag(1/λ) + σ⁻² Φ_Sᵀ Φ_S)⁻¹
-```
-
-This p×p matrix (p = ncomp) is cheap to invert for p ≤ 20. Two common errors:
-
-1. **Forgetting the prior term `diag(1/λ)`** — the matrix becomes σ⁻² Φ_Sᵀ Φ_S, which is rank
-   ≤ |S|. When |S| < K, it is singular. Even when |S| ≥ K, omitting the prior produces the
-   wrong formula (equivalent to uniform/improper prior on scores instead of the PACE Gaussian
-   prior).
-
-2. **Using the Woodbury identity in the wrong direction** — computing `Σ_yi^{-1}` via p×p
-   inversion is correct (Woodbury on the large n_i×n_i matrix), but some implementations
-   instead work with the big matrix and pay O(|S|³) per candidate. At |S| = m (work-grid
-   size, up to 51+ points), this is up to 1000× more expensive than the p×p version.
-
-3. **Recomputing from scratch vs. rank-1 update** — the greedy loop adds one point at a time.
-   If you recompute the full p×p inverse at each step by Cholesky-solving the p×p system, it
-   costs O(G · K³) per greedy step where G = number of candidates. If you instead track the
-   *running p×p matrix* M_S = diag(1/λ) + σ⁻² Φ_Sᵀ Φ_S and do rank-1 updates
-   `M_{S∪{t}} = M_S + σ⁻² φ(t) φ(t)ᵀ`, each update is O(K²) and the new inverse follows
-   from the Sherman-Morrison formula in O(K²) as well. This is the efficient path but
-   correctness must be proven first.
-
-**Why it happens:**
-The Woodbury/matrix-inversion lemma has two equivalent forms; picking the wrong one (or forgetting
-the prior) silently produces a plausible-looking but incorrect matrix. No compile-time error flags
-this.
-
-**How to avoid:**
-- Implement score-posterior covariance as the straightforward p×p Cholesky solve first:
-  assemble `M = diag(1/λ) + σ⁻² Φ_Sᵀ Φ_S`, then invert via Cholesky. Verify against
-  the brute-force `Σ_yi^{-1}` Woodbury expansion on a 2-eigenfunction test case.
-- Known-answer check: with |S| = 0 (no observations), `Cov(ξ | ∅) = diag(λ)` (prior only);
-  verify the formula degenerates correctly (M = diag(1/λ), M^{-1} = diag(λ)).
-- Add rank-1 Sherman-Morrison update only after the brute-force version passes all tests,
-  with a side-by-side comparison assertion in tests.
-
-**Warning signs:**
-- A-optimality (trace of posterior covariance) *increases* when a point is added — this means
-  the formula is wrong (the trace must never increase; each new observation can only reduce or
-  maintain the posterior variance).
-- Posterior covariance is not positive definite (eigenvalues ≤ 0) even with reasonable inputs.
-- Score posterior variance equals prior variance diag(λ) even after adding points — omitted
-  Φ_Sᵀ Φ_S term.
-
-**Phase to address:** Phase 64 (core criterion evaluation). Gate: monotone-decrease assertion
-on A-optimality trace; known-answer tests for |S|=0 and |S|=1 with analytic ground truth.
+**Phase to address:** Harness-setup phase (Phase 112). Gate: verify first-call vs steady-state difference is < 5% before recording any data point.
 
 ---
 
-### Pitfall 3: Integrated Prediction Variance — Missing Quadrature Weights or Mean Term
+### Pitfall A2: BLAS / OpenMP Thread-Count Mismatch Making Comparisons Unfair
 
 **What goes wrong:**
-The trajectory-reconstruction criterion is the integrated BLUP prediction MSE:
+`numpy` linked against OpenBLAS or MKL auto-detects the number of CPU cores at startup and uses all of them for BLAS operations (matrix multiply, SVD, Cholesky). A 16-core machine will run `np.linalg.svd()` on 16 threads while fdars-core (using nalgebra, which has no BLAS dependency) runs on 1 thread. The benchmark will show Python FPCA 8–16x faster than Rust, which is not a fair comparison of algorithm efficiency.
 
-```
-MSE(S) = ∫ Var(x̂(t) - x(t)) dt ≈ Σ_j w_j · Var(x̂(t_j) - x(t_j))
-```
-
-where w_j are the Simpson weights from `helpers::simpsons_weights` over the work grid, and the
-pointwise prediction variance is:
-
-```
-Var(x̂(t_j) - x(t_j)) = φ(t_j)ᵀ Ω_S φ(t_j)
-```
-
-with Ω_S = Cov(ξ | Y_S) the posterior score covariance (pitfall 2). Three common errors:
-
-1. **Summing without weights** — `Σ_j Var(x̂(t_j))` instead of `Σ_j w_j · Var(x̂(t_j))`.
-   Produces the wrong value for non-uniform grids and fails to approximate the integral
-   for non-uniform work grids. Even for uniform grids, the result is off by a constant factor
-   equal to the grid spacing.
-
-2. **Omitting the mean-function term** — the BLUP prediction variance includes both score
-   uncertainty (through Ω_S) and any residual measurement noise not captured in the model.
-   In the PACE framework the correct integrated prediction variance is the weighted integral
-   of φ(t_j)ᵀ Ω_S φ(t_j), which already accounts for the full covariance structure via Ω_S.
-   If Ω_S is computed incorrectly (e.g., missing σ²I in Σ_yi), the integrated variance is
-   also wrong.
-
-3. **Not squaring the eigenfunction values** — computing `Σ_k Ω_S[k,k] φ_k(t_j)` (linear
-   combination) instead of `Σ_{k,l} Ω_S[k,l] φ_k(t_j) φ_l(t_j)` (quadratic form). The
-   off-diagonal terms of Ω_S are nonzero in general and must be included. This is the same
-   pattern as the confidence-band variance in `pace_fpca.rs` lines 562–576 — mirror that code.
+The reverse also kills credibility: if fdars-core uses rayon with `--features parallel` but Python is pinned to 1 thread, fdars looks unfairly fast.
 
 **Why it happens:**
-Developers prototype with unweighted sums (simpler loop), then forget to add weights. The
-missing-weights version gives results that look numerically plausible but are dimensionally
-incorrect (units off by argvals-range / m).
+BLAS thread-count defaults are invisible — no warning is printed and the environment variable is not documented in the benchmarking README. The benchmark author sees a number, records it, and publishes it.
 
 **How to avoid:**
-- Always call `simpsons_weights(&pace_result.argvals)` and store the result; never use a
-  uniform weight of `1.0` or `1.0/m`.
-- Mirror the confidence-band quadratic form in `pace_fpca.rs` exactly for the Ω_S quadratic
-  form — the code structure is identical.
-- Known-answer test: for a single-eigenfunction model with φ(t) = √2 sin(πt) on [0,1], the
-  prior integrated variance = λ · ∫ φ²(t) dt = λ · 1.0 (by L² orthonormality). With
-  Simpson weights on a 51-point grid, the integral should be ≈ 1.0 to within 1e-6. Adding
-  one observation at t* reduces it by λ² φ(t*)² / (λ φ(t*)² + σ²). Verify both against
-  analytic answers.
-
-**Warning signs:**
-- Integrated MSE for |S|=0 is not equal to `Σ_k λ_k` (total prior variance) when computed
-  correctly. (With Simpson weights on [0,1] and L²-orthonormal eigenfunctions, this identity
-  holds exactly in theory.)
-- Criterion value is proportional to m (grid size) instead of being grid-size–invariant.
-- Criterion does not converge as m increases.
-
-**Phase to address:** Phase 64 (core criterion evaluation). Gate: identity check
-`MSE(∅) ≈ Σ_k λ_k` on a synthetic 2-eigenfunction dataset with orthonormal eigenfunctions.
-
----
-
-### Pitfall 4: Optimality-Sign Convention — Criterion Must Non-Increase as Points Are Added
-
-**What goes wrong:**
-Both A-optimality (trace of posterior covariance) and D-optimality (log-det of posterior
-covariance) must **decrease or stay flat** as design points are added — more information always
-reduces or maintains posterior uncertainty. In the greedy loop, the algorithm selects the point
-that **minimizes** the criterion. Two sign errors:
-
-1. **D-optimality sign flip** — `log det Cov(ξ|Y_S)` is always ≤ 0 (since all eigenvalues of
-   the posterior covariance are ≤ the prior eigenvalues λ_k ≤ some λ_max). Implementing
-   `+det` instead of `-log det`, or forgetting that minimizing log-det *increases* information
-   (D-optimal is max-det *information*, min-det *covariance*). The correct objective to
-   *minimize* is `log det Cov(ξ|Y_S)` (equivalently `-log det I(S)` where I is the
-   information matrix). Greedy *minimization* of this quantity is correct.
-
-2. **Monotonicity failure** — if the objective ever increases when a new point is selected, the
-   implementation has a bug. The mathematical property is: adding a point to S can only reduce
-   or maintain `trace Cov(ξ|Y_{S∪{t}}) ≤ trace Cov(ξ|Y_S)` and
-   `log det Cov(ξ|Y_{S∪{t}}) ≤ log det Cov(ξ|Y_S)` because the posterior covariance is a
-   decreasing-in-information semidefinite sequence.
-
-3. **Treating "larger = better" criterion as minimization** — some formulations express
-   D-optimality as maximizing the information (det of Fisher matrix). When translating from
-   such a reference, forgetting to negate produces a maximizer in the greedy loop, which
-   selects the *worst* point at each step.
-
-**Why it happens:**
-D-optimality is expressed inconsistently across references — some maximize log-det information,
-some minimize log-det covariance. The sign convention is easy to flip when adapting formulae
-from different papers.
-
-**How to avoid:**
-- Define a single `DesignCriterion` enum: `AOpt` (minimize trace Cov) and `DOpt` (minimize
-  log-det Cov). Both are minimized by the greedy loop.
-- Add a monotone-decrease assertion as a test: run greedy selection for K+1 steps on a
-  synthetic dataset and assert `criterion[k+1] <= criterion[k] + 1e-12` for all k.
-- For D-optimality, verify: with |S|=0, log-det = Σ_k log λ_k. With |S|=m (full grid),
-  log-det approaches -∞ as σ²→0. Always log-det ≤ log-det at previous step.
-
-**Warning signs:**
-- Any greedy step produces `criterion[k+1] > criterion[k]`.
-- With many design points, A-optimality criterion stays at the prior value (Σ_k λ_k).
-- D-optimality criterion is positive (would require all posterior eigenvalues > 1).
-
-**Phase to address:** Phase 64 (core criterion evaluation) and Phase 65 (greedy selection
-loop). Gate: monotone-decrease test on a 2-eigenfunction synthetic with both AOpt and DOpt.
-
----
-
-### Pitfall 5: Near-Duplicate Candidate Points and σ²→0 — Rank Deficiency in Σ_yi
-
-**What goes wrong:**
-When two candidate points t_a ≈ t_b are both in the selected set S, the rows of Φ_S become
-nearly identical (φ_k(t_a) ≈ φ_k(t_b) by continuity of eigenfunctions). Σ_yi becomes
-nearly singular — its smallest eigenvalue approaches σ², and the Cholesky factorization either
-fails or is numerically unreliable. Two related failure modes:
-
-1. **Collinear candidates from a fine candidate grid** — if the candidate set is the full work
-   grid (51+ evenly spaced points), consecutive candidates at spacing h ≈ 0.02 may produce
-   near-duplicate eigenfunction rows. The PACE ridge stabilization in `pace_fpca.rs` (1e-8
-   retry) guards against this but the retry is a safety net, not a design choice.
-
-2. **σ²→0 with exact duplicates** — if σ² is very small (e.g., 1e-6) and candidates include
-   exact work-grid duplicates, the diagonal of Σ_yi is dominated by the low-rank part
-   Φ_S diag(λ) Φ_Sᵀ and the ridge is invisible. The Cholesky encounters a near-zero diagonal
-   and returns ComputationFailed.
-
-**Why it happens:**
-The candidate set is often taken as the work grid for convenience, making consecutive selections
-inherently close. σ² is sometimes set small for "near-noiseless" scenarios, inadvertently
-removing the only regularization.
-
-**How to avoid:**
-- **Do not allow duplicate candidate times in S.** Track selected indices; exclude already-
-  selected candidates from the greedy search at each step.
-- **Validate σ² > minimum floor** (e.g., 1e-8) at the design entry point — mirror the
-  `pace_fpca.rs` validation which requires `sigma2 > 0` strictly.
-- **Carry the same ridge-retry logic** from `pace_fpca.rs` (add 1e-8 and retry once) into
-  the criterion evaluation function, not just the BLUP solve.
-- **Thin candidate grids** when the work grid is fine: take every other point, or allow the
-  caller to supply a coarser candidate set.
-
-**Warning signs:**
-- Cholesky fails for small σ² (< 1e-4) even for valid well-separated design points.
-- Greedy loop selects the same or adjacent time point twice.
-- Criterion does not improve after several steps despite valid starting conditions.
-
-**Phase to address:** Phase 64 (criterion evaluation — ridge-retry) and Phase 65 (greedy
-loop — duplicate exclusion). Gate: run greedy selection for m steps (full grid) and assert
-no index appears twice; verify Cholesky succeeds for σ² = 1e-4 on a 2-eigenfunction synthetic.
-
----
-
-### Pitfall 6: Eigenfunctions at Candidate Points — Interpolation vs. Work-Grid Access
-
-**What goes wrong:**
-`PaceFpcaResult.eigenfunctions` is an m×K `FdMatrix` storing eigenfunction values on the
-**work grid** only (at indices 0..m-1 corresponding to `pace_result.argvals[0..m-1]`). A
-candidate point t* from a user-supplied set may not lie exactly on the work grid.
-
-Two errors:
-
-1. **Direct index access instead of interpolation** — indexing `eigenfunctions[(j, k)]` where
-   `j` is an integer index into the work grid, then treating the grid index as if it were a
-   continuous time point. If the caller supplies candidate times that are off-grid, there is
-   no corresponding index.
-
-2. **Linear interpolation beyond the grid range** — `helpers::linear_interp` clamps or
-   extrapolates; candidate times outside `[argvals[0], argvals[m-1]]` produce undefined
-   extrapolated values that can be arbitrarily wrong.
-
-**Why it happens:**
-The prototype uses the work grid itself as the candidate set (integer indices 0..m-1), so
-direct array access works. When the API is later generalized to accept arbitrary candidate
-times, the same index-based access silently returns wrong values.
-
-**How to avoid:**
-- In the canonical design API, accept candidate times as `&[f64]` and interpolate
-  eigenfunctions at each candidate via `helpers::linear_interp(&pace_result.argvals,
-  &ef_col, t_candidate)` — exactly the pattern in `pace_fpca.rs` line 457.
-- Validate that all candidate times lie within the work grid range; return
-  `FdarError::InvalidParameter` for out-of-range candidates.
-- When candidates *are* the work grid, take the fast path: extract the column directly
-  from `eigenfunctions.column(k)` without interpolation. Document this optimization clearly.
-
-**Warning signs:**
-- Design criterion computed from integer indices produces wrong values when candidate set
-  is a rescaled grid (e.g., [0.0, 0.1, 0.2] vs. work grid [0.0, 0.02, 0.04, ...]).
-- Off-grid candidate times silently return extrapolated eigenfunction values.
-
-**Phase to address:** Phase 64 (criterion evaluation). Gate: compute criterion for a
-candidate set that is a strict *subset* of the work grid (off-grid relative to a coarser
-index space) and verify eigenfunctions are correctly interpolated.
-
----
-
-### Pitfall 7: Greedy Argmin Determinism — Ties Must Break Deterministically
-
-**What goes wrong:**
-When two or more candidate points yield the same (or numerically indistinguishable) criterion
-value, the greedy selection is ambiguous. If the tie-breaking relies on iteration order of a
-HashMap, parallel rayon iteration order, or float comparison instability, the selected design
-is non-deterministic across runs or platforms.
-
-Two failure modes:
-
-1. **Parallel candidate sweep with rayon** — `iter_maybe_parallel!(candidates).map(...)
-   .min_by(...)` with rayon does not guarantee which tied minimum is returned; the result
-   depends on thread scheduling. This violates `pace_fpca.rs`'s determinism test pattern.
-
-2. **Float equality without tolerance** — two candidates may produce criterion values that
-   differ by 1e-16 due to floating-point ordering of operations. A strict `<` comparison
-   picks whichever appears first in a sequential sweep; this *is* deterministic but brittle —
-   a minor refactor of the inner loop can silently reorder candidates.
-
-**Why it happens:**
-Developers parallelize the candidate sweep for speed and forget that `min_by` over a parallel
-iterator is not stable. The problem may not appear in tests (which use small grids where ties
-are unlikely) but surfaces in production with many candidates.
-
-**How to avoid:**
-- **Sequential sweep first.** In Phase 65, implement the greedy candidate sweep sequentially
-  (not via rayon). Use `Iterator::enumerate().min_by(...)` on a sorted candidate list; ties
-  break by index (lower index wins). This is deterministic and fast for K ≤ 51 candidates.
-- **Parallelize only the criterion evaluation**, not the argmin. Collect all criterion values
-  into a `Vec`, then take the sequential `argmin` with index tie-breaking.
-- **Add a determinism test** (mirror `test_determinism` from `pace_fpca.rs`): run
-  `greedy_design(...)` twice on the same inputs; assert the selected point sequences are
-  identical via `assert_eq!`.
-- **Document** that parallel feature does not change the selected design, only the evaluation
-  speed.
-
-**Warning signs:**
-- Selected design differs between two identical calls in the parallel build.
-- Design test fails intermittently with different selected point orderings.
-- `cargo test -- --test-threads=1` passes while `cargo test` fails (thread-scheduling flakiness).
-
-**Phase to address:** Phase 65 (greedy selection). Gate: determinism assertion on identical
-inputs; verify greedy output is identical with and without `--features parallel`.
-
----
-
-### Pitfall 8: Greedy O(G·p·cost) Blowup — Correctness First, Then Efficiency
-
-**What goes wrong:**
-The greedy loop evaluates the design criterion at each of G candidate points for each of
-n_select greedy steps. If the criterion re-assembles Σ_yi from scratch at each evaluation,
-total cost is O(n_select · G · |S|²·K + K³). For G = 51, K = 5, n_select = 10, this is
-fully manageable (seconds). But if the candidate grid is large (G = 1000, K = 20,
-n_select = 50), naive re-evaluation becomes a bottleneck — and the temptation is to cache
-the intermediate matrices incorrectly.
-
-Two failure modes:
-
-1. **Incorrectly caching the Cholesky factor of Σ_yi across candidates** — Σ_yi depends on
-   which points S are selected, not the candidate being evaluated. The same Σ_yi is valid
-   for all G candidates at a given greedy step (since S is fixed at that step). Caching
-   across *greedy steps* is wrong; caching across *candidates within one step* is correct.
-
-2. **Implementing the rank-1 Sherman-Morrison update before the brute-force version is
-   verified** — the update formula is more complex and easy to get wrong. A subtle sign error
-   in the rank-1 update produces plausible-looking but wrong posterior covariances.
-
-**Why it happens:**
-Performance anxiety drives optimization before correctness. The PACE `pace_fpca.rs` comment
-structure is a guide: correctness first, then optimization, each with benchmark evidence.
-
-**How to avoid:**
-- **Milestone discipline:** implement correctness-first brute-force in Phase 64; benchmark
-  in Phase 65 if needed; add rank-1 updates only if benchmark shows a hotspot with G > 200.
-- **The correct caching structure:** at each greedy step, pre-compute `M_S =
-  diag(1/λ) + σ⁻² Φ_Sᵀ Φ_S` once (K×K), then evaluate the criterion for each candidate t*
-  as a rank-1 update `M_{S∪{t*}} = M_S + σ⁻² φ(t*)φ(t*)ᵀ` without mutating M_S. This is
-  already O(K²) per candidate — fast enough for K ≤ 20, G ≤ 1000.
-- **Add a `#[must_use]` annotation** on the criterion function so the compiler warns if the
-  result is discarded in a loop (a subtle correctness check).
-
-**Warning signs:**
-- Criterion values at step k+1 are identical to step k (M_S was mutated instead of copied).
-- Benchmarks show that criterion evaluation scales as O(G²) rather than O(G·K²).
-
-**Phase to address:** Phase 64 (correctness) and Phase 65 (greedy — only optimize if
-benchmark evidence warrants).
-
----
-
-## Codebase Integration Pitfalls
-
-### Pitfall 9: Additive/Non-Breaking Constraint — R and WASM Bindings + 28 Examples
-
-**What goes wrong:**
-FOptDes is a new top-level module (`optimal_design.rs` or `optimal_design/`), but any change
-to re-exports in `src/lib.rs` or `src/prelude.rs` can break R bindings, WASM/JS bindings,
-or the 28 `[[example]]` entries if existing public names are shadowed, removed, or
-their signatures changed.
-
-Specific risks:
-- Adding a `use pace_fpca::PaceFpcaResult` re-export that conflicts with an existing
-  `use crate::pace_fpca::PaceFpcaResult` in calling code.
-- Changing `PaceFpcaResult` to add fields (breaks `#[non_exhaustive]`-based struct-update
-  syntax in callers — though `#[non_exhaustive]` already prevents callers from constructing
-  it, so *reading* new fields is safe).
-- Adding a function name that collides with an existing name in `prelude.rs`.
-
-**Why it happens:**
-Milestone-v0.35.0 adds real code and a crates.io publish (unlike audit milestones). Every
-lib.rs edit risks a public-API change.
-
-**How to avoid:**
-- Add `pub mod optimal_design;` and `pub use optimal_design::{...};` in `lib.rs`; never
-  modify or remove existing re-exports.
-- Run `cargo test -p fdars-core --features linalg` — all 28 examples and existing tests must
-  still compile and pass.
-- Check `cargo doc --features linalg` builds without errors (doc tests cover re-export
-  consistency).
-- Confirm no name collision: `grep -r "optimal_design\|foptdes\|greedy_design" fdars-core/src/`
-  before choosing function names.
-
-**Warning signs:**
-- Any existing doc-test fails after adding the new module.
-- `cargo test --examples` fails on an example unrelated to FOptDes.
-
-**Phase to address:** Every phase (Phase 64, 65 both). Gate: run the full test suite including
-`--examples` before committing each phase.
-
----
-
-### Pitfall 10: Column-Major FdMatrix Indexing — Row vs. Column Off-by-One
-
-**What goes wrong:**
-`FdMatrix` uses column-major layout: `element (row, col)` is at flat index `row + col * nrows`.
-The eigenfunctions matrix is `m × K` (m rows = work-grid points, K columns = components).
-Accessing eigenfunctions as if they were row-major produces transposed data.
-
-In `pace_fpca.rs`, the eigenfunctions are accessed as `eigenfunctions[(j, k)]` where `j` is
-the work-grid index and `k` is the component. The FOptDes code must use the same convention.
-
-Specific mistake: building Φ_S as a local K×|S| matrix in *row-major* order (Rust's natural
-`Vec<Vec<f64>>` layout) and then multiplying it as if it were column-major. The matrix-vector
-product `Φ_S diag(λ) Φ_Sᵀ` gives the wrong result if Φ_S is transposed.
-
-**Why it happens:**
-Rust's `Vec<Vec<f64>>` is naturally row-major. When assembling a local matrix for the design
-problem, developers use `phi[k][j]` (component k, observation j) while the math uses
-`Φ_S[j,k]` (observation j, component k). The transposition silently computes
-`Φ_Sᵀ diag(λ) Φ_S` (K×K) instead of `Φ_S diag(λ) Φ_Sᵀ` (|S|×|S|).
-
-**How to avoid:**
-- Use the same local matrix layout as `pace_fpca.rs`: `phi_i[j * actual_ncomp + k]` (row-major,
-  observation index j is the outer loop, component k is the inner). When porting this layout
-  to FOptDes, `phi_s[j * K + k]` means "at design point j, component k".
-- For the Σ_yi assembly, mirror lines 461–474 of `pace_fpca.rs` verbatim and add a
-  `// FOptDes port of pace_fpca.rs:461-474` comment.
-- Add a shape-check assertion: for `|S|` design points and K components, Σ_yi must be |S|×|S|
-  (not K×K). If the assembled matrix has the wrong size, the Cholesky call fails with a
-  dimension error.
-
-**Warning signs:**
-- Σ_yi is K×K instead of |S|×|S| (wrong matrix assembled).
-- Criterion value is independent of σ² (transposed Φ_S drops the σ²I diagonal).
-- Criterion for |S|=1 is K² times the expected value (K×K instead of 1×1 sigma_yi).
-
-**Phase to address:** Phase 64 (criterion evaluation). Gate: shape-assertion test confirming
-Σ_yi is |S|×|S| for |S| in {1, 2, 5}.
-
----
-
-### Pitfall 11: `!Send` Concerns for Parallelizing the Candidate Sweep
-
-**What goes wrong:**
-`iter_maybe_parallel!` from `parallel.rs` uses rayon when the `parallel` feature is enabled.
-If the greedy candidate sweep is parallelized via this macro, any state shared across the
-closure must be `Send + Sync`.
-
-`PaceFpcaResult` derives `Clone` and contains only `Vec<f64>` and `FdMatrix` — both are
-`Send + Sync`. However, if the criterion closure captures a mutable reference (e.g., to a
-pre-computed matrix `M_S`) that is mutated per-candidate, the closure cannot be `Send`.
-
-The `FftPlanner` from `rustfft` (used in kshape.rs) is `!Send`. FOptDes does not use FFT,
-but if future refactoring moves any SBD/FFT helper into the candidate sweep, this breaks.
-
-The existing codebase's RNG concern (`StdRng::seed_from_u64(seed + k)`) is not relevant to
-FOptDes (no randomness needed in the greedy loop — the criterion is deterministic).
-
-**Why it happens:**
-Developers parallelize the candidate sweep with rayon for speed, then capture `&mut M_S` in
-the closure without noticing that mutable closure captures are not `Send`.
-
-**How to avoid:**
-- In the candidate sweep: compute `M_S` once (immutable, `Send`), then map over candidates
-  with closures that capture only immutable references to `M_S`. Each closure creates its
-  own `M_cand = M_S + σ⁻² φφᵀ` (a fresh local K×K copy) without mutating `M_S`.
-- Do not share mutable state across rayon worker closures — all per-candidate state must be
-  locally allocated.
-- Verify `Send` at compile time: the parallel build (`--features parallel`) must compile
-  without error. The `iter_maybe_parallel!` macro already requires the iterator items to be
-  `Send`.
-
-**Warning signs:**
-- `cargo build --features parallel` fails with "`M_S` cannot be shared between threads
-  safely" or "closure may outlive the current function".
-- Adding rayon causes test failures not present in the sequential build.
-
-**Phase to address:** Phase 65 (greedy loop). Gate: `cargo build --features parallel`
-passes; `cargo test --features parallel` passes.
-
----
-
-### Pitfall 12: CI Gate — `--all-targets --features linalg,parallel` and fmt Drift
-
-**What goes wrong:**
-CI runs `cargo clippy --all-targets --features linalg,parallel -- -D warnings`. "All targets"
-includes test code, bench code, and examples. A public function added to `optimal_design.rs`
-that is only used in tests may generate an unused-function warning in the main target but not
-in a plain `cargo clippy -p fdars-core`. The CI gate catches this; a local check without
-`--all-targets` misses it.
-
-The second CI hazard is fmt drift on `--no-verify` commits. `pace_fpca.rs` was committed with
-`--no-verify` in prior milestones (executor timeout); if the same happens here, CI's
-`cargo fmt --check` will fail even though clippy passes.
-
-**Why it happens:**
-Long fdars builds (executor subagent stall, documented in MEMORY.md) push developers toward
-`--no-verify` commits. `cargo fmt` is then skipped, leaving unformatted code.
-
-**How to avoid:**
-- Run `cargo fmt -p fdars-core` before every commit, even `--no-verify` ones.
-- Run the full CI gate locally before final commit:
+- Always set all BLAS thread-count environment variables before the Python/R process starts:
   ```bash
-  cargo fmt --check -p fdars-core
-  cargo clippy --all-targets --features linalg,parallel -- -D warnings
-  cargo test -p fdars-core --features linalg
+  export OMP_NUM_THREADS=1
+  export OPENBLAS_NUM_THREADS=1
+  export MKL_NUM_THREADS=1
+  export BLIS_NUM_THREADS=1
+  export NUMEXPR_NUM_THREADS=1
   ```
-- Do not add `#[allow(dead_code)]` on public items — make them actually public and used in
-  doc examples, which serves as both documentation and dead-code prevention.
+- For fdars: run benchmarks in two modes — (a) with `--features parallel` disabled (single-threaded), (b) with rayon and `RAYON_NUM_THREADS=1`, comparing against Python/R at 1 thread. Optionally add a multi-threaded comparison (all N threads vs all N threads) but label it clearly.
+- In R: `RhpcBLASctl::blas_set_num_threads(1)` or set the same env vars before starting R. R itself is single-threaded; the BLAS overhead matters for `fda`, `refund`, etc.
+- Record the thread counts used in the environment capture block of every benchmark result file.
+- Print `numpy.__config__.show()` and `sessionInfo()` (R) to record which BLAS library is linked.
 
 **Warning signs:**
-- CI fails on `fmt --check` but `clippy` passes locally.
-- Clippy warning about unused functions appears only in `--all-targets` mode.
+- Python SVD time scales inversely with core count but Rust time does not — BLAS threading is active.
+- Python benchmark time drops sharply when moving from `OMP_NUM_THREADS=1` to default — confirms multi-threading was the source.
+- `nproc` shows 16 cores and Python timings are suspiciously fast for SVD/FPCA.
 
-**Phase to address:** Both phases (64, 65). Gate: local CI gate before phase completion.
+**Phase to address:** Harness-setup phase. Gate: the harness README documents all thread-count env vars; each result JSON file includes a `thread_config` field.
 
 ---
 
-### Pitfall 13: /tmp and target/ Disk Pressure on Full Builds
+### Pitfall A3: Apples-to-Oranges Algorithm Variants (Different Convergence Tolerances, Smoothing, Basis Choices)
 
 **What goes wrong:**
-MEMORY.md records two disk-pressure failure modes specific to fdars:
+`FPCA` in scikit-fda uses B-spline smoothing with a configurable number of basis functions. `FPCA` in fdars-core uses Simpson's-weights integration on the raw data grid. The R `fda` package's `pca.fd()` uses functional objects with their own basis. All three implementations are called "FPCA" but compute different quantities unless carefully configured to match.
 
-1. **`/tmp` exhaustion blocks pre-commit hooks** — doc-test linkage uses a small `/tmp` tmpfs.
-   When `/tmp` is full, all commits fail with "No space left on device" even for
-   `--no-verify` bypasses of the slow hooks. The pre-commit hook itself fails before the
-   bypass takes effect.
+Specific divergences that look like performance differences but are actually algorithm differences:
+- Scikit-fda's FPCA with `n_basis=10` B-splines is faster than fdars SVD on the full 200-point grid — but it is also less accurate because it projects onto a low-dimensional basis first.
+- R's `elastic_registration()` uses a different tolerance and convergence criterion than fdars `elastic_align_pair()` — they may iterate different numbers of steps, making wall-time comparison meaningless.
+- Depth functions: halfspace depth in R's `roahd` uses a different random-projection count than fdars depth measures — more projections = slower but more accurate.
 
-2. **`target/` fills `/home` partition** — `target/` grows to 100+GB. When the home partition
-   fills, `cargo test` dies at the link step with "linking with cc failed" — not a code error.
-   The symptom is indistinguishable from a linker misconfiguration.
-
-For FOptDes specifically: adding a new module with examples and benchmarks increases
-incremental build artifacts. If a benchmark (`[[bench]]`) is added in Phase 65, it adds
-another rustc artifact under `target/debug/`.
+**Why it happens:**
+Developers call the "FPCA function" in each library with default parameters and assume defaults are equivalent. Default parameters vary widely across libraries.
 
 **How to avoid:**
-- Before any full `cargo test` or `cargo bench` run: check `df -h /tmp /home` and free space
-  if < 2GB.
-- To free target/: `rm -rf target/debug/{incremental,examples}` recovers ~108GB per MEMORY.md.
-- Use `cargo test -p fdars-core` (not workspace-wide) to minimize artifact accumulation.
-- If pre-commit hooks fail with "No space left": free /tmp first, then retry.
+- Before timing, verify numeric agreement: run both implementations on the same synthetic dataset and assert results match to within a specified tolerance (e.g., ||scores_A - scores_B|| / ||scores_A|| < 0.01 after sign alignment). If they do not agree, the implementations are not computing the same thing.
+- Document the exact parameter configuration used for each library in the benchmark harness:
+  ```python
+  # scikit-fda: n_basis=None (raw data, no smoothing), n_components=3
+  # fdars: default config, ncomp=3
+  # R fda: eval.points=same grid, ncomp=3
+  ```
+- For elastic alignment: pin `max_iter` and `tol` explicitly in all libraries to the same values before timing.
+- For depth measures: pin the number of random projections.
+- Flag any parameter that had to differ (e.g., because one library does not expose the setting) as a comparison caveat in the report.
 
 **Warning signs:**
-- "No space left on device" during `cargo test` or commit hooks.
-- "linking with cc failed" on a green clippy check (disk full, not a code error).
-- Benchmark add causes a significant increase in `target/debug/` size.
+- Numeric results differ by >5% between two "equivalent" calls on the same data — algorithm variant mismatch, not timing noise.
+- One library converges in 5 iterations and another in 50 iterations for the same task — tolerance mismatch.
+- Benchmark results contradict theoretical complexity (e.g., O(N·M²) vs O(N·M) — different algorithm paths chosen by defaults).
 
-**Phase to address:** Both phases (64, 65), especially if benchmarks are added.
+**Phase to address:** Harness-setup and baseline-capture phases. Gate: numeric-agreement check (correlation > 0.99 or relative error < 1%) on a reference dataset before any timing is recorded.
+
+---
+
+### Pitfall A4: Not Verifying Libraries Actually Compute the Same Thing (Missing Numeric-Agreement Gate)
+
+**What goes wrong:**
+The harness measures time but never checks that the outputs of all three libraries (fdars, scikit-fda, R) agree numerically on the same input. This means:
+- A bug in one library produces wrong results at high speed and looks like a "performance win."
+- An algorithm variant (see A3) produces a different answer at different speed and the speedup number is meaningless.
+- Sign conventions differ (FPCA eigenvectors, see below) — dot products with flipped sign are negative, indicating a comparison failure that goes undetected without a check.
+
+**Why it happens:**
+Benchmarking is treated as a timing-only activity; correctness checks are considered separate. They are not separate — a correctness check is a necessary precondition for any timing comparison to be meaningful.
+
+**How to avoid:**
+- Implement a `verify_agreement(result_a, result_b, tolerance=0.01)` function that runs before any timing loop:
+  1. Align eigenvector signs: for FPCA, multiply each component by `sign(dot(comp_a, comp_b))` before comparing.
+  2. Check that the absolute relative difference in the primary output (scores, fitted values, depth values) is < `tolerance`.
+  3. If the check fails, abort with a clear message: "Libraries do not agree — cannot benchmark fairly."
+- For elastic alignment: check that both the warped curve and the warp function agree (amplitude + phase).
+- For depth measures: check that depth ordering is preserved (Spearman rank correlation > 0.95).
+- Run the agreement check on at least two datasets: one synthetic (known properties) and the real benchmark dataset.
+
+**Warning signs:**
+- Outputs from two libraries have correlations < 0.95 — algorithm disagreement.
+- FPCA scores from scikit-fda and fdars have opposite signs systematically — missing sign alignment.
+- Depth ordering disagrees on >10% of curves — different projection strategy or depth variant.
+
+**Phase to address:** Harness-setup (implement the checker), baseline-capture (run it). Gate: the agreement gate must pass before any timing JSON is written.
+
+---
+
+### Pitfall A5: FPCA Eigenvector Sign Ambiguity Masking Real Numeric Differences
+
+**What goes wrong:**
+Eigenvectors have sign ambiguity — any valid eigenvector can be negated and remain valid. All FPCA implementations must apply a sign-canonicalization convention. scikit-fda uses the convention that the maximum absolute value component is positive; fdars may use a different convention (from the SVD sign in nalgebra); R's `pca.fd()` uses yet another. When comparing loadings or scores across libraries, sign-mismatched eigenvectors produce large apparent errors that are actually just convention differences — and real errors may be hidden behind "we expected sign differences."
+
+More critically: if the agreement check uses absolute values everywhere to "handle" sign ambiguity without explicit alignment, it may accept a wrong result (e.g., opposite sign on all components) as "correct."
+
+**Why it happens:**
+Sign ambiguity is known in the FPCA literature and often dismissed with "sign is arbitrary." But if you are computing dot products or checking sign-dependent downstream quantities (regression coefficients, classification boundaries), the wrong sign produces wrong results.
+
+**How to avoid:**
+- Align signs explicitly: for each principal component k, compute `s_k = sign(dot(loadings_a_k, loadings_b_k))` and multiply `scores_b[:, k] *= s_k` before any comparison. This is a standard procedure documented in scikit-fda discussions.
+- Never use `abs()` as a substitute for sign alignment — it hides real disagreements.
+- After alignment, check both loadings and scores separately.
+- Document the sign convention used by fdars in the benchmark README so readers understand the alignment step.
+
+**Warning signs:**
+- Agreement check passes with `abs()` but fails without it — sign alignment needed.
+- Scores from two libraries are strongly negatively correlated (r ≈ -1) rather than positively correlated (r ≈ +1) — sign flip.
+- Every other principal component is sign-flipped — indicates a systematic convention difference.
+
+**Phase to address:** Harness-setup (implement sign alignment in agreement checker). Gate: correlation after alignment must be > 0.99 (not just |correlation| > 0.99).
+
+---
+
+### Pitfall A6: Measuring Input Preparation / IO / Conversion Overhead Instead of Algorithm Compute
+
+**What goes wrong:**
+A Python benchmark that times the full pipeline including:
+- Constructing a `FDataGrid` object from a numpy array (scikit-fda's wrapper)
+- Sorting or validating the evaluation points
+- Python-to-C conversion of the array layout (row-major in numpy vs Fortran-order needed by LAPACK)
+- Writing results to disk for later inspection
+
+...is not measuring FPCA or elastic alignment — it is measuring data-format conversion and Python object construction.
+
+Similarly, an R benchmark that includes `read.csv()` + `Data2fd()` + `pca.fd()` is measuring file IO + basis construction + FPCA, not just FPCA.
+
+**Why it happens:**
+Developers write "one function that does the whole workflow" and time that, which is natural but incorrect for algorithm comparison.
+
+**How to avoid:**
+- Structure the benchmark as setup + timed region:
+  ```python
+  # Setup (not timed)
+  fd_grid = FDataGrid(data_matrix, grid_points)  # construct object once
+  
+  # Timed region only
+  timer.start()
+  result = FPCA(n_components=3).fit(fd_grid)
+  timer.stop()
+  ```
+- In R: construct the `fd` object and basis system outside the `bench::mark()` call.
+- In the fdars harness: construct the `FdMatrix` outside the criterion closure.
+- For criterion.rs: put all data construction in the `setup` closure, not the benchmark closure.
+- Exclude file IO from all timings.
+
+**Warning signs:**
+- Python FPCA time grows with file size even for the same matrix dimensions — IO in the loop.
+- Benchmark timing varies with number of CPU cores even for single-threaded algorithm — object construction triggering parallel BLAS init.
+- Tiny matrices (N=10) take same time as large matrices (N=1000) — overhead dominates.
+
+**Phase to address:** Harness-setup. Gate: verify that setup overhead is < 1% of timed computation for each benchmark by measuring setup separately.
+
+---
+
+### Pitfall A7: Version Drift — Not Pinning Library Versions in the Harness
+
+**What goes wrong:**
+The benchmark harness runs against whatever `pip install scikit-fda` or `install.packages("fda")` installs at the time of execution. Different runs on different machines, or the same machine after a `pip upgrade`, use different library versions with different performance characteristics, different algorithms, or different defaults. The published results are not reproducible.
+
+**Why it happens:**
+Developers treat the benchmark as a one-time measurement, not a reproducible artifact. No version pinning is set up.
+
+**How to avoid:**
+- Commit a `requirements.txt` (or `pyproject.toml` with pinned deps) and `renv.lock` (for R) alongside the harness scripts.
+- At the start of each benchmark run, emit a JSON environment block:
+  ```json
+  {
+    "date": "2026-09-19",
+    "python_version": "3.12.4",
+    "scikit_fda_version": "0.10.1",
+    "numpy_version": "1.26.4",
+    "r_version": "4.4.1",
+    "fda_version": "6.1.4",
+    "fdars_core_version": "0.47.0",
+    "fdars_git_sha": "abc123",
+    "cpu": "AMD Ryzen 9 5900X",
+    "os": "Linux 6.18.45 Manjaro",
+    "blas_threads": 1
+  }
+  ```
+- Store this environment block alongside every result JSON.
+- Document in the harness README: "To reproduce, run `./setup.sh` which installs exact pinned versions."
+
+**Warning signs:**
+- Two runs of the "same" benchmark give different results with no code change — version drift.
+- `pip show scikit-fda` shows a different version than what was used for the published numbers.
+- R `packageVersion("fda")` differs between two machines.
+
+**Phase to address:** Harness-setup. Gate: CI-style reproducibility check: re-run on the same machine 24 hours apart and verify results differ by < 5%.
+
+---
+
+### Pitfall A8: Tiny-Input Noise — Benchmarking N < 100 Curves and Calling It a Performance Story
+
+**What goes wrong:**
+Benchmarking FPCA on N=10 curves, M=50 points measures timer overhead and function-call dispatch more than algorithm complexity. For these sizes, a single Python function call overhead (1–5 μs) is comparable to the actual numeric computation. The criterion/timeit measurements have high coefficient of variation (>20%), and the "speedup" numbers have wide confidence intervals that overlap zero.
+
+More importantly, tiny inputs miss the O(N·M²) vs O(N·M·K) vs O(N²·M²) differences that matter in practice. Reporting a 2x speedup at N=10 says nothing about N=1000.
+
+**Why it happens:**
+Developers use small inputs for quick iteration during harness development and forget to scale up before publishing.
+
+**How to avoid:**
+- Benchmark at multiple input sizes: small (N=50, M=100), medium (N=500, M=200), large (N=2000, M=500) at minimum.
+- For the cross-language comparison, use the input sizes that reflect realistic FDA workloads — N=200 curves with M=150 points is a typical functional dataset.
+- Report speedup as a function of N and M, not a single number.
+- Accept only data points where criterion's relative standard deviation (RSD) < 5% as reliable.
+- For elastic alignment (the O(N²·M²) anchor target), use N >= 100 to see the quadratic scaling.
+
+**Warning signs:**
+- Criterion reports "outlier fraction > 20%" — input is too small, timer noise dominates.
+- Speedup varies by 5x between N=10 and N=100 for no algorithmic reason — noise floor effects.
+- Python benchmark gives negative speedup (Rust slower) at N=10 but positive at N=1000 — cold-start overhead (A1) was included.
+
+**Phase to address:** Baseline-capture. Gate: all published benchmark points have RSD < 5% and include at least 3 input sizes.
+
+---
+
+## Critical Pitfalls — Part B: Behavior-Preserving Rust Optimization
+
+### Pitfall B1: Float Reassociation / Loop Reordering Silently Breaking Numeric Identity
+
+**What goes wrong:**
+Refactoring a loop from:
+```rust
+let mut sum = 0.0_f64;
+for i in 0..n { sum += a[i] * b[i]; }
+```
+to:
+```rust
+let sum: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+```
+may seem equivalent but is not bit-identical. The `sum()` call on an iterator uses the same sequential order as the manual loop — BUT if the optimizer later vectorizes the `.map().sum()` chain (e.g., by unrolling or using SIMD), it changes the accumulation order, changing the floating-point result.
+
+Additionally, Rust 1.98 added `f64::algebraic_add()` / `algebraic_mul()`. If any optimization change accidentally uses algebraic ops (e.g., via a library update), results change. Even without algebraic ops, changing the accumulation order of `rayon::par_iter().sum()` from the sequential `.iter().sum()` changes results.
+
+For fdars, the constraint is numeric-identical: the full 2942-test suite includes bit-exact assertions (e.g., `golden_co_cluster_*`, `svd_sign_fpca_*`) that detect any bit-level difference.
+
+**Why it happens:**
+The refactoring looks like a pure style change. The developer runs the test suite with a tolerance-based assertion and misses the bit-identity tests. Or the optimization is correct for debug builds but the release build applies LLVM optimizations that reorder operations.
+
+**How to avoid:**
+- After any refactoring, run the full test suite in release mode: `cargo test --release -p fdars-core --features linalg`.
+- Specifically run the known bit-identity tests: `cargo test golden` to target the golden-output tests.
+- If a refactoring changes a bit-identity test's result, it is not behavior-preserving — revert or find an approach that preserves the exact accumulation path.
+- Do not change the order of floating-point operations in any hot path without measuring before and after against the test suite.
+- Do not introduce `rayon::par_iter().sum()` to replace a sequential sum — use `par_iter().map(...).collect::<Vec<_>>()` then sequential sum if parallelism is needed.
+
+**Warning signs:**
+- Any bit-identity test in the suite fails after a refactoring that "shouldn't change behavior."
+- `cargo test --release` passes but `cargo test` fails — debug vs release LLVM optimization divergence.
+- A function that previously returned `0.0` exactly now returns `1e-17` — accumulation order changed.
+
+**Phase to address:** Optimization phase. Gate: run `cargo test --release --features linalg` as part of every optimization commit's verification; specifically run the golden-output tests.
+
+---
+
+### Pitfall B2: Parallel Reduction Order Changing Results — Parallelizing a Sequential Sum
+
+**What goes wrong:**
+fdars uses the `maybe_par_*` macro family (parallel.rs) to gate rayon usage behind the `parallel` feature flag. The existing codebase carefully avoids non-determinism in rayon contexts by using per-thread seeded RNGs (`StdRng::seed_from_u64(seed + k)`). BUT: rayon's `parallel_sum()` over `f64` is non-deterministic in reduction order — the order depends on thread scheduling, which can vary between runs.
+
+If an optimization introduces a `par_iter().sum()` to accelerate an inner product or norm computation, the result will differ by 1–2 ULP from the sequential version. The 2942-test suite will detect this. Additionally, the result may differ between the `parallel` and non-`parallel` feature builds, which the v0.43.0 determinism guardrail CI job is specifically designed to catch.
+
+**Why it happens:**
+Developers see that a sequential sum is a hot path, add `par_iter()`, the tests pass with tolerances, but the bit-identity tests fail or the CI determinism job fails. The issue is often not noticed until CI runs the `RAYON_NUM_THREADS=1` variant.
+
+**How to avoid:**
+- Do not replace a sequential `iter().sum()` with `par_iter().sum()` in fdars — it changes the bit-identical result.
+- If parallelism is wanted in a reduction, use the pattern: parallel map into a `Vec`, then sequential sum: `par_iter().map(|x| ...).collect::<Vec<f64>>().iter().sum()`. This gives the same sequential accumulation path while parallelizing the per-element work.
+- Verify after any parallelism change: `cargo test --features parallel` and `cargo test` (without parallel) must produce identical numeric results in all tests.
+- The v0.43.0 determinism guardrail CI job (`RAYON_NUM_THREADS=1` repeated run) catches this — do not merge before CI is green.
+
+**Warning signs:**
+- `cargo test --features parallel` and `cargo test` produce different results in any test.
+- A test that passes locally fails in CI with `RAYON_NUM_THREADS=1`.
+- A golden-output test fails when `--features parallel` is added.
+
+**Phase to address:** Optimization phase. Gate: run the determinism guardrail job (repeat + `RAYON_NUM_THREADS=1`) on all optimization commits.
+
+---
+
+### Pitfall B3: Overclaiming Speedups from Noisy Criterion Benchmarks
+
+**What goes wrong:**
+A developer runs criterion before and after an optimization and sees "35% faster." criterion reports this as statistically significant (p < 0.05). The developer publishes "35% speedup for elastic alignment." But:
+- The machine was under load during one of the runs (background process, CPU frequency scaling).
+- The sample size was too small (criterion defaults to 100 samples, which may not be enough for high-variance operations).
+- The benchmark included warm-up but the warm-up time was too short for a cache-cold first run.
+- The speedup is real but only at the specific input size (N=50) and reverses at N=500.
+
+For the cross-language report to be credible, every claimed speedup must survive a methodology challenge.
+
+**Why it happens:**
+Criterion provides a p-value and a "X% faster" number, which look authoritative. Developers stop there and do not check whether the result is robust.
+
+**How to avoid:**
+- Run criterion benchmarks at least twice: once with `CARGO_FLAGS=--release` and once with CPU frequency pinned (`sudo cpupower frequency-set -g performance`).
+- Check criterion's outlier report: if more than 5% of samples are flagged as outliers, re-run in a quieter environment.
+- Report confidence intervals, not point estimates: "35% ± 8% faster" is honest; "35% faster" is not.
+- For the before/after comparison: re-run the cross-language harness (not just criterion) to confirm the speedup is visible at the same scale.
+- Only claim a speedup in the published report if it is > 10% and reproducible across at least 2 separate runs.
+
+**Warning signs:**
+- Criterion reports different speedup magnitudes on re-run (> 10% difference in the claimed change).
+- High outlier fraction (> 5%) in criterion output for the benchmarked function.
+- Speedup is large at N=50 but vanishes at N=500 — noise floor effect from tiny input (see A8).
+
+**Phase to address:** Optimization phase and report phase. Gate: each claimed speedup must have CI < ±5% of point estimate and be confirmed by the cross-language harness re-run.
+
+---
+
+### Pitfall B4: Accidental Numeric Drift When the Test Suite Uses Tolerances (Not Bit Identity)
+
+**What goes wrong:**
+The 2942-test suite includes both bit-identity tests (golden-output, SVD sign) and tolerance-based tests (e.g., `assert_relative_eq!(..., epsilon = 1e-8)`). An optimization that changes results by 1e-12 passes all tolerance-based tests but may still break downstream behavior in ways that are hard to detect — for example, the sign of an eigenvector may flip due to a 1e-12 difference in a singular value, causing `svd_sign_fpca_*` to fail.
+
+More subtly: an optimization that is "numerically equivalent" in double precision may produce different results in the `--features serde` build if serialization round-trips truncate precision.
+
+**Why it happens:**
+Developers see all tests pass (tolerance-based) and conclude the change is numeric-preserving. They do not explicitly run the bit-identity subset.
+
+**How to avoid:**
+- Identify all bit-identity tests in the suite: `grep -r "bit_identical\|golden\|assert_eq.*f64\|assert_eq.*output" tests/ fdars-core/src/`.
+- Run this subset explicitly after every optimization: `cargo test golden && cargo test svd_sign && cargo test equivalence`.
+- For any test that changes from "pass" to "fail" — even a tolerance-based test — treat it as a potential sign that the optimization is not behavior-preserving.
+- After optimization, compare the before/after outputs of the full test suite at debug level: `cargo test 2>&1 | diff before.log -` to catch any change in output.
+
+**Warning signs:**
+- Any test changes from "ok" to "FAILED" after an optimization, even one that was previously tolerance-based.
+- `cargo test --release` gives different test results than `cargo test` (debug) — LLVM is changing the result.
+- The `--features serde` build gives different serialized values than before the optimization.
+
+**Phase to address:** Optimization phase. Gate: run `cargo test --release --features linalg` AND `cargo test --features linalg` (debug) on the same commit; both must have zero failures.
+
+---
+
+### Pitfall B5: Regressing the `--features serde` / WASM / No-`linalg` Builds
+
+**What goes wrong:**
+fdars-core has three significant feature-gated build variants that all public functions must support:
+1. Default (no features) — `parallel` enabled by default, no `linalg` (no faer)
+2. `--features linalg` — enables faer for Cholesky/ridge regression; requires Rust 1.84+
+3. `--features serde` — adds serde derives to all public types
+4. `--target wasm32-unknown-unknown` — WASM build (uses `js` feature, no std threading)
+
+An optimization that introduces a new `use faer::...` call without gating it behind `#[cfg(feature = "linalg")]` breaks the default build. An optimization that adds a new field to a public struct (even a private cache) breaks `--features serde` if the type is not `Serialize`. An optimization that uses `std::thread` instead of rayon breaks WASM.
+
+**Why it happens:**
+The optimization is developed and tested with `--features linalg` (the developer's usual workflow) and only runs `cargo clippy --all-targets --features linalg,parallel`. The default build and WASM build are not checked.
+
+**How to avoid:**
+- After any optimization that touches public types, hot paths, or `use` statements, run all four build variants:
+  ```bash
+  cargo build -p fdars-core                              # default features
+  cargo build -p fdars-core --features linalg
+  cargo build -p fdars-core --features serde
+  cargo build -p fdars-core --features linalg,serde,parallel
+  cargo build -p fdars-core --target wasm32-unknown-unknown --features js
+  ```
+- Use the project's CI gate: `cargo clippy --all-targets --features linalg,parallel -- -D warnings`. The `--all-targets` flag catches test + bench + example code.
+- If a new dependency is needed, gate it behind the appropriate feature. The constraint for v0.47.0 is: **no new `Cargo.toml` dependency** — all optimizations must use existing crate dependencies.
+
+**Warning signs:**
+- `cargo build -p fdars-core` (no features) fails after optimization.
+- `cargo build --features serde` fails with "the trait `Serialize` is not implemented for `X`".
+- Any WASM-related CI step fails.
+- `cargo clippy --all-targets` finds warnings not present in `cargo clippy`.
+
+**Phase to address:** Optimization phase. Gate: all five build variants must compile clean before any optimization commit is finalized.
+
+---
+
+### Pitfall B6: Breaking Seeded-RNG Determinism by Changing Iteration Order
+
+**What goes wrong:**
+fdars uses the pattern `StdRng::seed_from_u64(seed + k as u64)` in parallel loops (where k is the loop index) to ensure each thread gets a different but deterministic seed. If an optimization reorders the loop (e.g., by changing the chunk size, the rayon scheduling strategy, or the iteration order over a collection), the association between `k` and the work item changes, producing different random sequences and different output — even though the seed was set.
+
+This can manifest as: GMM clustering produces different cluster assignments after an optimization, or elastic bootstrap CIs change slightly.
+
+**Why it happens:**
+The developer optimizes the outer loop structure (e.g., changes from `chunks(n/p)` to `chunks_exact(...)`) without realizing it changes which iteration index k corresponds to which work item.
+
+**How to avoid:**
+- Do not change the outer loop structure (chunk size, iteration order, collection type) in any code that uses the `seed + k` RNG pattern without re-verifying RNG determinism.
+- After any loop-structure change, run the tests that are sensitive to RNG seeding: `cargo test determinism && cargo test gmm && cargo test elastic`.
+- The v0.43.0 determinism guardrail (repeat-run CI job) catches this automatically.
+- Document which loops use `seed + k` RNG — these are the sensitive points.
+
+**Warning signs:**
+- A test involving GMM, elastic registration, or bootstrap CI fails after a loop-structure change.
+- `cargo test` gives different results on two runs (non-determinism introduced).
+- The determinism guardrail CI job fails (repeat run gives different output).
+
+**Phase to address:** Optimization phase. Gate: the determinism guardrail must be green on all optimization commits.
+
+---
+
+### Pitfall B7: Disk / `/tmp` Pressure on Full Build + Test Cycles
+
+**What goes wrong:**
+This is documented in MEMORY.md and remains a hazard for v0.47.0:
+1. The optimization phase will add criterion benchmarks (likely adding new `[[bench]]` entries), increasing `target/debug/` artifact size.
+2. Full `cargo test --release` (needed to verify bit-identity after optimization) builds both debug and release artifacts simultaneously.
+3. `/tmp` exhaustion causes pre-commit hook failures with "No space left on device."
+4. `target/` filling `/home` causes link failures at the `cargo test` stage with "linking with cc failed."
+
+The benchmark harness also generates criterion HTML reports under `target/criterion/` which accumulate.
+
+**How to avoid:**
+- Before any full build: `df -h /tmp /home` — abort and clean if either is < 2GB.
+- Free target incrementals before optimization work: `rm -rf target/debug/{incremental,examples}`.
+- Use `cargo test -p fdars-core` (package-scoped) not workspace-wide `cargo test` to limit artifact accumulation.
+- Clean criterion HTML reports periodically: `rm -rf target/criterion/`.
+- If commit hooks fail with "No space left": free `/tmp` first, then retry.
+
+**Warning signs:**
+- "No space left on device" during `cargo test` or pre-commit hooks.
+- "linking with cc failed" on a green clippy check (not a code error — disk full).
+- `cargo bench` fails partway through on the second or third benchmark.
+
+**Phase to address:** All phases. Gate: disk check before each full build in the phase execution checklist.
 
 ---
 
@@ -599,11 +471,13 @@ another rustc artifact under `target/debug/`.
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Brute-force Σ_yi inversion (no rank-1 update) | Simpler, correct first pass | O(G·K³) per greedy step — bottleneck at K>20, G>200 | Acceptable in Phase 64; profile before optimizing in Phase 65 |
-| Sequential candidate sweep (no rayon) | Deterministic, no Send constraints | O(G·n_select·K²) total — fine for G≤51, n_select≤20 | Acceptable; parallelize only if benchmark shows >1s wall time |
-| Work grid = candidate set (no user-supplied candidates) | Avoids interpolation complexity | Limits design flexibility; callers cannot supply off-grid candidates | Acceptable for v0.35.0 MVP; generalizable in a later milestone |
-| Single σ² for all design criteria | Simpler API | Cannot model heteroskedastic measurement noise | Acceptable; PACE already enforces single σ² |
-| Skip criterion monotonicity assertion in release builds | Avoids O(n_select) extra cost | Hides criterion-direction bugs in production | Never — the assertion is O(1) overhead after the greedy loop and catches make-or-break correctness issues |
+| Single-threaded-only benchmark comparison (no multi-thread variant) | Simpler harness | Report understates fdars parallelism advantage; stakeholders ask "what about multi-core?" | Acceptable for MVP harness if labeled clearly; add multi-thread comparison in report phase |
+| Using `time.time()` instead of `timeit` for Python benchmarks | Easier to write | Includes cold-start, GC, and OS scheduler noise; numbers not reproducible | Never for published numbers |
+| Skipping numeric-agreement check and just timing | Saves harness-setup time | Published speedup may be meaningless if algorithms differ | Never — agreement check is mandatory |
+| Running criterion at default sample size (100) without checking RSD | Fast iteration | May report spurious speedups with CI > 10% | Acceptable during development; not for published report |
+| Not pinning BLAS thread count | Simpler setup | Python may run on 16 threads vs Rust on 1 — comparison is misleading | Never for published numbers |
+| Skipping `--features serde` + WASM build check after optimization | Saves 5 minutes | Silent breakage discovered by users after publish | Never — add to the optimization phase checklist |
+| Using `debug` build for criterion benchmarks | Faster iteration | LLVM optimizations in release may change numeric results and performance | Never for published criterion results — always use release |
 
 ---
 
@@ -611,11 +485,13 @@ another rustc artifact under `target/debug/`.
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| `PaceFpcaResult` eigenvalues | Using raw eigenvalues from `eigenfunctions` decomposition (pre-sign-fix) instead of `result.eigenvalues` | Always read `result.eigenvalues` and `result.eigenfunctions` from the returned `PaceFpcaResult`; never re-decompose |
-| `helpers::simpsons_weights` | Computing weights once from `&[0.0..1.0]` instead of from `pace_result.argvals` | Pass `&pace_result.argvals` directly; the weight sum equals the argvals range, not 1.0 |
-| `linalg::cholesky_solve` | Passing a column-major matrix as if it were row-major | `cholesky_solve` expects row-major (it uses `mat[i*d+j]`); local assembly of Σ_S must match |
-| `lib.rs` re-exports | Importing `pace_fpca::PaceFpcaResult` in `optimal_design.rs` without adding the path alias | Use `crate::pace_fpca::PaceFpcaResult` everywhere in the new module; add `pub use optimal_design::{...}` to `lib.rs` additively |
-| `FdMatrix.column(k)` | Using it to get a mutable reference for in-place update | `column()` returns `&[f64]`; for mutation, extract to a `Vec` and write back |
+| scikit-fda FPCA vs fdars fdata_to_pc_1d | Comparing raw score matrices without sign alignment | Apply sign alignment: multiply each component by sign(dot(fdars_loading, skfda_loading)) before comparing |
+| R `pca.fd()` vs fdars FPCA | Using R's `ncomp` default (all components) vs fdars `ncomp` | Explicitly set `ncomp=3` (or same value) in both; R default computes all components (slow) |
+| numpy BLAS threading | Forgetting to set `OMP_NUM_THREADS=1` | Set all four vars: OMP, OPENBLAS, MKL, BLIS before the Python process starts |
+| criterion warm-up for large allocations | Warm-up time too short (default 3s) — matrix allocations not yet JIT-optimized | Set `.warm_up_time(Duration::from_secs(10))` for benchmarks involving large matrices |
+| R `bench::mark()` vs `microbenchmark()` | Using `microbenchmark()` which does not run GC between trials | Prefer `bench::mark()` which runs GC before timing and reports gc counts |
+| fdars `FdMatrix` column-major vs numpy row-major | Copying data into numpy in wrong order | Ensure the benchmark constructs numpy arrays in the same logical order as fdars — transpose if needed |
+| Python process isolation | All benchmarks run in one process — GC from one benchmark pollutes the next | Run each benchmark function in a separate process (pyperf process isolation) or at least call `gc.collect()` between runs |
 
 ---
 
@@ -623,23 +499,27 @@ another rustc artifact under `target/debug/`.
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Re-assembling full m×m matrix in criterion loop | Criterion evaluation takes O(m²·K) per candidate instead of O(K²) | Assemble only the |S|×|S| Σ_S, not the full m×m covariance | Noticeable at m=100, K=10, G=100 |
-| Inverting K×K posterior covariance K times per greedy step | O(n_select · G · K³) total | Pre-compute M_S once per step; apply rank-1 update per candidate | Breaks at n_select=50, K=20 (>10⁶ flops per step) |
-| Collecting all criterion values in parallel then serial argmin | Allocates G-vector unnecessarily | Use `par_iter().enumerate().min_by(...)` with care for determinism | Negligible — only matters at G > 10,000 |
-| Computing Simpson weights inside the criterion loop | Redundant computation, O(m) per criterion call | Call `simpsons_weights` once at design entry; pass weights as a slice | No correctness issue; O(G · n_select · m) wasted ops at G=100, n_select=20, m=51 |
+| Benchmarking with `debug` build Rust vs optimized Python BLAS | Rust looks slower than it is | Always use `cargo bench` (release) or `cargo test --release` | Every benchmark run if not using `--release` |
+| Including `FdMatrix` construction in the timed region | fdars looks slower than Python by 2–5x for small N because object construction is relatively expensive | Put data construction in criterion setup closure, not benchmark closure | Especially bad at N < 100 |
+| Reporting single-run speedups from criterion | Reported CI is wide but only point estimate is reported | Always report the full confidence interval from criterion JSON output | When CPU is under variable load |
+| Calling `elastic_align_pair` once per benchmark loop (timing includes return value copy) | Timing includes result struct allocation, not just compute | Use `black_box()` on input, not output; or benchmark in-place variant if available | For functions returning large structs |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Criterion monotonicity:** verify `criterion[k+1] <= criterion[k]` for all greedy steps — the loop may select a point but the objective check was skipped.
-- [ ] **|S|=0 prior recovery:** `MSE(∅) ≈ Σ_k λ_k` and `A-opt(∅) = Σ_k λ_k` — often passes by accident if σ² is wrong but compensating.
-- [ ] **Determinism with `--features parallel`:** must produce identical selected designs in both sequential and parallel builds — easy to skip this cross-build test.
-- [ ] **Eigenfunction interpolation off-grid:** if candidates are a strict subset of the work grid (not indices 0..m-1), interpolation is needed — a test with off-index candidates catches the missing interpolation.
-- [ ] **D-optimality sign:** `log det Cov(ξ|Y_S)` is negative (all posterior eigenvalues < prior); if the implementation returns a positive value, the sign convention is wrong.
-- [ ] **No duplicate candidates in S:** the greedy loop must exclude already-selected indices; easy to forget when using a flat candidate Vec without an exclusion mask.
-- [ ] **Full CI gate before merge:** `cargo fmt --check`, `cargo clippy --all-targets --features linalg,parallel`, `cargo test --features linalg` — the last two are often run but fmt is skipped after `--no-verify` commits.
-- [ ] **R + WASM bindings still compile:** run `cargo build --target wasm32-unknown-unknown` and verify R binding example code still compiles (smoke test).
+- [ ] **BLAS thread count pinned:** verify `OMP_NUM_THREADS=1` is set and Python/R actually uses 1 thread — print `numpy.linalg.svd` timing at N=1 vs N=10 to confirm linear (not superlinear) scaling.
+- [ ] **Numeric agreement gate passes:** the agreement check runs on the reference dataset before any timing JSON is written, not just during development.
+- [ ] **Sign alignment implemented:** FPCA and elastic comparison functions align eigenvector signs before computing agreement metrics.
+- [ ] **Python warm-up verified:** first-call vs steady-state difference is < 5% for each benchmark function.
+- [ ] **Version pinning committed:** `requirements.txt` and `renv.lock` are committed to the harness repo with exact versions.
+- [ ] **Environment JSON emitted:** every result file includes CPU, OS, library versions, and thread counts.
+- [ ] **Multiple input sizes:** each benchmark covers at least 3 input sizes (small, medium, large).
+- [ ] **Criterion release build:** all criterion runs use `cargo bench` or `cargo build --release`.
+- [ ] **All feature builds compile:** after optimization, all five build variants (default, linalg, serde, linalg+serde+parallel, WASM) compile without warnings.
+- [ ] **Bit-identity tests pass in release mode:** `cargo test --release --features linalg` runs golden + svd_sign + equivalence tests and all pass.
+- [ ] **Determinism guardrail green:** optimization commits are verified by the v0.43.0 determinism CI job (repeat + RAYON_NUM_THREADS=1).
+- [ ] **Disk check before full build:** `df -h /tmp /home` run before any full `cargo test --release` or `cargo bench`.
 
 ---
 
@@ -647,16 +527,16 @@ another rustc artifact under `target/debug/`.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Wrong Σ_yi (missing σ²I) | LOW | Add `+= sigma2` to diagonal in assembly; re-run tests |
-| Wrong score posterior (missing prior term) | LOW | Add `diag(1/λ)` to M before inversion; verify known-answer test |
-| Missing quadrature weights | LOW | Multiply inner sum by `simpsons_weights`; check `MSE(∅) ≈ Σ_k λ_k` |
-| D-optimality sign flip | LOW | Negate objective or change greedy from argmax to argmin; verify monotone-decrease test |
-| Greedy selects duplicate points | LOW | Add exclusion mask `selected_indices.contains(&j)` in candidate loop |
-| Cholesky fails (near-singular Σ_yi) | MEDIUM | Add ridge-retry (mirror pace_fpca.rs); if still fails, validate σ² floor |
-| Non-determinism from rayon argmin | MEDIUM | Collect criterion Vec sequentially, then serial argmin — remove rayon from argmin step |
-| Column-major vs. row-major transposition | MEDIUM | Mirror pace_fpca.rs `phi_i[j * ncomp + k]` layout; add shape-check assertion |
-| fmt drift / CI failure | LOW | `cargo fmt -p fdars-core && git add -u && git commit --amend` (if pre-merge) |
-| disk pressure blocking build | MEDIUM | `rm -rf target/debug/{incremental,examples}` then retry |
+| Cold-start overhead in Python timings | LOW | Re-run with proper warm-up; discard first-call data points |
+| BLAS thread count not pinned (published wrong numbers) | HIGH | Re-run entire baseline with thread count pinned; update report |
+| Numeric agreement check not implemented | MEDIUM | Implement checker, re-run baseline, potentially discover algorithm-variant issue requiring harness redesign |
+| Bit-identity test fails after optimization | MEDIUM | Revert to prior accumulation order; profile to find a different approach that preserves the exact float path |
+| Parallel reduction order change breaks determinism | MEDIUM | Replace `par_iter().sum()` with parallel-map + sequential-sum pattern; re-run test suite |
+| `--features serde` build broken by optimization | LOW | Add missing `#[cfg_attr(feature = "serde", derive(...))]` to new types; re-run build |
+| WASM build broken by optimization | LOW-MEDIUM | Remove std-only dependency; replace with wasm-compatible alternative already in crate |
+| Disk pressure blocks build | MEDIUM | `rm -rf target/debug/{incremental,examples}` + free /tmp; rebuild |
+| Criterion speedup not reproducible | LOW | Re-run in controlled environment; widen CI reporting |
+| Version drift in results | HIGH | Re-run with pinned versions from requirements.txt/renv.lock |
 
 ---
 
@@ -664,33 +544,39 @@ another rustc artifact under `target/debug/`.
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Wrong Σ_yi assembly (P1) | Phase 64 — criterion evaluation | Hand-computed Σ_yi for 1-point, 2-eigenfunction synthetic |
-| Wrong score posterior covariance (P2) | Phase 64 — criterion evaluation | Known-answer: `Cov(ξ|∅) = diag(λ)`; monotone-decrease on A-opt trace |
-| Missing quadrature weights (P3) | Phase 64 — criterion evaluation | `MSE(∅) ≈ Σ_k λ_k` identity; grid-size invariance check |
-| Optimality-sign convention (P4) | Phase 64 (definition) + Phase 65 (greedy) | Monotone-decrease assertion on both AOpt and DOpt over greedy steps |
-| Near-duplicate / σ²→0 singularity (P5) | Phase 64 (ridge-retry) + Phase 65 (dedup) | Greedy output has no duplicate indices; Cholesky succeeds for σ²=1e-4 |
-| Eigenfunction interpolation (P6) | Phase 64 — criterion evaluation | Off-grid candidate test; out-of-range candidate returns InvalidParameter |
-| Greedy argmin determinism (P7) | Phase 65 — greedy loop | Identical output for two identical calls; matches sequential vs. parallel build |
-| O(G·p·cost) blowup (P8) | Phase 65 — greedy loop | Benchmark on G=51, K=5, n_select=10; correctness before optimization |
-| Additive/non-breaking (P9) | Both phases | Existing test suite fully passes; `--examples` compiles |
-| Column-major indexing (P10) | Phase 64 — criterion evaluation | Shape-assertion: Σ_S is `|S|×|S|` not `K×K` |
-| Send constraints for rayon (P11) | Phase 65 — greedy loop | `cargo build --features parallel` passes; `cargo test --features parallel` |
-| CI gate / fmt drift (P12) | Both phases | Local CI gate before each phase commit |
-| Disk pressure (P13) | Both phases | `df -h` check before full builds; `rm -rf target/debug/{incremental,examples}` as needed |
+| Cold-start / import overhead (A1) | Harness-setup (Phase 112) | First-call vs steady-state < 5% difference for each Python/R function |
+| BLAS thread-count mismatch (A2) | Harness-setup (Phase 112) | Result JSON includes `blas_threads=1`; timing scales linearly with N on both sides |
+| Apples-to-oranges algorithm variant (A3) | Harness-setup + baseline-capture | Parameter config documented; algorithm names match the same variant |
+| Missing numeric-agreement gate (A4) | Harness-setup (Phase 112) | Agreement gate runs before any timing JSON is written |
+| FPCA sign ambiguity (A5) | Harness-setup (Phase 112) | Correlation after sign alignment > 0.99 on reference dataset |
+| Input-prep / IO in timed region (A6) | Harness-setup (Phase 112) | Setup overhead measured separately and is < 1% of compute time |
+| Version drift (A7) | Harness-setup (Phase 112) | `requirements.txt` and `renv.lock` committed; environment JSON emitted per run |
+| Tiny-input noise (A8) | Baseline-capture | RSD < 5%; at least 3 input sizes; elastic target uses N >= 100 |
+| Float reassociation drift (B1) | Optimization phase | `cargo test --release --features linalg` passes all golden + bit-identity tests |
+| Parallel reduction order change (B2) | Optimization phase | Determinism guardrail CI job green on all optimization commits |
+| Noisy criterion speedup claims (B3) | Optimization phase + report | CI < ±5% of point estimate; confirmed by cross-language harness re-run |
+| Tolerance-based tests masking drift (B4) | Optimization phase | Explicitly run bit-identity test subset after each optimization commit |
+| Feature-build regressions (B5) | Optimization phase | All five build variants compile clean after each optimization commit |
+| RNG determinism from loop reordering (B6) | Optimization phase | Determinism guardrail CI job; `cargo test determinism` passes |
+| Disk / /tmp pressure (B7) | All phases | `df -h /tmp /home` before each full build; cleanup script documented |
 
 ---
 
 ## Sources
 
-- `fdars-core/src/pace_fpca.rs` — BLUP formulas (Σ_yi assembly lines 461-474, Ω_i band variance lines 547-576, ridge-retry lines 480-490, σ² validation line 316-324)
-- `fdars-core/src/helpers.rs` — `simpsons_weights` API and quadrature convention
-- `fdars-core/src/linalg.rs` — `cholesky_solve` layout convention (row-major)
-- `fdars-core/src/matrix.rs` — `FdMatrix` column-major indexing contract
-- `fdars-core/src/parallel.rs` — `iter_maybe_parallel!` Send requirement
-- Project MEMORY.md — `/tmp` exhaustion, `target/` disk pressure, executor stall, `--no-verify` fmt drift, `--all-targets` CI gate
-- Yao, Müller & Wang (2005) JASA 100(470) — PACE BLUP formulas (§2.2, §3.2)
-- PACE@2.17 MATLAB `FOptDes` — reference implementation for criterion monotonicity and greedy selection convention
+- `fdars-core/src/parallel.rs` — `maybe_par_*` macro family, per-thread seed pattern
+- `fdars-core/src/matrix.rs` — `FdMatrix` column-major layout, row methods
+- Project MEMORY.md — disk pressure, executor stall, `--no-verify` fmt drift, `--all-targets` CI gate, determinism guardrail, golden flake root cause
+- v0.43.0 milestone — determinism guardrail CI job design (repeat + RAYON_NUM_THREADS=1)
+- Rayon docs (docs.rs/rayon) — ParallelIterator::sum does not guarantee reduction order
+- Criterion.rs docs (bheisler.github.io/criterion.rs) — warm-up, outlier detection, noise threshold
+- Rust RFC 3514 float semantics — algebraic float operators, IEEE-754 strictness default
+- SuperFastPython (superfastpython.com) — NumPy BLAS thread control via OMP/OPENBLAS/MKL env vars
+- scikit-fda FPCA discussion #512 (github.com/GAA-UAM/scikit-fda) — sign ambiguity acknowledgment
+- "Are We Fast Yet?" paper — cross-language benchmark fairness methodology
+- "Impacts of floating-point non-associativity on reproducibility" (arxiv 2408.05148) — parallel reduction order effects
+- Tweag blog "Improving Criterion.rs" (tweag.io) — statistical pitfalls in Criterion usage
 
 ---
-*Pitfalls research for: Optimal Experimental Design on PACE/BLUP model (FOptDes), fdars-core v0.35.0*
-*Researched: 2026-09-02*
+*Pitfalls research for: Cross-language numerical benchmarking + behavior-preserving Rust optimization — fdars-core v0.47.0*
+*Researched: 2026-09-19*
