@@ -1,152 +1,145 @@
-# Project Research Summary: FOptDes v0.35.0
+# Project Research Summary
 
-**Project:** fdars-core — Optimal Experimental Design for Sparse FDA (FOptDes)
-**Domain:** Rust functional-data-analysis library; PACE-based optimal-design module
-**Milestone:** v0.35.0 (promotes GAP-05 from backlog)
-**Researched:** 2026-09-02
-**Confidence:** HIGH (mathematical formulas verified against Ji & Müller 2017 + fdapace R source; codebase read confirms reuse targets; no new dependency required)
-
----
+**Project:** fdars (crate `fdars-core`) — v0.47.0 Performance milestone
+**Domain:** Cross-language numerical/FDA performance benchmarking + behavior-preserving Rust optimization
+**Researched:** 2026-09-19
+**Confidence:** HIGH
 
 ## Executive Summary
 
-FOptDes is a deterministic experimental-design module that selects optimal sparse-measurement locations for trajectory recovery or FPC-score prediction, given an already-fitted PACE model. All mathematics builds on the Ji–Müller (2017) framework; implementation reuses three existing fdars primitives (`cholesky_solve`, `simpsons_weights`, `linear_interp`) — **zero new crate dependencies required**. The recommended approach is a clean two-stage workflow: (1) fit PACE model via `pace_fpca()`, (2) select design points via `foptdes_trajectory()` or `foptdes_scores()`. No re-estimation of covariance surfaces occurs in the design step. The key risk is numerical correctness of the Σ_yi assembly (posterior covariance matrix); this is mitigated by copying the exact pattern from `pace_fpca.rs` lines 461–474 and validating against known-answer tests in Phase 64. A second risk is optimality-sign convention in the greedy loop; this is caught by asserting monotone criterion decrease across steps. Estimated two-phase build (Phases 64–65) addresses all table-stakes features and differentiators.
+v0.47.0 is a **performance milestone** that pairs a cross-language benchmark harness (Rust `fdars-core` vs Python **scikit-fda** vs the R FDA ecosystem) with a strictly behavior-preserving **optimization pass** on the hot paths the harness surfaces. Unlike the prior feature milestones, the deliverable is evidence (head-to-head timings) plus provably-improved implementations — not new functionality. It is the runtime complement to the v0.14.0 audit, which did *capability/API* comparison only and explicitly avoided runtime benchmarking.
 
----
+The recommended approach is **measure-first**: stand up the external harness and establish a fair cross-language baseline (with a mandatory numeric-agreement gate proving each library computes the same thing) before optimizing anything, then attack the ranked hot paths — elastic alignment O(N²·M²) is the confirmed anchor (37.82 s at N=500,M=50 in the v0.14.0 audit), with SVD/FPCA and the covariance surface as secondary targets. Every optimization is proven numeric-identical by the existing 2942-test suite + before/after criterion, mirroring the v0.30.0 measure→optimize→prove pipeline.
+
+The dominant risk is **methodological fairness**: BLAS/OpenMP thread-count mismatches (NumPy/R use all cores; nalgebra uses one), Python cold-start/JIT overhead, version drift, and algorithm-variant divergence can all produce misleading speedups. Mitigation is baked in from Phase 1: pin threads to 1 on all sides, pin + capture every library version + BLAS backend, and gate every timing on a sign-aligned numeric-agreement check. The Rust-side risk is silent numeric drift (float reassociation, parallel-reduction order) — guarded by bit-identity golden tests run in `--release` after every optimization commit.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**All existing dependencies — NO new Cargo.toml entries required.**
+Almost the entire harness lives **outside** `fdars-core/Cargo.toml` (hard constraint: no new crate dependency). Rust reuses the existing **criterion 0.5** harness (results parsed from `target/criterion/*/estimates.json`, `mean.point_estimate` in ns — no new dep, no `cargo-criterion` binary needed). Python and R runners are separate processes driven by a stdlib-only orchestration script.
 
-The STACK.md research confirms that every required operation can be built on nalgebra 0.33, rayon 1.10 (optional, feature-gated), and existing fdars infrastructure:
-
-| Technology | Role in FOptDes | Rationale |
-|------------|-----------------|-----------|
-| **nalgebra 0.33** | Provides eigendecomposition via `pace_fpca.rs`; not directly called by FOptDes | FOptDes consumes eigenvalues and eigenfunctions from `PaceFpcaResult`; no new nalgebra calls needed |
-| **rayon 1.10** (optional, via `parallel` feature) | Parallelizes candidate-point evaluation in greedy inner loop | Each candidate evaluation is independent; `iter_maybe_parallel!` gates parallelism; determinism preserved via sequential argmin |
-| **linalg::cholesky_solve** (always available, no feature gate) | Solves p×p posterior-covariance systems at each criterion evaluation | Identical call signature as in `pace_fpca.rs` line 493; small p ≤ 20 means O(p³) is negligible |
-| **helpers::simpsons_weights** (always available) | Quadrature weights for integrating pointwise prediction variance | Consistent with project-wide Simpson's rule; used in `pace_fpca.rs` |
-| **helpers::linear_interp** (always available) | Evaluate eigenfunctions at candidate design points | Same pattern as `pace_fpca.rs` line 457 |
-| **parallel::iter_maybe_parallel!** macro (optional, via `parallel` feature) | Parallelize inner greedy candidate sweep | No RNG needed (criterion is deterministic); tie-breaking via sequential argmin ensures determinism |
-
-**MSRV: 1.81 preserved.** No post-1.81 stabilizations required. `linalg` feature (which gates faer 0.23, requiring Rust 1.84) is not needed — `cholesky_solve` is always available without the feature gate.
+**Core technologies:**
+- **criterion 0.5** (existing dev-dep): Rust timings + before/after cells — parse `estimates.json` directly.
+- **scikit-fda 0.10.1 + pytest-benchmark 5.3.0** (Python, pinned via `requirements.lock`/uv): Python timings with structured `--benchmark-json` output. scikit-fda 0.10.1 already verified in an existing venv.
+- **R `bench` 1.1.4** (preferred over `microbenchmark` — also tracks memory/GC), packages **fda, fda.usc, refund, fdapace, roahd** + **fdasrvf** (elastic alignment reference), pinned via `renv.lock`; export via `jsonlite`.
+- **Thread pinning** (fairness, mandatory): `OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 MKL_DYNAMIC=FALSE` + `RAYON_NUM_THREADS=1` for the baseline run; a separate parallel run optional.
+- **Profiling without new deps:** `cargo-flamegraph` (external `cargo install`) + system `perf`; **dhat is forbidden** (would add a `[dev-dependencies]` entry).
 
 ### Expected Features
 
-**Table Stakes (P1 — must ship for v0.35.0):**
+**Must have (table stakes):**
+- Reproducible harness driving all three ecosystems on **matched input data** (single source of truth: generate synthetic curve sets once to a shared format both Python/R/Rust read — CSV is the safe cross-language default; `.npy` if `RcppCNPy` is available for R).
+- **Numeric-agreement gate** before any timing (sign-aligned correlation > 0.99 for FPCA eigenfunctions; tolerance 1e-2 for elastic warping (non-unique up to reparameterization), 1e-3 for depth scores/regression coefficients).
+- **Thread-count parity** + full **version/environment capture** into `benchmarks/results/env.json`.
+- Ranked hotspot list combining cross-language results + the existing criterion suite.
 
-1. **Trajectory-reconstruction greedy design** (`foptdes_trajectory`) — minimizes integrated BLUP prediction MSE of x̂(t) given noisy observations at selected design points. Canonical PACE FOptDes criterion from Ji & Müller 2017. Users expect this; every reference implementation exposes it first.
+**Should have (competitive):**
+- Before/after speedup tables with confidence intervals (CI < ±5%) + N×M scaling analysis.
+- Published Markdown perf report / README speed story with full methodology disclosure.
 
-2. **FPC-score-prediction A-optimal greedy design** (`foptdes_scores(AOptimal)`) — minimizes trace of posterior score covariance, reducing total posterior variance across all K components. Natural complement to trajectory recovery when downstream use is FPC-score prediction.
-
-3. **Design-criterion evaluator** (`design_criterion()` public function) — users must evaluate hand-crafted or historical designs against the model without re-running greedy. Independent of the greedy loop; reusable.
-
-4. **Per-step R² output** (`criterion_curve`, `r2_curve` in result struct) — essential for budget-selection workflow; researchers need to plot R² vs. budget to choose minimum sufficient p. Both MATLAB PACE and R fdapace return this.
-
-5. **Deterministic reproducibility** — no randomness; bit-for-bit identical results across runs and platforms. Determinism test (identical inputs → identical outputs) is mandatory.
-
-**Differentiators (P2 — competitive advantage, not blocking v0.35.0 but planned):**
-
-- **D-optimal score design** (`foptdes_scores(DOptimal)`) — log-det criterion has stronger theoretical properties than trace; fdapace does not expose this. Straightforward given A-optimal already implemented.
-
-- **Multi-criterion evaluation** (`FOptDesEval` struct) — compute all three criteria (trajectory, A-optimal, D-optimal) in one call sharing a single Cholesky factorization. No reference does this; pure efficiency gain.
-
-- **Parallel candidate evaluation** (via `--features parallel` flag) — embarrassingly parallel inner loop over G\S candidates at each step. Negligible for typical m ≤ 200, p ≤ 10; beneficial for dense grids.
-
-**Anti-Features (explicitly out of scope for v0.35.0, documented as future work):**
-
-- **Global exhaustive search** over all C(m,p) combinations — combinatorially infeasible for m > 20, p > 4. Greedy is proven near-optimal (Ji & Müller 2017). Document bounded suboptimality; exhaustive available only in fdapace for toy examples.
-
-- **Scalar-response prediction design (SR-criterion)** — fdapace supports this but requires response vector as input to design step, coupling design to a specific outcome. Score-prediction criterion is response-agnostic and generalizes. Defer SR-design to v0.36.0+ if user demand confirmed.
-
-- **Bayesian / MCMC D-optimal design** (Huang et al. 2025 extension) — MCMC sampling is non-deterministic and massively complex. Beyond scope of pure design on a fitted model.
+**Defer:**
+- asv/airspeed-velocity-style continuous perf tracking (single-milestone comparison doesn't need it).
+- Multi-machine / CI perf gating (out of scope this milestone).
 
 ### Architecture Approach
 
-FOptDes is a single top-level module (`src/optimal_design.rs`, peer of `kshape.rs` and `kernel_kmeans.rs`) with two public functions, two public enums, two public config/result structs, and ~3 private helpers. No submodule directory needed — the algorithm is self-contained in ~300 lines.
+The harness is a workspace-root `benchmarks/` directory (NOT a Cargo member → zero crate coupling), plus one orchestration script under `scripts/`. A shared dataset generator emits numbered files (`shared_N{n}_M{m}.csv`) from a seeded RNG matching the formula already in `alignment_benchmarks.rs`; each ecosystem runner consumes the identical files; a collector merges criterion JSON + pytest-benchmark JSON + R `bench` JSON into one `comparison.csv`. The optimization pass plugs into the established v0.30.0 measure→optimize→prove pipeline (before-baseline committed → optimize → after-cells → `cargo test` green → golden ≤1e-10 numeric identity → optional dhat-free allocation check).
 
-**Module structure follows established fdars convention:**
-- `OptDesConfig` struct (no `#[non_exhaustive]`) for caller-supplied settings (candidate grid, budget p, criterion type, optimality kind).
-- `OptDesResult` struct (`#[non_exhaustive]`) for selected indices, selected time values, and criterion curve at each greedy step.
-- `DesignCriterion` enum: `Trajectory` or `Score`.
-- `OptimalityKind` enum: `AOptimal` or `DOptimal`.
-- `foptdes_trajectory()` entry point (or `optimal_design()` unified entry point accepting criterion enum).
-- `design_criterion()` public function — reusable criterion evaluator, independent of greedy loop.
-- Private helpers: `build_sigma_design()`, `trajectory_criterion()`, `score_criterion()`.
-
-**Critical pattern: criterion evaluation → greedy wrapper.** Phase 64 implements the reusable `design_criterion()` public function and shared `build_sigma_design()` private helper. Phase 65 wraps this in the greedy forward-selection loop. This ordering matches the `sbd.rs` → `kshape.rs` precedent (Phase 61 → 62): build the composable primitive first, then the algorithm that wraps it.
+**Major components:**
+1. `benchmarks/shared/generate.py` — single-source-of-truth matched input data (seeded).
+2. Ecosystem runners — `run_rust` (existing criterion benches), `run.py` (pytest-benchmark/scikit-fda), `run.R` (bench/R packages).
+3. `collect.py` + orchestration shell script — merge into `comparison.csv` + `env.json`; numeric-agreement checker.
 
 ### Critical Pitfalls
 
-1. **P1: Wrong Σ_yi Assembly (Missing σ² Ridge)** — Omitting `+ σ²I_p` causes Cholesky failure when |S| > K. Mitigation: Copy exact assembly from `pace_fpca.rs` lines 461–474.
-
-2. **P2: Score Posterior Covariance (Wrong Matrix Inverse)** — Forgetting `diag(1/λ)` prior term causes singularity. A-optimality trace must *decrease* as points are added. Mitigation: Verify known-answer `Cov(ξ|∅) = diag(λ)`.
-
-3. **P3: Integrated Prediction Variance (Missing Quadrature Weights)** — Omitting Simpson weights produces dimensionally incorrect values. Mitigation: Verify `MSE(∅) ≈ Σ_k λ_k`.
-
-4. **P4: Optimality-Sign Convention** — Criterion must non-increase as points are added; greedy selects *minimizing* candidate. Sign flip causes worst-point selection. Mitigation: Monotone-decrease assertion in tests.
-
-5. **P5: Near-Duplicate Candidates and σ²→0** — Fine grids or small σ² make Σ_yi nearly singular. Mitigation: Exclude already-selected indices; enforce σ² ≥ 1e-8 floor.
-
----
+1. **BLAS/OpenMP thread-count mismatch** (highest credibility risk) — NumPy/R auto-use all cores, nalgebra uses one → pin `*_NUM_THREADS=1` everywhere for the baseline; record + verify linear scaling.
+2. **Missing numeric-agreement gate** (critical) — a timing comparison is meaningless unless the libraries provably compute the same thing; implement `verify_agreement()` (sign-aligned correlation + tolerance) and abort timing if it fails.
+3. **Float reassociation / parallel-reduction drift** — refactoring accumulation loops or introducing `par_iter().sum()` silently changes results in release builds; keep accumulation order, use `par_iter().map(..).collect::<Vec<_>>().iter().sum()`, run `cargo test --release --features linalg` + the determinism guardrail after every optimization commit.
+4. **Cold-start / warm-up + tiny-input noise** — discard Python import + first-call; require RSD < 5% per data point and ≥3 input sizes (elastic target at N ≥ 100); measure compute, not setup/IO.
+5. **Feature-build regression** — re-verify all build variants (default, `linalg`, `serde`, `linalg,serde,parallel`, WASM) after each optimization (serde broke once historically); keep the pmat quality-gate green.
 
 ## Implications for Roadmap
 
-**Two sequential phases (Phases 64–65) building on each other.**
+Suggested structure: **6 phases (112–117)**, measure-first. Phase numbering continues from v0.46.0 (…111).
 
-### Phase 64: Core Criterion Machinery
+### Phase 112: Benchmark Harness Setup
+**Rationale:** Infrastructure has zero dependency on fdars internals and must precede any timing; reproducibility (env + thread pinning + numeric-agreement gate) must exist before the first measurement.
+**Delivers:** `benchmarks/` scaffold, shared seeded data generator, Python (pytest-benchmark/scikit-fda) + R (bench) runners, criterion JSON integration, collector + orchestration script, pinned `requirements.lock`/`renv.lock`, `env.json` capture, numeric-agreement checker.
+**Addresses:** matched-input harness, thread parity, version capture (table stakes).
+**Avoids:** thread-count mismatch, cold-start, IO overhead, version drift, missing agreement gate.
 
-**Rationale:** Greedy loop (Phase 65) depends entirely on `design_criterion()` public function. Implementing criterion evaluator first validates mathematical correctness with focused known-answer tests.
+### Phase 113: Cross-Language Baseline & Hotspot Ranking
+**Rationale:** Evidence before optimization — establish the fair baseline across all three ecosystems and rank targets by leverage.
+**Delivers:** extended criterion N×M cells, full harness run, `comparison.csv`, ranked hotspot list (absolute + relative-to-baseline).
+**Uses:** criterion 0.5, the Phase 112 harness.
+**Avoids:** tiny-input noise, spurious speedup claims (RSD/CI gates).
 
-**Deliverables:** `optimal_design.rs` module with `DesignCriterion` enum, `OptimalityKind` enum, private helpers (`build_sigma_design`, `trajectory_criterion`, `score_criterion`), public `design_criterion()` function, comprehensive tests (Σ_yi assembly, criterion monotonicity, prior recovery, error paths).
+### Phase 114: Elastic Alignment Optimization (anchor)
+**Rationale:** Confirmed #1 bottleneck O(N²·M²); most evidence; clean cross-language equivalent (fdars vs scikit-fda `FisherRaoElasticRegistration` vs R `fdasrvf::time_warping`).
+**Delivers:** internal optimization in `src/alignment/` (e.g. Sakoe-Chiba banding / DP-loop restructuring), before/after criterion, numeric-identity proof.
+**Implements:** measure→optimize→prove pipeline.
+**Avoids:** float reassociation, parallel-reduction drift, feature-build regression.
 
-**Research flag:** None — criterion formula well-documented.
+### Phase 115: SVD/FPCA & Covariance Optimization (conditional on 113 ranking)
+**Rationale:** FPCA/SVD ~99.8% of FPCA wall-clock; faer path 1.8–4.1× faster (already behind `linalg`); covariance surface a known secondary target.
+**Delivers:** targeted optimizations + same proof pipeline.
 
-### Phase 65: Greedy Selection Loop + Full Integration
+### Phase 116: Cross-Language Re-Run & Published Report
+**Rationale:** Re-run the full harness after optimization to show the gains are visible across all three ecosystems; turn measurement into the milestone's proof artifact.
+**Delivers:** updated `comparison.csv`, Markdown speed story with before/after tables + scaling analysis, reproduction instructions, likely a README section.
 
-**Rationale:** With Phase 64 criterion validated, greedy wrapper is thin O(budget × |candidates|) loop. This phase completes the public API with config/result types and entry-point functions.
+### Phase 117: Release Preparation & Verification (terminal)
+**Rationale:** Bump/CHANGELOG/gates are the final proof.
+**Delivers:** version bump 0.46.0 → 0.47.0, CHANGELOG (root + crate), all whole-crate gates green (fmt, clippy `--all-targets`, full test, serde build, 28 examples + doctests, `cargo package`) **plus** the pmat quality-gate. Tag/publish is the deferred operator step.
 
-**Deliverables:** `OptDesConfig` struct, `OptDesResult` struct, `foptdes_trajectory()`, `foptdes_scores()`, greedy forward-selection loop with parallelization and deterministic argmin, determinism test, benchmark.
+### Phase Ordering Rationale
+- Harness + baseline (112–113) must precede optimization (114–115) — you cannot rank or prove speedups without the measurement infrastructure and a committed baseline.
+- Optimization phases are independent of each other but both depend on the 113 ranking; elastic alignment first (most evidence), SVD/FPCA+covariance conditional on ranking.
+- Report (116) after all optimization; release (117) terminal.
 
-**Research flag:** None — greedy is standard forward-selection algorithm.
+### Research Flags
+Phases likely needing a brief planning spike:
+- **Phase 112:** numeric-agreement checker — exact `fdars fdata_to_pc_1d` sign-canonicalization convention + scikit-fda/R elastic cost-function equivalence need code inspection; tolerance thresholds validated during planning.
+- **Phase 113:** criterion noise analysis — RSD < 5% gate + confidence-interval interpretation.
 
----
+Phases with standard patterns (skip research):
+- **Phase 114–115:** established v0.30.0 optimize pipeline + v0.43.0 determinism guardrail.
+- **Phase 116–117:** established report + v0.44.0/45.0/46.0 release-gate patterns.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| **Stack** | **HIGH** | No new dependencies; all reuse targets exist and well-used. Verified by direct codebase read. |
-| **Features** | **HIGH** | Table-stakes from Ji & Müller 2017 and fdapace. Differentiators clearly incremental. Anti-features explicitly scoped. |
-| **Architecture** | **HIGH** | Matches established fdars convention. Single-file module (peer of kshape.rs). Reuse pattern standard. Integration purely additive. |
-| **Pitfalls** | **HIGH** | 12 pitfalls identified with concrete prevention strategies. Critical pitfalls grounded in mathematical invariants. |
+| Stack | HIGH | criterion 0.5 existing; scikit-fda 0.10.1 runtime-verified in a local venv; pytest-benchmark 5.3.0 + R bench 1.1.4 versions confirmed; no new Cargo deps required. |
+| Features | MEDIUM | 13 overlapping operations mapped from readthedocs + CRAN; numeric-agreement protocol designed but needs implementation validation in Phase 112; algorithm-variant risk real but mitigable via explicit parameter documentation. |
+| Architecture | HIGH | External-harness pattern proven in v0.14.0; criterion integration + before/after pipeline + golden-output tests all precedented (v0.30.0, v0.43.0, v0.46.0). |
+| Pitfalls | HIGH | 8 cross-language + 7 optimization pitfalls documented with pre-built, phase-tagged mitigations, cross-checked against fdars history (MEMORY.md, v0.43.0 determinism). |
 
-**Overall: HIGH** — Mathematical foundation solid, implementation reuses tested primitives, phase decomposition follows patterns, pitfall strategies concrete and testable.
+**Overall confidence:** HIGH
 
----
-
-## Gaps to Address
-
-None identified. Research covers all essentials: stack dependency inventoried, features scoped, architecture pattern established, pitfalls with phase-specific gates, numerical correctness roadmap clear.
-
----
+### Gaps to Address
+- Exact sign-canonicalization convention of `fdars fdata_to_pc_1d` — inspect code during Phase 112 before implementing the agreement checker.
+- scikit-fda vs fdars elastic cost-function equivalence — verify on a reference dataset during Phase 112.
+- R `roahd` random-projection-depth default projection count — pin to match fdars before timing.
+- R `.npy` reading (`RcppCNPy` availability) — default to CSV if absent.
+- Exact pinned R package versions — capture via a `renv::snapshot()` setup run.
 
 ## Sources
 
-**Primary (HIGH):**
-- Ji & Müller (2017) JRSSB 79(3):859–876 — normative math for design criteria
-- fdapace R package v0.6.0 source — reference implementation, greedy algorithm
-- fdars-core codebase (direct read) — `pace_fpca.rs` lines 461–474 (Σ_yi), 547–558 (Ω_i), 480–490 (ridge-retry), 493 (cholesky_solve); linalg.rs, helpers.rs, parallel.rs, matrix.rs
-- PROJECT.md (fdars v0.35.0) — scope, two-stage workflow, GAP-05 promotion
-- Yao, Müller & Wang (2005) JASA 100(470):577–590 — PACE BLUP formulas
+### Primary (HIGH confidence)
+- `.planning/research/STACK.md`, `FEATURES.md`, `ARCHITECTURE.md`, `PITFALLS.md` (this milestone's committed research).
+- scikit-fda 0.10.1 official readthedocs API + local verified venv.
+- criterion 0.5 source / existing `fdars-core/benches/` (bench structure read directly).
+- fdars v0.14.0 `AUDIT-REPORT.md` (elastic-alignment + SVD/FPCA bench evidence with specific numbers).
 
-**Secondary (MEDIUM):**
-- Huang et al. (2025) WIREs — extended framework (A/D/E-optimality, Bayesian)
-- MATLAB PACE@2.17 documentation — API baseline
+### Secondary (MEDIUM confidence)
+- CRAN Task View + package papers for fda/fda.usc/refund/fdapace/roahd/fdasrvf operation mapping.
+- OpenBLAS/Intel MKL threading docs (thread-pinning mechanics); pytest-benchmark/R bench/uv/renv docs.
+
+### Tertiary (LOW confidence)
+- FDA-literature-extrapolated input-size grids (no fdars-specific published guidance); numeric-agreement tolerances (from MFPCA defaults + sign-flip convention).
 
 ---
-
-**Research completed:** 2026-09-02
-**Ready for requirements definition:** YES
+*Research completed: 2026-09-19*
+*Ready for roadmap: yes*
