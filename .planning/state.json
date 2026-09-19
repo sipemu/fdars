@@ -1,43 +1,12 @@
 {
   "contract": "1.0.0",
   "flavor": "core",
-  "milestone": "v0.46.0 — Quality Hardening — pmat Complexity Pass & CI Guardrail",
-  "phases": [
-    {
-      "number": "106",
-      "name": "Top-Level Complexity Hotspots",
-      "status": "complete"
-    },
-    {
-      "number": "107",
-      "name": "SPM Complexity Cluster",
-      "status": "complete"
-    },
-    {
-      "number": "108",
-      "name": "Entropy Extraction & SATD/Unwrap Cleanup",
-      "status": "complete"
-    },
-    {
-      "number": "109",
-      "name": "Complexity Tail & Quality-Gate Green",
-      "status": "complete"
-    },
-    {
-      "number": "110",
-      "name": "pmat CI Guardrail",
-      "status": "complete"
-    },
-    {
-      "number": "111",
-      "name": "Release Preparation & Verification",
-      "status": "complete"
-    }
-  ],
+  "milestone": "v0.47.0",
+  "phases": [],
   "next": {
-    "command": "/gsd:progress",
-    "label": "Show progress",
-    "reason": "Unsure of state — showing progress"
+    "command": "/gsd:discuss-phase",
+    "label": "Discuss the first phase",
+    "reason": "Project initialized — plan your first phase"
   },
-  "updated_at": "2026-09-15T19:11:15.038Z"
+  "updated_at": "2026-09-19T19:07:49.643Z"
 }

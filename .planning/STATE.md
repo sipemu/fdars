@@ -1,19 +1,16 @@
 ---
 gsd_state_version: "1.0"
-milestone: v0.46.0
-milestone_name: Quality Hardening — pmat Complexity Pass & CI Guardrail
-status: Awaiting next milestone
-stopped_at: Phase 111 complete — all phases complete
-last_updated: "2026-09-15T19:11:15.010Z"
-last_activity: 2026-09-15
-last_activity_desc: Milestone v0.46.0 completed and archived
-state_head: 4488b66ebee06d554ed02c4b1eddc9bd951d2668
+milestone: v0.47.0
+milestone_name: Performance — Cross-Language Benchmarks & Optimization Pass
+status: planning
+last_updated: "2026-09-19T19:07:49.638Z"
+last_activity: 2026-09-19
 progress:
-  total_phases: 6
+  total_phases: 0
   completed_phases: 0
-  total_plans: 26
-  completed_plans: 26
-current_phase: 111
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -27,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-13)
 
 ## Current Position
 
-Phase: Milestone v0.46.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-15 — Milestone v0.46.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-09-19 — Milestone v0.47.0 started
 
 ## Milestone Roadmap (v0.46.0)
 
