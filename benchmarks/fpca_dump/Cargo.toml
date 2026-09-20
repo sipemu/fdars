@@ -1,0 +1,14 @@
+[package]
+name = "fpca_dump"
+version = "0.1.0"
+edition = "2021"
+# Standalone harness binary — NOT a workspace member.
+# Reads a CSV of curves and emits FPCA loadings as JSON to stdout.
+# Used by gate.py to obtain fdars FPCA loadings for the agreement gate
+# without modifying fdars-core or adding any crate dependency.
+
+# Opt out of the parent workspace (required by Cargo's workspace detection rules)
+[workspace]
+
+[dependencies]
+fdars-core = { path = "../../fdars-core", features = ["linalg", "parallel"] }

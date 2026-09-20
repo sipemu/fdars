@@ -7,6 +7,10 @@ data/
 # Benchmark results (committed selectively after baseline run)
 results/
 
+# fpca_dump Rust build artifacts
+fpca_dump/target/
+fpca_dump/Cargo.lock
+
 # R session artifacts
 .Rhistory
 .RData
