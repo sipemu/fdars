@@ -43,11 +43,11 @@ The approach is **measure-first**: stand up an external benchmark harness and es
   4. A baseline run pins `OMP/OPENBLAS/MKL/RAYON_NUM_THREADS=1` and captures full version + BLAS-backend + CPU + thread-env metadata into `benchmarks/results/env.json`.
   5. A numeric-agreement gate verifies each library computes the same result (sign-aligned FPCA correlation > 0.99; 1e-3 depth/regression, 1e-2 elastic warping) and aborts/flags before any timing is recorded on mismatch.
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 - [x] 112-01-PLAN.md — FPCA end-to-end tracer: seeded generator + all-three-runner FPCA slice + criterion collect + agreement gate + env.json (BENCH-01..05 thin path)
 - [x] 112-02-PLAN.md — Expand Python + R runners to the full overlapping op set + add functional_boxplot criterion bench (BENCH-02)
-- [ ] 112-03-PLAN.md — Expand criterion collector + agreement gate to all ops with per-op tolerances + finalize env capture (BENCH-03/04/05)
+- [x] 112-03-PLAN.md — Expand criterion collector + agreement gate to all ops with per-op tolerances + finalize env capture (BENCH-03/04/05)
 
 ### Phase 113: Cross-Language Baseline & Hotspot Ranking
 
@@ -118,7 +118,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 112. Benchmark Harness Setup | 2/3 | In Progress|  |
+| 112. Benchmark Harness Setup | 3/3 | In Progress|  |
 | 113. Cross-Language Baseline & Hotspot Ranking | 0/TBD | Not started | - |
 | 114. Elastic Alignment Optimization | 0/TBD | Not started | - |
 | 115. SVD/FPCA & Covariance Optimization | 0/TBD | Not started | - |
