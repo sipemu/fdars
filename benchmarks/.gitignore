@@ -1,0 +1,13 @@
+# Python virtualenv (created by: python3 -m venv benchmarks/.venv)
+.venv/
+
+# Generated data fixtures (regenerated on each run)
+data/
+
+# Benchmark results (committed selectively after baseline run)
+results/
+
+# R session artifacts
+.Rhistory
+.RData
+*.Rproj.user/

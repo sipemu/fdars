@@ -1,0 +1,67 @@
+{
+  "R": {
+    "Version": "4.6.1",
+    "Repositories": [
+      {
+        "Name": "CRAN",
+        "URL": "https://cloud.r-project.org"
+      }
+    ]
+  },
+  "Packages": {
+    "renv": {
+      "Package": "renv",
+      "Version": "1.2.4",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fda": {
+      "Package": "fda",
+      "Version": "6.3.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fda.usc": {
+      "Package": "fda.usc",
+      "Version": "2.2.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "roahd": {
+      "Package": "roahd",
+      "Version": "1.4.3",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fdasrvf": {
+      "Package": "fdasrvf",
+      "Version": "2.5.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "bench": {
+      "Package": "bench",
+      "Version": "1.1.4",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "refund": {
+      "Package": "refund",
+      "Version": "0.1-40",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "fdapace": {
+      "Package": "fdapace",
+      "Version": "0.6.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    },
+    "jsonlite": {
+      "Package": "jsonlite",
+      "Version": "2.0.0",
+      "Source": "Repository",
+      "Repository": "CRAN"
+    }
+  }
+}
