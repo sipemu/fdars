@@ -24,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-09-19)
 
 ## Current Position
 
-Phase: Not started (roadmap complete, awaiting phase planning)
-Plan: —
-Status: Roadmap created
-Last activity: 2026-09-19 — Roadmap created for v0.47.0 (phases 112–117)
+Phase: 112 — Benchmark Harness Setup
+Plan: 01 of 01 (awaiting human verification of Task 4 checkpoint)
+Status: Phase 112 — Plan 01 complete (Tasks 1–3), Task 4 blocking-human checkpoint pending
+Last activity: 2026-09-20 — Phase 112 Plan 01 Tasks 1–3 committed; FPCA harness live, gate PASS (fdars-vs-Python min|corr|=0.998271, fdars-vs-R min|corr|=1.000000)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -68,7 +68,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | 94–100 | v0.44.0 | 16 |
 | 101–105 | v0.45.0 | 5 |
 | 106–111 | v0.46.0 | 26 |
-| 112–117 | v0.47.0 | 0/TBD (planned) |
+| 112–117 | v0.47.0 | 1/TBD (112-01 Tasks 1–3 committed, Task 4 pending) |
 
 **Recent Trend:**
 
@@ -81,7 +81,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
-| (none yet — v0.47.0) | — | — | — |
+| 112-01 (Tasks 1–3) | 21 min | 3/4 | 15 created |
 
 ## Accumulated Context
 
@@ -101,6 +101,9 @@ Decisions relevant to current work (v0.47.0):
 - **Phase numbering continues** — v0.46.0 ended at Phase 111 → v0.47.0 starts at Phase 112. No reset.
 - **12 requirements → 6 phases:** 112 BENCH-01..05; 113 BASE-01/02; 114 OPT-01; 115 OPT-02 + OPT-03; 116 RPT-01; 117 REL-01. All mapped, no orphans, no duplicates. (OPT-03 — the cross-cutting build-variant/numeric-identity/pmat gate applying to all optimization — lands with Phase 115 as the consolidated proof.)
 - **Does not touch the remaining 1.0-checklist items** (`fdars-j75` R migration, terminal `1.0-CUT`) — out of scope this milestone.
+- **112-01 DECISION: R FPCA algorithm** — Use direct Simpson's-weighted SVD in R (not `fda::pca.fd` B-spline smoothing). `pca.fd` diverges at PC3-PC5 (min|corr|=0.21 vs fdars); direct SVD achieves corr=1.000000 for all 5 components. The port of `simpsons_weights_uniform` from fdars helpers.rs is the key.
+- **112-01 DECISION: fpca_dump standalone binary** — Provides fdars FPCA loadings for the agreement gate without modifying fdars-core or touching the workspace. Located at `benchmarks/fpca_dump/` with its own `[workspace]` declaration to opt out of the parent workspace.
+- **112-01 DECISION: multimethod 2.1 in-venv patch** — Python 3.14 tightened metaclass resolution; scikit-fda imports fail without the patch to `subtype.__new__`. Patched only in the pinned `.venv` (gitignored); documented in SUMMARY.
 
 ### Pending Todos
 
