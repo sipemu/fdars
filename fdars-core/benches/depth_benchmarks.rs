@@ -5,8 +5,8 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use fdars_core::clustering::{calinski_harabasz, fuzzy_cmeans_fd, kmeans_fd, silhouette_score};
 use fdars_core::depth::{
-    band, fraiman_muniz, functional_spatial, kernel_functional_spatial, modified_band,
-    random_projection,
+    band, fraiman_muniz, functional_boxplot, functional_spatial, kernel_functional_spatial,
+    modified_band, random_projection, DepthMethod,
 };
 use fdars_core::fdata::norm_lp;
 use fdars_core::irreg_fdata::{norm_lp_irreg, IrregFdata};
@@ -345,6 +345,18 @@ fn bench_norm_lp_irreg(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_functional_boxplot(c: &mut Criterion) {
+    let mut group = c.benchmark_group("functional_boxplot");
+    let t = 200;
+    for &n in &[50, 200, 500, 1000, 2300] {
+        let data = generate_centered_data(n, t);
+        group.bench_with_input(BenchmarkId::new("N", n), &data, |b, data| {
+            b.iter(|| functional_boxplot(black_box(data), DepthMethod::ModifiedBand, 1.5))
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_fraiman_muniz,
@@ -365,5 +377,6 @@ criterion_group!(
     bench_silhouette,
     bench_calinski_harabasz,
     bench_norm_lp_irreg,
+    bench_functional_boxplot,
 );
 criterion_main!(benches);
