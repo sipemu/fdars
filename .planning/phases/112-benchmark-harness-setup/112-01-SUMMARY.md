@@ -161,7 +161,7 @@ status: complete
 1. **Task 1: Wave-0 dependency setup + pinned lockfiles** - `220125b4` (feat)
 2. **Task 2: Seeded generator + FPCA end-to-end slice** - `52582b74` (feat)
 3. **Task 3: FPCA agreement gate + orchestrator** - `268c9e74` (feat)
-4. **Task 4: Human verification** - AWAITING CHECKPOINT
+4. **Task 4: Human verification** - APPROVED 2026-09-20 (user approved via autonomous gate; env.json fairness fields, CSV bit-identity, and FPCA agreement gate results all accepted)
 
 ## Files Created/Modified
 
@@ -225,9 +225,13 @@ status: complete
 - renv project isolation blocked `renv::snapshot()` from the user library (renv created its own project library with only renv itself). Resolved by writing renv.lock manually with verified package versions from `packageVersion()` checks.
 - fpca_dump required `[workspace]` in its Cargo.toml to opt out of the parent workspace (Cargo detects workspace membership by file proximity).
 
-## Checkpoint: Awaiting Human Verification (Task 4)
+## Checkpoint: Human Verification (Task 4) — APPROVED 2026-09-20
 
-**Status:** Tasks 1-3 complete and committed. Task 4 is a blocking-human gate requiring manual inspection of:
+**Resolution:** User approved via the autonomous blocking-human gate. Two methodological caveats recorded for downstream phases (non-blocking):
+- **Reproducibility caveat (→ Phase 116 report):** the venv required an in-place patch to `multimethod/__init__.py` for a Python 3.14 metaclass conflict; this patch lives in the gitignored `.venv` and is NOT reproduced by `pip install -r requirements.lock` alone. Reproduction instructions must document the patch (or pin a multimethod version / Python that avoids it).
+- **Fairness caveat (→ Phase 113 baseline / 116 report):** the R FPCA runner reimplements fdars' Simpson's-weighted SVD (to reach corr=1.0) rather than timing native `fda::pca.fd` (which operates in B-spline coefficient space and diverged). The R FPCA *timing* therefore reflects a hand-rolled SVD, not R's native FPCA — disclose this in the methodology section, and consider whether native pca.fd should be timed separately as the "real R" number.
+
+**Original checkpoint (Tasks 1-3 complete and committed):** blocking-human gate requiring manual inspection of:
 
 1. **CSV bit-identity** (BENCH-01): `verify_inputs.py` exits 0 — file SHA-256 = regen SHA-256 = `52dd197401496f77bcdb93fe90faed10e7a1cc65d9634a23df081056fd44943f`
 2. **FPCA agreement gate** (BENCH-05):
