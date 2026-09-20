@@ -61,24 +61,24 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BENCH-01 | TBD | Pending |
-| BENCH-02 | TBD | Pending |
-| BENCH-03 | TBD | Pending |
-| BENCH-04 | TBD | Pending |
-| BENCH-05 | TBD | Pending |
-| BASE-01 | TBD | Pending |
-| BASE-02 | TBD | Pending |
-| OPT-01 | TBD | Pending |
-| OPT-02 | TBD | Pending |
-| OPT-03 | TBD | Pending |
-| RPT-01 | TBD | Pending |
-| REL-01 | TBD | Pending |
+| BENCH-01 | Phase 112 | Pending |
+| BENCH-02 | Phase 112 | Pending |
+| BENCH-03 | Phase 112 | Pending |
+| BENCH-04 | Phase 112 | Pending |
+| BENCH-05 | Phase 112 | Pending |
+| BASE-01 | Phase 113 | Pending |
+| BASE-02 | Phase 113 | Pending |
+| OPT-01 | Phase 114 | Pending |
+| OPT-02 | Phase 115 | Pending |
+| OPT-03 | Phase 115 | Pending |
+| RPT-01 | Phase 116 | Pending |
+| REL-01 | Phase 117 | Pending |
 
 **Coverage:**
 - v0.47.0 requirements: 12 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 12 ⚠️
+- Mapped to phases: 12 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-19*
-*Last updated: 2026-09-19 after initial definition*
+*Last updated: 2026-09-19 after roadmap creation (traceability mapped)*
