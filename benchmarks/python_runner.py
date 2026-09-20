@@ -1,12 +1,25 @@
 """
 Python benchmark runner for the fdars cross-language harness.
 
-Reads the seeded CSV from generate_data.py, runs scikit-fda FPCA with n_components=5,
-and emits timing + result_fingerprint to benchmarks/results/python.json.
+Reads the seeded CSV from generate_data.py, runs scikit-fda operations, and
+emits timing + result_fingerprint to benchmarks/results/python.json.
+
+Supported ops (--op):
+  fpca            - FPCA with n_components=5
+  basis_smoothing - B-spline basis smoothing with lambda=0 (interpolation)
+  depth           - Functional depth via ModifiedBandDepth (deterministic)
+  functional_boxplot - Functional boxplot via Boxplot+ModifiedBandDepth
+  fpcr            - FPCR regression: FPCA scores -> OLS on seeded y
+  elastic         - Elastic alignment / Karcher mean via FisherRaoElasticRegistration
+
+Elastic class (scikit-fda 0.10.1):
+  skfda.preprocessing.registration.FisherRaoElasticRegistration (penalty=0.0)
+  Verified at runtime against installed 0.10.1 package.
 
 Usage:
     python python_runner.py --op fpca [--smoke] [--n 60] [--m 50] [--seed 42]
-    python python_runner.py --op fpca --smoke
+    python python_runner.py --op basis_smoothing --smoke
+    python python_runner.py --smoke  # runs all ops once each
 """
 
 import argparse
@@ -18,6 +31,10 @@ import numpy as np
 import pandas as pd
 
 # --- scikit-fda imports (inside functions so import errors are descriptive) ---
+
+ALL_OPS = ["fpca", "basis_smoothing", "depth", "functional_boxplot", "fpcr", "elastic"]
+
+SCRIPT_DIR = pathlib.Path(__file__).parent
 
 
 def _import_skfda():
@@ -41,6 +58,24 @@ def load_csv(csv_path: pathlib.Path) -> tuple[np.ndarray, int, int]:
     return mat, n, m
 
 
+def load_response(y_path: pathlib.Path) -> np.ndarray:
+    """Load scalar response vector produced by generate_data.py. Returns (n,) array."""
+    df = pd.read_csv(y_path)
+    return df["y"].to_numpy(dtype=np.float64)
+
+
+def _time_fn(fn, n_repeats: int, smoke: bool) -> tuple[float, object]:
+    """Run fn() n_repeats times (or once if smoke), return (mean_ns, result)."""
+    result = fn()
+    if smoke:
+        return 0.0, result
+    # Warm-up already done via fn() above
+    total_s = timeit.timeit(fn, number=n_repeats)
+    mean_ns = (total_s / n_repeats) * 1e9
+    result = fn()  # re-run for a fresh result object
+    return mean_ns, result
+
+
 def run_fpca(
     csv_path: pathlib.Path,
     n_components: int = 5,
@@ -62,39 +97,19 @@ def run_fpca(
 
     # Build FDataGrid once outside the timing loop
     fd = FDataGrid(data_matrix=mat, grid_points=[argvals])
+    _FPCA = FPCA
+    _ncomp = n_components
 
-    fpca_estimator = FPCA(n_components=n_components)
+    def _run():
+        est = _FPCA(n_components=_ncomp)
+        est.fit(fd)
+        return est
 
-    if smoke:
-        # Smoke run: single iteration to verify correctness
-        fpca_estimator.fit(fd)
-        n_repeats = 1
-
-    # Warm-up pass (not timed)
-    fpca_estimator.fit(fd)
-    result_obj = fpca_estimator  # keep fitted result for fingerprint
-
-    if not smoke:
-        # Time with timeit for consistency (wraps repeated fits)
-        _fd = fd
-        _FPCA = FPCA
-        _ncomp = n_components
-
-        def _run():
-            est = _FPCA(n_components=_ncomp)
-            est.fit(_fd)
-            return est
-
-        total_s = timeit.timeit(lambda: _run(), number=n_repeats)
-        mean_ns = (total_s / n_repeats) * 1e9
-        # Re-fit for fingerprint (ensure it uses fresh estimator)
-        result_obj = _run()
-    else:
-        mean_ns = 0.0
+    mean_ns, result_obj = _time_fn(_run, n_repeats, smoke)
 
     # Extract loadings: FDataGrid data_matrix is (n_components, m, 1)
     # components_.data_matrix shape is (n_components, n_eval_points, 1)
-    raw = fpca_estimator.components_.data_matrix
+    raw = result_obj.components_.data_matrix
     # Shape: (n_components, m, 1) → squeeze to (n_components, m)
     loadings_ncomp_m = raw[:, :, 0]  # shape (n_components, m)
 
@@ -113,10 +128,262 @@ def run_fpca(
     }
 
 
+def run_basis_smoothing(
+    csv_path: pathlib.Path,
+    n_basis: int = 10,
+    n_repeats: int = 50,
+    smoke: bool = False,
+) -> dict:
+    """
+    Time scikit-fda B-spline basis smoothing (lambda=0 = interpolation).
+
+    Uses BSplineBasis + BasisSmoother (lambda=0, no penalty) so it is
+    comparable to the R side (smooth.basis with lambda=0). The fingerprint
+    is the smoothed curve values on the evaluation grid for all n curves.
+    """
+    FDataGrid, _ = _import_skfda()
+    from skfda.representation.basis import BSplineBasis
+    from skfda.preprocessing.smoothing import BasisSmoother
+
+    mat, n, m = load_csv(csv_path)
+    argvals = np.linspace(0, 1, m)
+
+    fd = FDataGrid(data_matrix=mat, grid_points=[argvals])
+    basis = BSplineBasis(domain_range=(0.0, 1.0), n_basis=n_basis, order=4)
+    # smoothing_parameter=0 → pure basis interpolation (no penalty)
+    smoother = BasisSmoother(basis=basis, smoothing_parameter=0.0)
+
+    def _run():
+        return smoother.fit_transform(fd)
+
+    mean_ns, result_fd = _time_fn(_run, n_repeats, smoke)
+
+    # Evaluate the smoothed functions on the original grid for fingerprint
+    smoothed_vals = result_fd.data_matrix[:, :, 0]  # shape (n, m)
+
+    return {
+        "op": "basis_smoothing",
+        "library": "python",
+        "n": n,
+        "m": m,
+        "mean_ns": mean_ns,
+        "result_fingerprint": {
+            "smoothed_values": smoothed_vals.tolist(),  # n rows, each length m
+        },
+    }
+
+
+def run_depth(
+    csv_path: pathlib.Path,
+    n_repeats: int = 50,
+    smoke: bool = False,
+) -> dict:
+    """
+    Time scikit-fda functional depth via ModifiedBandDepth (deterministic).
+
+    ModifiedBandDepth is chosen over RandomProjectionDepth for the gated
+    path because it is deterministic (per RESEARCH Pitfall 5), giving a
+    reproducible result_fingerprint that the Plan-03 gate can compare.
+    """
+    FDataGrid, _ = _import_skfda()
+    from skfda.exploratory.depth import ModifiedBandDepth
+
+    mat, n, m = load_csv(csv_path)
+    argvals = np.linspace(0, 1, m)
+    fd = FDataGrid(data_matrix=mat, grid_points=[argvals])
+
+    depth_fn = ModifiedBandDepth()
+
+    def _run():
+        return depth_fn(fd)
+
+    mean_ns, depths = _time_fn(_run, n_repeats, smoke)
+
+    return {
+        "op": "depth",
+        "library": "python",
+        "n": n,
+        "m": m,
+        "mean_ns": mean_ns,
+        "result_fingerprint": {
+            "depths": depths.tolist(),  # length-n depth vector
+        },
+    }
+
+
+def run_functional_boxplot(
+    csv_path: pathlib.Path,
+    n_repeats: int = 50,
+    smoke: bool = False,
+) -> dict:
+    """
+    Time scikit-fda functional boxplot via Boxplot + ModifiedBandDepth.
+
+    The fingerprint is the MBD depth vector (matches the R side which uses
+    roahd::fbplot(Depths="MBD") and returns the Depth vector).
+
+    scikit-fda 0.10.1 API:
+        skfda.exploratory.visualization.Boxplot (with depth_method=ModifiedBandDepth())
+        skfda.exploratory.depth.ModifiedBandDepth
+    """
+    FDataGrid, _ = _import_skfda()
+    from skfda.exploratory.depth import ModifiedBandDepth
+    from skfda.exploratory.visualization import Boxplot
+
+    mat, n, m = load_csv(csv_path)
+    argvals = np.linspace(0, 1, m)
+    fd = FDataGrid(data_matrix=mat, grid_points=[argvals])
+
+    depth_fn = ModifiedBandDepth()
+
+    def _run():
+        # Boxplot constructs the functional boxplot and computes depths internally;
+        # we extract depths separately via depth_fn for the fingerprint.
+        bp = Boxplot(fd, depth_method=depth_fn, factor=1.5)
+        d = depth_fn(fd)
+        return bp, d
+
+    mean_ns, (bp, depths) = _time_fn(_run, n_repeats, smoke)
+
+    return {
+        "op": "functional_boxplot",
+        "library": "python",
+        "n": n,
+        "m": m,
+        "mean_ns": mean_ns,
+        "result_fingerprint": {
+            # Depth vector (MBD) — same quantity as roahd::fbplot()$Depth on the R side
+            "depths": depths.tolist(),
+        },
+    }
+
+
+def run_fpcr(
+    csv_path: pathlib.Path,
+    y_path: pathlib.Path,
+    n_components: int = 5,
+    n_repeats: int = 50,
+    smoke: bool = False,
+) -> dict:
+    """
+    Time FPCR regression: FPCA scores -> OLS on the seeded response vector.
+
+    Approach: compute FPCA (5 components), project curves to scores, fit OLS
+    via numpy.linalg.lstsq. This matches fda.usc::fregre.pc on the R side
+    (FPCA scores -> OLS).
+    """
+    FDataGrid, _ = _import_skfda()
+    from skfda.preprocessing.dim_reduction import FPCA
+
+    mat, n, m = load_csv(csv_path)
+    y = load_response(y_path)
+    argvals = np.linspace(0, 1, m)
+    fd = FDataGrid(data_matrix=mat, grid_points=[argvals])
+
+    def _run():
+        fpca = FPCA(n_components=n_components)
+        fpca.fit(fd)
+        scores = fpca.transform(fd)   # shape (n, n_components)
+        # OLS: add intercept column
+        X = np.column_stack([np.ones(n), scores])
+        coeffs, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+        fitted = X @ coeffs
+        return fitted
+
+    mean_ns, fitted = _time_fn(_run, n_repeats, smoke)
+
+    return {
+        "op": "fpcr",
+        "library": "python",
+        "n": n,
+        "m": m,
+        "mean_ns": mean_ns,
+        "result_fingerprint": {
+            "fitted_values": fitted.tolist(),  # length-n fitted response vector
+        },
+    }
+
+
+def run_elastic(
+    csv_path: pathlib.Path,
+    elastic_csv_path: pathlib.Path,
+    n_repeats: int = 10,
+    smoke: bool = False,
+) -> dict:
+    """
+    Time elastic alignment and Karcher mean via FisherRaoElasticRegistration.
+
+    Two sub-operations:
+    1. Pairwise alignment: align curve 1 to curve 0 using FisherRaoElasticRegistration
+       with penalty=0.0 (no warp penalty = pure Fisher-Rao metric).
+    2. Karcher mean: compute the Fréchet mean of all n curves via
+       fisher_rao_karcher_mean (FisherRaoElasticRegistration internal algorithm).
+
+    Elastic class (scikit-fda 0.10.1):
+        skfda.preprocessing.registration.FisherRaoElasticRegistration
+        Parameters: template=<reference FDataGrid>, penalty=0.0 (no penalty),
+                    grid_dim=7 (default DP grid dimension)
+
+    Karcher mean function (scikit-fda 0.10.1):
+        skfda.exploratory.stats.fisher_rao_karcher_mean
+
+    Fingerprint: warping function values from pairwise alignment (length m),
+                 plus first curve values of the Karcher mean (length m).
+    """
+    FDataGrid, _ = _import_skfda()
+    # FisherRaoElasticRegistration — verified path in scikit-fda 0.10.1:
+    #   skfda.preprocessing.registration.FisherRaoElasticRegistration
+    from skfda.preprocessing.registration import FisherRaoElasticRegistration
+    from skfda.exploratory.stats import fisher_rao_karcher_mean
+
+    # Load full curve set for Karcher mean
+    mat, n, m = load_csv(csv_path)
+    argvals = np.linspace(0, 1, m)
+    fd_all = FDataGrid(data_matrix=mat, grid_points=[argvals])
+
+    # Load 2-curve pair for pairwise alignment
+    mat_pair, n_pair, m_pair = load_csv(elastic_csv_path)
+    assert n_pair == 2 and m_pair == m, f"Expected 2x{m} elastic fixture, got {n_pair}x{m_pair}"
+    fd_ref = FDataGrid(data_matrix=mat_pair[[0]], grid_points=[argvals])   # reference (template)
+    fd_target = FDataGrid(data_matrix=mat_pair[[1]], grid_points=[argvals])  # curve to align
+
+    def _run():
+        # Pairwise alignment
+        reg = FisherRaoElasticRegistration(template=fd_ref, penalty=0.0)
+        reg.fit_transform(fd_target)
+        warping_vals = reg.warping_.data_matrix[0, :, 0]  # shape (m,)
+
+        # Karcher mean of the full curve set
+        karcher = fisher_rao_karcher_mean(fd_all)
+        karcher_vals = karcher.data_matrix[0, :, 0]    # shape (m,)
+
+        return warping_vals, karcher_vals
+
+    mean_ns, (warping_vals, karcher_vals) = _time_fn(_run, n_repeats, smoke)
+
+    return {
+        "op": "elastic",
+        "library": "python",
+        "n": n,
+        "m": m,
+        "mean_ns": mean_ns,
+        "result_fingerprint": {
+            # Warping function from pairwise alignment (length m)
+            "warping_values": warping_vals.tolist(),
+            # Karcher mean curve values (length m)
+            "karcher_mean": karcher_vals.tolist(),
+        },
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Python scikit-fda benchmark runner")
-    parser.add_argument("--op", required=True, choices=["fpca"],
-                        help="Operation to benchmark")
+    parser.add_argument(
+        "--op",
+        choices=ALL_OPS,
+        default=None,
+        help="Operation to benchmark (omit to run all ops in --smoke mode)",
+    )
     parser.add_argument("--smoke", action="store_true",
                         help="Smoke run: verify import and one pass only")
     parser.add_argument("--n", type=int, default=60, help="Number of curves")
@@ -126,9 +393,20 @@ def main() -> None:
                         help="Number of timing repetitions")
     args = parser.parse_args()
 
-    script_dir = pathlib.Path(__file__).parent
-    csv_path = script_dir / "data" / f"curves_n{args.n}_m{args.m}.csv"
-    results_dir = script_dir / "results"
+    # When --smoke is passed without --op, run all ops
+    if args.op is None:
+        if not args.smoke:
+            parser.error("--op is required unless --smoke is used (which runs all ops)")
+        ops_to_run = ALL_OPS
+    else:
+        ops_to_run = [args.op]
+
+    data_dir = SCRIPT_DIR / "data"
+    csv_path = data_dir / f"curves_n{args.n}_m{args.m}.csv"
+    y_path = data_dir / f"y_n{args.n}.csv"
+    elastic_csv_path = data_dir / f"elastic_n2_m{args.m}.csv"
+
+    results_dir = SCRIPT_DIR / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
     out_path = results_dir / "python.json"
 
@@ -137,17 +415,44 @@ def main() -> None:
             f"CSV not found: {csv_path}. "
             "Run: python generate_data.py first."
         )
+    if "fpcr" in ops_to_run and not y_path.exists():
+        raise FileNotFoundError(
+            f"Response CSV not found: {y_path}. "
+            "Run: python generate_data.py first."
+        )
+    if "elastic" in ops_to_run and not elastic_csv_path.exists():
+        raise FileNotFoundError(
+            f"Elastic pair CSV not found: {elastic_csv_path}. "
+            "Run: python generate_data.py first."
+        )
 
-    if args.op == "fpca":
-        record = run_fpca(csv_path, n_components=5, n_repeats=args.n_repeats,
-                          smoke=args.smoke)
-    else:
-        raise ValueError(f"Unknown op: {args.op}")
+    records = []
+    for op in ops_to_run:
+        if op == "fpca":
+            record = run_fpca(csv_path, n_components=5, n_repeats=args.n_repeats,
+                              smoke=args.smoke)
+        elif op == "basis_smoothing":
+            record = run_basis_smoothing(csv_path, n_basis=10, n_repeats=args.n_repeats,
+                                         smoke=args.smoke)
+        elif op == "depth":
+            record = run_depth(csv_path, n_repeats=args.n_repeats, smoke=args.smoke)
+        elif op == "functional_boxplot":
+            record = run_functional_boxplot(csv_path, n_repeats=args.n_repeats,
+                                            smoke=args.smoke)
+        elif op == "fpcr":
+            record = run_fpcr(csv_path, y_path, n_components=5, n_repeats=args.n_repeats,
+                               smoke=args.smoke)
+        elif op == "elastic":
+            record = run_elastic(csv_path, elastic_csv_path, n_repeats=args.n_repeats // 5,
+                                 smoke=args.smoke)
+        else:
+            raise ValueError(f"Unknown op: {op}")
+
+        records.append(record)
+        print(f"Python runner [{op}]: mean_ns={record['mean_ns']:.1f}")
 
     with out_path.open("w") as f:
-        json.dump([record], f, indent=2)
-
-    print(f"Python runner [{args.op}]: mean_ns={record['mean_ns']:.1f}")
+        json.dump(records, f, indent=2)
     print(f"Written: {out_path}")
 
 
