@@ -1,15 +1,20 @@
 ---
 gsd_state_version: "1.0"
 milestone: v0.47.0
-milestone_name: Performance — Cross-Language Benchmarks & Optimization Pass
+milestone_name: "Performance: Cross-Language Benchmarks & Optimization Pass"
+current_phase: 112
+current_phase_name: Benchmark Harness Setup
 status: planning
-last_updated: "2026-09-19T19:30:00.000Z"
-last_activity: 2026-09-19
+stopped_at: Completed 112-02-PLAN.md
+last_updated: "2026-09-20T20:56:53.416Z"
+last_activity: 2026-09-20
+last_activity_desc: Phase 112 Plan 01 Tasks 1–3 committed; FPCA harness live, gate PASS (fdars-vs-Python min|corr|=0.998271, fdars-vs-R min|corr|=1.000000)
+state_head: f85af7887024b5a326f9f7d02291f4abc4614cd0
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 2
   percent: 0
 ---
 
@@ -82,6 +87,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | 112-01 (Tasks 1–3) | 21 min | 3/4 | 15 created |
+| Phase 112 P02 | 6m | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -104,6 +110,8 @@ Decisions relevant to current work (v0.47.0):
 - **112-01 DECISION: R FPCA algorithm** — Use direct Simpson's-weighted SVD in R (not `fda::pca.fd` B-spline smoothing). `pca.fd` diverges at PC3-PC5 (min|corr|=0.21 vs fdars); direct SVD achieves corr=1.000000 for all 5 components. The port of `simpsons_weights_uniform` from fdars helpers.rs is the key.
 - **112-01 DECISION: fpca_dump standalone binary** — Provides fdars FPCA loadings for the agreement gate without modifying fdars-core or touching the workspace. Located at `benchmarks/fpca_dump/` with its own `[workspace]` declaration to opt out of the parent workspace.
 - **112-01 DECISION: multimethod 2.1 in-venv patch** — Python 3.14 tightened metaclass resolution; scikit-fda imports fail without the patch to `subtype.__new__`. Patched only in the pinned `.venv` (gitignored); documented in SUMMARY.
+- [Phase 112]: ModifiedBandDepth (deterministic) used in gated depth path instead of RandomProjection — avoids nproj/distribution mismatch across libraries
+- [Phase 112]: lambda=0 pinned on all elastic ops across Python/R/Rust for Fisher-Rao metric equivalence
 
 ### Pending Todos
 
@@ -131,8 +139,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-19T19:30:00.000Z
-Stopped at: Roadmap created for v0.47.0 (phases 112–117) — ready for phase planning
+Last session: 2026-09-20T20:56:53.398Z
+Stopped at: Completed 112-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

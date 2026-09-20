@@ -10,7 +10,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase (phases 
 ### Benchmark Harness (BENCH)
 
 - [ ] **BENCH-01**: An external `benchmarks/` harness (workspace root, **not** a Cargo member — zero `fdars-core` dependency) with a seeded single-source-of-truth generator emitting matched curve-set files (shared format, CSV-default) consumed identically by the Rust, Python, and R runners.
-- [ ] **BENCH-02**: A Python runner (scikit-fda 0.10.1 + pytest-benchmark, pinned via `requirements.lock`) and an R runner (`bench` + `fda`/`fda.usc`/`refund`/`fdapace`/`roahd`/`fdasrvf`, pinned via `renv.lock`) covering the overlapping FDA operation set (FPCA, basis smoothing, functional depth, functional boxplot, FPCR regression, elastic alignment/Karcher mean).
+- [x] **BENCH-02**: A Python runner (scikit-fda 0.10.1 + pytest-benchmark, pinned via `requirements.lock`) and an R runner (`bench` + `fda`/`fda.usc`/`refund`/`fdapace`/`roahd`/`fdasrvf`, pinned via `renv.lock`) covering the overlapping FDA operation set (FPCA, basis smoothing, functional depth, functional boxplot, FPCR regression, elastic alignment/Karcher mean).
 - [ ] **BENCH-03**: fdars timings collected from the **existing** criterion 0.5 harness (parse `target/criterion/*/estimates.json`) into the shared comparison format — no new dev-dependency, no `cargo-criterion` binary.
 - [ ] **BENCH-04**: Fairness controls — pin `OMP/OPENBLAS/MKL/RAYON_NUM_THREADS=1` for the baseline run and capture full version + BLAS-backend + CPU + thread-env metadata into `benchmarks/results/env.json`.
 - [ ] **BENCH-05**: A numeric-agreement gate that verifies each library computes the same result (sign-aligned FPCA correlation > 0.99; per-operation tolerances — 1e-3 depth/regression, 1e-2 elastic warping) **before** any timing is recorded; abort/flag on mismatch.
@@ -62,7 +62,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | BENCH-01 | Phase 112 | Pending |
-| BENCH-02 | Phase 112 | Pending |
+| BENCH-02 | Phase 112 | Complete |
 | BENCH-03 | Phase 112 | Pending |
 | BENCH-04 | Phase 112 | Pending |
 | BENCH-05 | Phase 112 | Pending |
@@ -75,6 +75,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | REL-01 | Phase 117 | Pending |
 
 **Coverage:**
+
 - v0.47.0 requirements: 12 total
 - Mapped to phases: 12 ✓
 - Unmapped: 0 ✓
