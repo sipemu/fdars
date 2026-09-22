@@ -6,16 +6,16 @@ current_phase: 113
 current_phase_name: Cross-Language Baseline & Hotspot Ranking
 current_plan: 3
 status: executing
-stopped_at: Completed 113-01-PLAN.md (gate recalibration + fpca_native_r + criterion coverage)
-last_updated: "2026-09-22T19:56:42.360Z"
+stopped_at: "113-02: halted at Task 3 — FPCR gate failure (n=100,m=50, |corr|=0.9495 < 0.95). comparison.csv not written."
+last_updated: "2026-09-22T20:11:11.600Z"
 last_activity: 2026-09-22
 last_activity_desc: Phase 112 complete, transitioned to Phase 113
-state_head: afc4a78ea4d764cd32b65f9516c5f6ba905ddd24
+state_head: f036bf8a6a332726c0c1dbbbf65637eb0c9b96ab
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -92,6 +92,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | Phase 112 P02 | 6m | 3 tasks | 4 files |
 | Phase 112-benchmark-harness-setup P03 | 8 | 3 tasks | 6 files |
 | Phase 113-cross-language-baseline-hotspot-ranking P01 | 7 | 3 tasks | 3 files |
+| Phase 113 P02 | 9min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,7 @@ Decisions relevant to current work (v0.47.0):
 - [Phase 112]: Per-op fingerprint: fdars vs Python+R for FPCA (fpca_dump); Python vs R for other ops
 - [Phase 112]: Depth/fpcr gate tolerance failures are inter-library normalization divergences; Phase 113 to recalibrate
 - [Phase 113]: Gate recalibration: depth/functional_boxplot/fpcr switched to Pearson correlation (scale/shift invariant). FPCR threshold 0.95 (disclosed relaxation, empirical Phase-112 corr=0.96). Prevents normalization-convention mismatches from blocking valid baseline runs.
+- [Phase 113]: FPCR gate failure at n=100,m=50 (|corr|=0.9495 < 0.95): plan-mandated HARD STOP; comparison.csv not written; threshold not relaxed (Plan 02 halted)
 
 ### Pending Todos
 
@@ -135,6 +137,7 @@ Decisions relevant to current work (v0.47.0):
 - **Gaps to address (from research):** exact sign-canonicalization convention of `fdata_to_pc_1d`; scikit-fda vs fdars elastic cost-function equivalence (verify on a reference dataset in Phase 112); R `roahd` random-projection-depth default projection count (pin to match fdars); R `.npy` reading (`RcppCNPy` availability — default to CSV if absent); exact pinned R package versions (capture via `renv::snapshot()`).
 - **Non-breakingness + numeric-preservation is the central constraint** — every optimized impl body must be behavior-identical; no public API/signature change; all 2942 tests + doctests + 28 examples + R/WASM bindings must compile + pass unchanged. Guard it in every optimization phase (114–115).
 - Historical build/CI hazards (MEMORY.md) apply: run clippy `--all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code); run `cargo fmt` per commit (`--no-verify` commits leave fmt drift → CI fmt-check fails); keep the `--features serde` build green (repaired v0.40.0 — do not regress); watch `/tmp` and `target/` disk pressure on full builds + benches (`rm -rf target/debug/{incremental,examples}` to free space; doctests link in a small `/tmp` tmpfs); the pre-commit hook runs the full cargo gate and times out — prefer inline execution + `commit --no-verify` after out-of-band gates; run the full combined gate per-gate FOREGROUND with 600s timeout (as one background bash it gets killed mid-run). Audit-milestone note is INVERTED here: this milestone DOES change `fdars-core` code (optimizations) → it is a normal tag-eligible release, but tag/publish stays the deferred operator step per config.
+- FPCR gate failure at n=100,m=50: |Pearson corr|=0.9495 < threshold 0.95. Python (scikit-fda) vs R (fda.usc) FPCR fitted values diverge more at n=100 than n=60. Cannot proceed with grid baseline run without threshold relaxation or algorithmic alignment. Options: (A) use n<100 for FPCR cells, (B) exclude FPCR from gate for n>=100 with disclosure, (C) investigate ncomp alignment between libraries.
 
 ## Deferred Items
 
@@ -149,9 +152,9 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-22T19:56:42.327Z
-Stopped at: Completed 113-01-PLAN.md (gate recalibration + fpca_native_r + criterion coverage)
-Resume file: None
+Last session: 2026-09-22T20:11:06.269Z
+Stopped at: 113-02: halted at Task 3 — FPCR gate failure (n=100,m=50, |corr|=0.9495 < 0.95). comparison.csv not written.
+Resume file: 113-02-PLAN.md
 
 ## Operator Next Steps
 
