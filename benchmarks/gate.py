@@ -242,12 +242,12 @@ def check_agreement(
         return passed, linf_warp, details
 
     else:
-        # Unknown op — warn and treat as pass (not a gated path)
-        print(
-            f"WARN: check_agreement called with unknown op={op!r} — skipping gate check",
-            file=sys.stderr,
+        # Unknown op — fail closed. Silently returning True for an unrecognised op
+        # would mask typos and allow future callers to bypass the gate entirely.
+        raise ValueError(
+            f"check_agreement: unknown op={op!r}. "
+            f"Valid ops: fpca, basis_smoothing, depth, functional_boxplot, fpcr, elastic"
         )
-        return True, 0.0, [{"note": f"unknown op {op!r}: gate skipped"}]
 
 
 # -------------------------------------------------------------------
