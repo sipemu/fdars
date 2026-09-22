@@ -102,12 +102,18 @@ def step_python_runner(op: str | None, n: int, m: int, seed: int, env: dict,
     """Run the Python (scikit-fda) runner for one op or all ops."""
     if op is None:
         print(f"[2] Running Python runner (all ops, smoke={smoke})...")
-        _run(
-            [_PYTHON, str(_SCRIPT_DIR / "python_runner.py"),
-             "--smoke" if smoke else "--op", "fpca",
-             "--n", str(n), "--m", str(m), "--seed", str(seed)],
-            env=env,
-        ) if smoke else _run_all_ops_python(n, m, seed, env)
+        if smoke:
+            # Smoke path: --smoke flag only (no --op argument; python_runner.py
+            # treats --smoke without --op as "run all ops once for import/fingerprint
+            # verification"). CR-02: do NOT splice --op value into a --smoke command.
+            _run(
+                [_PYTHON, str(_SCRIPT_DIR / "python_runner.py"),
+                 "--smoke",
+                 "--n", str(n), "--m", str(m), "--seed", str(seed)],
+                env=env,
+            )
+        else:
+            _run_all_ops_python(n, m, seed, env)
     else:
         print(f"[2] Running Python runner (op={op})...")
         _run(
@@ -118,13 +124,32 @@ def step_python_runner(op: str | None, n: int, m: int, seed: int, env: dict,
 
 
 def _run_all_ops_python(n: int, m: int, seed: int, env: dict) -> None:
-    """Run all ops via python_runner using --smoke to get fingerprints for all ops at once."""
-    _run(
-        [_PYTHON, str(_SCRIPT_DIR / "python_runner.py"),
-         "--smoke",
-         "--n", str(n), "--m", str(m), "--seed", str(seed)],
-        env=env,
-    )
+    """Run all ops via python_runner, timing each op individually.
+
+    WR-04: the previous implementation passed --smoke, which sets mean_ns=0.0
+    for every op. The non-smoke path invokes --op <name> per op so that real
+    timings are recorded. Because python_runner.py overwrites results/python.json
+    on each call, we accumulate records from each per-op invocation and write the
+    merged list back to python.json after all ops complete.
+    """
+    py_out = _SCRIPT_DIR / "results" / "python.json"
+    accumulated: list[dict] = []
+    for single_op in ALL_OPS:
+        _run(
+            [_PYTHON, str(_SCRIPT_DIR / "python_runner.py"),
+             "--op", single_op,
+             "--n", str(n), "--m", str(m), "--seed", str(seed)],
+            env=env,
+        )
+        # python_runner.py writes a 1-element list; read it back and accumulate
+        if py_out.exists():
+            with py_out.open() as f:
+                records = json.load(f)
+            accumulated.extend(records)
+    # Write the merged all-ops result so downstream steps see all 6 records
+    py_out.parent.mkdir(parents=True, exist_ok=True)
+    with py_out.open("w") as f:
+        json.dump(accumulated, f, indent=2)
 
 
 def step_r_runner(op: str | None, n: int, m: int, seed: int, env: dict,
@@ -132,12 +157,35 @@ def step_r_runner(op: str | None, n: int, m: int, seed: int, env: dict,
     """Run the R runner for one op or all ops."""
     if op is None:
         print(f"[3] Running R runner (all ops, smoke={smoke})...")
-        _run(
-            ["Rscript", str(_SCRIPT_DIR / "r_runner.R"),
-             "--smoke",
-             "--n", str(n), "--m", str(m), "--seed", str(seed)],
-            env=env,
-        )
+        if smoke:
+            # Smoke path: run all ops at once via --smoke (mean_ns=0.0 is expected).
+            _run(
+                ["Rscript", str(_SCRIPT_DIR / "r_runner.R"),
+                 "--smoke",
+                 "--n", str(n), "--m", str(m), "--seed", str(seed)],
+                env=env,
+            )
+        else:
+            # Non-smoke path: time each op individually so results/r.json has real
+            # timings. WR-04: the previous implementation always passed --smoke,
+            # producing mean_ns=0.0 for every op in the default run.
+            # r_runner.R overwrites r.json on each call, so accumulate and merge.
+            r_out = _SCRIPT_DIR / "results" / "r.json"
+            accumulated: list[dict] = []
+            for single_op in ALL_OPS:
+                _run(
+                    ["Rscript", str(_SCRIPT_DIR / "r_runner.R"),
+                     "--op", single_op,
+                     "--n", str(n), "--m", str(m), "--seed", str(seed)],
+                    env=env,
+                )
+                if r_out.exists():
+                    with r_out.open() as f:
+                        records = json.load(f)
+                    accumulated.extend(records)
+            r_out.parent.mkdir(parents=True, exist_ok=True)
+            with r_out.open("w") as f:
+                json.dump(accumulated, f, indent=2)
     else:
         print(f"[3] Running R runner (op={op})...")
         _run(
