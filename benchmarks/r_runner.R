@@ -174,6 +174,48 @@ run_fpca <- function(csv_path, nharm = 5L, n_iterations = 10L, smoke = FALSE) {
   record
 }
 
+# --- Native R FPCA via fda::pca.fd (ecosystem-realistic timing, NOT gated) ----
+#
+# fda::pca.fd operates in B-spline coefficient space (not the raw grid space used
+# by fdars). This produces a DIFFERENT numerical result from the Simpson's-SVD
+# branch above; it is included only as a "what an R user actually runs" timing.
+# Op label: "fpca_native_r" — not gated for numeric agreement.
+#
+# IMPORTANT: smooth.basis() (preprocessing) is EXCLUDED from the timed call.
+# Only pca.fd() is timed (Pitfall 5 from RESEARCH.md).
+#
+# NOT added to ALL_OPS — invoked explicitly via --op fpca_native_r only.
+# This avoids breaking the existing --smoke all-ops contract.
+
+run_fpca_native_r <- function(csv_path, nharm = 5L, n_basis = 20L,
+                               n_iterations = 10L, smoke = FALSE) {
+  suppressPackageStartupMessages(library(fda))
+
+  dat <- load_csv(csv_path)
+  mat <- dat$mat
+  n <- dat$n
+  m <- dat$m
+  grid <- seq(0, 1, length.out = m)
+
+  # B-spline smoothing is PREPROCESSING — computed OUTSIDE the timed lambda
+  basis_obj <- create.bspline.basis(c(0, 1), nbasis = n_basis, norder = 4L)
+  fd_par <- fdPar(basis_obj, Lfdobj = int2Lfd(2L), lambda = 0)
+  fd_smooth <- smooth.basis(grid, t(mat), fd_par)$fd  # preprocessing — NOT timed
+
+  # Time ONLY the pca.fd() call
+  res <- time_fn(function() pca.fd(fd_smooth, nharm = nharm, centerfns = TRUE),
+                 n_iterations = n_iterations, smoke = smoke)
+
+  # No result_fingerprint — not gated (different numerical result from SVD branch)
+  list(
+    op = "fpca_native_r",
+    library = "r",
+    n = n,
+    m = m,
+    mean_ns = res$mean_ns
+  )
+}
+
 # --- Basis smoothing (fda::create.bspline.basis + smooth.basis, lambda=0) ----
 #
 # Matches scikit-fda BSplineBasis + BasisSmoother(smoothing_parameter=0).
@@ -452,6 +494,8 @@ main <- function() {
   for (op in ops_to_run) {
     record <- switch(op,
       fpca = run_fpca(csv_path, nharm = 5L, smoke = args$smoke),
+      fpca_native_r = run_fpca_native_r(csv_path, nharm = 5L, n_basis = 20L,
+                                         smoke = args$smoke),
       basis_smoothing = run_basis_smoothing(csv_path, n_basis = 10L, smoke = args$smoke),
       depth = run_depth(csv_path, smoke = args$smoke),
       functional_boxplot = run_functional_boxplot(csv_path, smoke = args$smoke),
