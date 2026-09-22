@@ -56,7 +56,15 @@ actuals:
 
 # Phase 112 Plan 03: Full-Op Gate + Collector + Orchestration Summary
 
-Tasks 1–3 complete; Task 4 awaiting human verification at blocking-human gate.
+Tasks 1–4 complete. Task 4 (blocking-human) APPROVED 2026-09-22 — user accepted the harness, bit-identity, and env.json fairness fields, and approved deferring per-op tolerance calibration for depth/functional_boxplot/FPCR to Phase 113 (see hand-off below).
+
+## Phase 113 hand-off — tolerance/metric calibration (approved deferral)
+
+The full-op agreement gate is wired and fails closed (BENCH-05 met). Empirical run flagged three op/pairs whose abs-diff tolerance is the wrong instrument for a cross-library convention difference (NOT harness bugs):
+- **depth** (python vs r): max|diff| 6.52e-3 vs 1e-3 — scikit-fda `ModifiedBandDepth` and `roahd::MBD` differ ~0.65% by normalization convention; rank/Pearson correlation is the right metric. Proposed: correlation ≥ 0.99 or widen abs tol to ~1e-2.
+- **functional_boxplot** (python vs r): max|diff| 6.52e-3 vs 1e-3 — same MBD-normalization root cause; same fix.
+- **fpcr** (python vs r): max|diff| 4.83e-1 vs 1e-3, but Pearson corr 0.96 — Python raw-lstsq vs R `fda.usc::fregre.pc` differ in FPCA weights/scale normalization. Proposed: switch to the correlation metric used by the FPCA gate.
+Phase 113 MUST calibrate these before those three ops produce a committed baseline (the gate is fail-closed, so an uncalibrated 113 run aborts on them). FPCA, basis smoothing, and elastic already pass and need no change.
 
 Criterion collector generalized to full op set (OP_MAP), agreement gate extended to all 6 overlapping ops with per-op tolerances, and orchestrator updated to full-op sequence with gate enforced before timing.
 
@@ -67,7 +75,7 @@ Criterion collector generalized to full op set (OP_MAP), agreement gate extended
 | 1 | Criterion collector — full op-set parse + unit tests | 129ae7bb | DONE |
 | 2 | Agreement gate — full op set, per-op tolerances + unit tests | 28879284 | DONE |
 | 3 | Full-op orchestration + finalized env capture | ab35a52b | DONE |
-| 4 | Human verification — full harness end-to-end | — | AWAITING HUMAN |
+| 4 | Human verification — full harness end-to-end | — | APPROVED 2026-09-22 |
 
 ## Task Details
 
