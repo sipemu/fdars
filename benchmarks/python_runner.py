@@ -237,13 +237,17 @@ def run_functional_boxplot(
     depth_fn = ModifiedBandDepth()
 
     def _run():
-        # Boxplot constructs the functional boxplot and computes depths internally;
-        # we extract depths separately via depth_fn for the fingerprint.
+        # WR-02: previous version called depth_fn(fd) separately after Boxplot(),
+        # causing MBD to be computed twice per timing iteration (~2x inflation vs R).
+        # Boxplot() already calls depth_method internally; we time only the Boxplot
+        # construction (single MBD call), matching R's single fbplot() call.
         bp = Boxplot(fd, depth_method=depth_fn, factor=1.5)
-        d = depth_fn(fd)
-        return bp, d
+        return bp
 
-    mean_ns, (bp, depths) = _time_fn(_run, n_repeats, smoke)
+    mean_ns, bp = _time_fn(_run, n_repeats, smoke)
+    # Compute depth outside the timing loop for the fingerprint only (one extra call,
+    # not counted in mean_ns).
+    depths = depth_fn(fd)
 
     return {
         "op": "functional_boxplot",
