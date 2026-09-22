@@ -71,7 +71,8 @@ load_response <- function(y_path) {
 
 # --- Timing helper -----------------------------------------------------------
 #
-# bench::mark()$median returns a bench_time (ns); as.numeric() gives nanoseconds.
+# bench::mark()$median returns a bench_time object; as.numeric() gives seconds.
+# Multiply by 1e9 to convert to nanoseconds for consistency with Python/Rust.
 
 time_fn <- function(fn, n_iterations = 10L, smoke = FALSE) {
   result <- fn()  # warm-up / single run for smoke
@@ -79,7 +80,7 @@ time_fn <- function(fn, n_iterations = 10L, smoke = FALSE) {
     return(list(mean_ns = 0.0, result = result))
   }
   timing <- bench::mark(fn(), iterations = n_iterations, memory = FALSE)
-  mean_ns <- as.numeric(timing$median)
+  mean_ns <- as.numeric(timing$median) * 1e9  # convert seconds -> nanoseconds
   result <- fn()   # re-run for a fresh result object
   list(mean_ns = mean_ns, result = result)
 }
