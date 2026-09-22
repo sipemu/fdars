@@ -461,3 +461,114 @@ class TestRunGate:
         assert "r" in output.lower() or "depth" in output.lower(), (
             f"GATE FAIL message should name the library or op; got: {output!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# FPCR disclosure (non-gating) tests — Phase 113 Plan 02 (user-approved)
+# ---------------------------------------------------------------------------
+
+
+class TestFpcrDisclosureNonGating:
+    """
+    FPCR is COMPUTED for disclosure but does NOT hard-abort run_gate.
+
+    Phase 113 Plan 02 decision (user-approved 2026-09-22): scikit-fda and R
+    fda.usc implement FPCR with related-but-not-identical procedures; the
+    cross-library correlation (~0.95) is a disclosed divergence, not a bug.
+    A sub-threshold FPCR correlation MUST NOT abort the grid run.
+    """
+
+    def test_fpcr_not_in_gated_ops(self):
+        """FPCR must be removed from the hard-gate set _GATED_OPS."""
+        from gate import _GATED_OPS, _DISCLOSED_OPS
+        assert "fpcr" not in _GATED_OPS, "fpcr must NOT be hard-gated"
+        assert "fpcr" in _DISCLOSED_OPS, "fpcr must be in the disclosed (non-gating) set"
+
+    def test_run_gate_passes_with_below_threshold_fpcr(self, rng, capsys):
+        """
+        run_gate returns True even when FPCR fitted values are UNCORRELATED,
+        as long as the hard-gated ops (fpca, depth, ...) agree.
+        """
+        from gate import run_gate
+
+        n, m, ncomp = 60, 50, 5
+        U, _, _ = np.linalg.svd(rng.standard_normal((m, ncomp)), full_matrices=False)
+        fdars_fp = {"loadings": U.T.tolist()}
+        tiny = rng.standard_normal((m, ncomp)) * 1e-5
+        py_fpca = {"loadings": (U + tiny).T.tolist()}
+
+        # FPCR: deliberately uncorrelated fitted values (would FAIL a hard gate)
+        fitted_a = rng.standard_normal(n)
+        fitted_b = rng.standard_normal(n)  # independent — uncorrelated
+
+        results = [
+            {"op": "fpca", "library": "rust", "n": n, "m": m, "mean_ns": 100.0,
+             "result_fingerprint": fdars_fp},
+            {"op": "fpca", "library": "python", "n": n, "m": m, "mean_ns": 200.0,
+             "result_fingerprint": py_fpca},
+            {"op": "fpcr", "library": "rust", "n": n, "m": m, "mean_ns": 10.0,
+             "result_fingerprint": {"fitted_values": fitted_a.tolist()}},
+            {"op": "fpcr", "library": "python", "n": n, "m": m, "mean_ns": 20.0,
+             "result_fingerprint": {"fitted_values": fitted_b.tolist()}},  # << below threshold
+        ]
+        passed = run_gate(results)
+        assert passed, (
+            "run_gate must return True: FPCR is disclosed, not hard-gated; "
+            "a below-threshold FPCR must NOT abort the run"
+        )
+
+        # And it must have emitted a DISCLOSURE line (not a GATE FAIL) for fpcr
+        out = capsys.readouterr()
+        combined = out.out + out.err
+        assert "DISCLOSURE" in combined and "fpcr" in combined, (
+            f"Expected a DISCLOSURE line naming fpcr; got: {combined!r}"
+        )
+        assert "GATE FAIL" not in combined, (
+            f"FPCR must not produce a GATE FAIL; got: {combined!r}"
+        )
+
+    def test_run_gate_still_aborts_on_hard_gated_op(self, rng, capsys):
+        """
+        run_gate STILL returns False when a HARD-GATED op (depth) fails —
+        even if FPCR is present and below threshold.  FPCR non-gating must not
+        weaken the five hard gates.
+        """
+        from gate import run_gate
+
+        n = 60
+        depths = np.ones(n) * 0.5
+        fitted_a = rng.standard_normal(n)
+        fitted_b = rng.standard_normal(n)
+
+        results = [
+            # Hard-gated depth that FAILS (diff 0.05 >> tolerance)
+            {"op": "depth", "library": "rust", "n": n, "m": 50, "mean_ns": 50.0,
+             "result_fingerprint": {"depths": depths.tolist()}},
+            {"op": "depth", "library": "r", "n": n, "m": 50, "mean_ns": 70.0,
+             "result_fingerprint": {"depths": (depths + 0.05).tolist()}},
+            # FPCR present + below threshold (must be ignored for gating)
+            {"op": "fpcr", "library": "rust", "n": n, "m": 50, "mean_ns": 10.0,
+             "result_fingerprint": {"fitted_values": fitted_a.tolist()}},
+            {"op": "fpcr", "library": "r", "n": n, "m": 50, "mean_ns": 20.0,
+             "result_fingerprint": {"fitted_values": fitted_b.tolist()}},
+        ]
+        passed = run_gate(results)
+        assert not passed, (
+            "run_gate must still return False when a hard-gated op (depth) fails"
+        )
+
+    def test_compute_fpcr_disclosure_corr_returns_measured_value(self, rng):
+        """compute_fpcr_disclosure_corr returns |Pearson corr|, never aborts."""
+        from gate import compute_fpcr_disclosure_corr
+
+        n = 60
+        fitted = rng.standard_normal(n)
+        fp_a = {"fitted_values": fitted.tolist()}
+        fp_b = {"fitted_values": (fitted * 2.1 + 0.5).tolist()}  # scale/shift → corr≈1
+        corr = compute_fpcr_disclosure_corr(fp_a, fp_b)
+        assert 0.99 <= corr <= 1.0, f"scale/shifted corr should be ≈1; got {corr}"
+
+        # Uncorrelated → low corr, but STILL just returns a number (no raise)
+        fp_c = {"fitted_values": rng.standard_normal(n).tolist()}
+        corr2 = compute_fpcr_disclosure_corr(fp_a, fp_c)
+        assert 0.0 <= corr2 <= 1.0, f"corr must be in [0,1]; got {corr2}"

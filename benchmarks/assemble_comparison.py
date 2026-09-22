@@ -127,11 +127,65 @@ def _build_rust_rows(rust_records: list[dict]) -> list[dict]:
     return rows
 
 
-def _build_python_rows(py_records: list[dict]) -> list[dict]:
+# FPCR disclosure threshold — must match gate._FPCR_CORR_THRESHOLD. FPCR is NOT
+# hard-gated (Phase 113 Plan 02); this bar only LABELS whether the cross-library
+# correlation cleared the disclosure floor in the recorded notes.
+_FPCR_DISCLOSURE_THRESHOLD = 0.95
+
+
+def _fpcr_disclosure_note(corr: float, n_val, m_val) -> str:
+    """
+    Build the FPCR disclosure string recorded in the notes column.
+
+    Discloses the measured cross-library correlation and states plainly that
+    FPCR is NOT hard-gated — a genuine divergence surfaced for the Phase-116
+    report (Phase 113 Plan 02, user-approved).
+    """
+    if corr != corr:  # NaN
+        corr_str = "n/a"
+    else:
+        corr_str = f"{corr:.4f}"
+    n_str = str(n_val) if n_val is not None else "?"
+    return (
+        f"FPCR cross-library agreement corr={corr_str} @ n={n_str} "
+        f"(scikit-fda FPCA->OLS vs R fda.usc fregre.pc: related but not identical FPCR; "
+        f"NOT hard-gated — disclosed divergence for the Phase 116 report)"
+    )
+
+
+def _compute_cell_fpcr_corr(py_records: list[dict], r_records: list[dict]) -> float:
+    """
+    Compute the FPCR cross-library Pearson correlation for one cell.
+
+    Uses the python and r fpcr result_fingerprint fitted_values. Returns
+    |Pearson corr|, or float('nan') if either fingerprint is missing.
+    """
+    import numpy as np
+    from scipy.stats import pearsonr
+
+    py_fpcr = next((r for r in py_records if r.get("op") == "fpcr"), None)
+    r_fpcr = next((r for r in r_records if r.get("op") == "fpcr"), None)
+    if py_fpcr is None or r_fpcr is None:
+        return float("nan")
+    py_fp = py_fpcr.get("result_fingerprint", {})
+    r_fp = r_fpcr.get("result_fingerprint", {})
+    try:
+        py_fv = np.array(py_fp["fitted_values"], dtype=np.float64)
+        r_fv = np.array(r_fp["fitted_values"], dtype=np.float64)
+    except (KeyError, TypeError, ValueError):
+        return float("nan")
+    if py_fv.size == 0 or py_fv.size != r_fv.size:
+        return float("nan")
+    corr, _ = pearsonr(py_fv, r_fv)
+    return float(abs(corr))
+
+
+def _build_python_rows(py_records: list[dict], fpcr_corr: float = float("nan")) -> list[dict]:
     """
     Convert Python runner records to schema rows.
 
     No CI data → ci/std_dev/rsd/ci_width left blank; noise_gate = 'NA'.
+    FPCR rows carry the measured cross-library disclosure note (fpcr_corr).
     """
     rows = []
     for rec in py_records:
@@ -139,6 +193,7 @@ def _build_python_rows(py_records: list[dict]) -> list[dict]:
         n_val = rec.get("n")
         m_val = rec.get("m")
         mean_ns = float(rec.get("mean_ns", 0.0))
+        notes = _fpcr_disclosure_note(fpcr_corr, n_val, m_val) if op == "fpcr" else ""
         rows.append({
             "op": op,
             "library": "python",
@@ -152,17 +207,18 @@ def _build_python_rows(py_records: list[dict]) -> list[dict]:
             "ci_width_pct": None,
             "noise_gate": "NA",
             "source": "python_runner",
-            "notes": "",
+            "notes": notes,
         })
     return rows
 
 
-def _build_r_rows(r_records: list[dict]) -> list[dict]:
+def _build_r_rows(r_records: list[dict], fpcr_corr: float = float("nan")) -> list[dict]:
     """
     Convert R runner records to schema rows.
 
     - op='fpca_native_r' → library='r_native_pca_fd'; notes = methodology disclosure.
-    - All other ops → library='r_svd'.
+    - op='fpcr'          → library='r_svd'; notes = FPCR cross-library disclosure.
+    - All other ops      → library='r_svd'.
     - No CI data → ci/std_dev/rsd/ci_width blank; noise_gate = 'NA'.
     """
     rows = []
@@ -175,6 +231,9 @@ def _build_r_rows(r_records: list[dict]) -> list[dict]:
         if op == "fpca_native_r":
             library = "r_native_pca_fd"
             notes = "native pca.fd — B-spline coeff space; not gated"
+        elif op == "fpcr":
+            library = "r_svd"
+            notes = _fpcr_disclosure_note(fpcr_corr, n_val, m_val)
         else:
             library = "r_svd"
             notes = ""
@@ -233,15 +292,24 @@ def assemble(
             py_path = results_dir / f"python_n{n}_m{m}.json"
             r_path = results_dir / f"r_n{n}_m{m}.json"
 
+            py_records: list[dict] = []
+            r_records: list[dict] = []
             if py_path.exists():
                 with py_path.open() as f:
                     py_records = json.load(f)
-                all_rows.extend(_build_python_rows(py_records))
-
             if r_path.exists():
                 with r_path.open() as f:
                     r_records = json.load(f)
-                all_rows.extend(_build_r_rows(r_records))
+
+            # Compute the per-cell FPCR cross-library disclosure correlation so
+            # both the python and r fpcr rows can carry the measured value in notes
+            # (Phase 113 Plan 02: FPCR disclosed, not hard-gated).
+            fpcr_corr = _compute_cell_fpcr_corr(py_records, r_records)
+
+            if py_records:
+                all_rows.extend(_build_python_rows(py_records, fpcr_corr=fpcr_corr))
+            if r_records:
+                all_rows.extend(_build_r_rows(r_records, fpcr_corr=fpcr_corr))
 
     if not all_rows:
         # Return empty DataFrame with correct schema

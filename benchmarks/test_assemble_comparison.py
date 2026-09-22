@@ -343,3 +343,64 @@ class TestGateGuard:
 
         # File must NOT have been written
         assert not out_csv.exists(), "comparison.csv was written despite gate_passed=False"
+
+
+# ---------------------------------------------------------------------------
+# Test: FPCR disclosure note (Phase 113 Plan 02 — user-approved)
+# ---------------------------------------------------------------------------
+
+class TestFpcrDisclosureNote:
+    def _fpcr_fingerprint(self, values):
+        return {"fitted_values": list(values)}
+
+    def test_fpcr_rows_carry_measured_corr_in_notes(self, tmp_path):
+        """FPCR python + r rows must carry the measured cross-library corr in notes."""
+        import numpy as np
+        assembler = _import_assembler()
+
+        # Build two fitted-value vectors with a KNOWN correlation
+        rng = np.random.default_rng(7)
+        base = rng.standard_normal(50)
+        py_fv = base
+        r_fv = base * 2.0 + 0.3  # scale+shift → corr ≈ 1.0
+        expected_corr = abs(np.corrcoef(py_fv, r_fv)[0, 1])
+
+        rust_recs = [_rust_record("fregre_lm", "ncomp/5",
+                                  1_000_000.0, 990_000.0, 1_010_000.0, 20_000.0,
+                                  op="fpcr")]
+        py_recs = [_python_record("fpcr", 100, 50, 5_000_000.0,
+                                  result_fingerprint=self._fpcr_fingerprint(py_fv))]
+        r_recs = [_r_svd_record("fpcr", 100, 50, 4_000_000.0,
+                                result_fingerprint=self._fpcr_fingerprint(r_fv))]
+        _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
+        _write_rust_json(tmp_path, rust_recs)
+
+        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        # The cross-library disclosure note lives on the python + r_svd fpcr rows
+        # (the rust row is criterion timing only — no cross-library comparison).
+        fpcr_xlib = df[(df["op"] == "fpcr") & (df["library"].isin(["python", "r_svd"]))]
+        assert set(fpcr_xlib["library"]) >= {"python", "r_svd"}, set(fpcr_xlib["library"])
+        for _, row in fpcr_xlib.iterrows():
+            note = str(row["notes"])
+            assert "FPCR cross-library agreement" in note, note
+            assert "NOT hard-gated" in note, note
+            # measured corr present with 4-decimal formatting
+            assert f"{expected_corr:.4f}" in note, f"expected {expected_corr:.4f} in {note!r}"
+
+    def test_fpcr_disclosure_note_when_fingerprint_missing(self, tmp_path):
+        """If fingerprints are absent, FPCR rows still get a disclosure note (corr=n/a)."""
+        assembler = _import_assembler()
+        rust_recs = [_rust_record("fregre_lm", "ncomp/5",
+                                  1_000_000.0, 990_000.0, 1_010_000.0, 20_000.0,
+                                  op="fpcr")]
+        py_recs = [_python_record("fpcr", 100, 50, 5_000_000.0)]  # no fingerprint
+        r_recs = [_r_svd_record("fpcr", 100, 50, 4_000_000.0)]    # no fingerprint
+        _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
+        _write_rust_json(tmp_path, rust_recs)
+
+        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        fpcr_rows = df[(df["op"] == "fpcr") & (df["library"] == "python")]
+        assert len(fpcr_rows) == 1
+        note = str(fpcr_rows.iloc[0]["notes"])
+        assert "FPCR cross-library agreement" in note
+        assert "corr=n/a" in note, note

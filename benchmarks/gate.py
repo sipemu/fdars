@@ -2,12 +2,22 @@
 Numeric agreement gate for the fdars cross-language harness.
 
 Per-op tolerance table (RESEARCH.md Agreement Tolerance Validation):
-  fpca            sign-aligned Pearson correlation > 0.99
-  basis_smoothing max absolute difference < 1e-3  (smoothed curve values)
-  depth           Pearson correlation >= 0.99     (depths vector) [Phase 113]
-  functional_boxplot Pearson correlation >= 0.99  (MBD depth vector) [Phase 113]
-  fpcr            Pearson correlation >= threshold (fitted values) [Phase 113]
-  elastic         L-infinity on warping functions < 1e-2
+  fpca            sign-aligned Pearson correlation > 0.99   [HARD-GATED]
+  basis_smoothing max absolute difference < 1e-3            [HARD-GATED]
+  depth           Pearson correlation >= 0.99  (depths)     [HARD-GATED] [Phase 113]
+  functional_boxplot Pearson correlation >= 0.99 (MBD)      [HARD-GATED] [Phase 113]
+  fpcr            Pearson correlation vs _FPCR_CORR_THRESHOLD (fitted values) [DISCLOSED — NOT hard-gated] [Phase 113 Plan 02]
+  elastic         L-infinity on warping functions < 1e-2    [HARD-GATED]
+
+FPCR disclosure policy (Phase 113 Plan 02, user-approved 2026-09-22):
+  scikit-fda (FPCA->OLS) and R fda.usc (fregre.pc) implement FPCR with related
+  but not-identical procedures. Cross-library Pearson correlation is ~0.95 at
+  n=60 but drops below the 0.95 disclosure threshold at n=100 (measured 0.9495).
+  This is a genuine, disclosed cross-library divergence — NOT a numerical bug.
+  FPCR is therefore COMPUTED (its correlation is recorded per cell) but does NOT
+  hard-abort the grid run. The five other ops (fpca, basis_smoothing, depth,
+  functional_boxplot, elastic) remain HARD-GATED and DO abort on failure.
+  _FPCR_CORR_THRESHOLD is used only to LABEL agreement, never to abort.
 
 FPCA sign convention mirrors fdars `fix_svd_signs` (regression.rs:288-301):
 for each loading vector, the element with the largest absolute value is
@@ -36,16 +46,17 @@ from scipy.stats import pearsonr
 # Per-op tolerance constants (RESEARCH.md §5)
 # -------------------------------------------------------------------
 
-_FPCA_CORR_THRESHOLD = 0.99          # minimum |Pearson correlation| per loading component
-_DEPTH_CORR_THRESHOLD = 0.99         # depth, functional_boxplot (Phase 113 calibration)
-# FPCR: fdars uses Simpson's weights (closer to R's integration than Python's trapezoid).
-# Phase-112 empirical value was 0.96 (Python-vs-R). Using fdars as reference may be higher,
-# but as a conservative disclosed relaxation we set 0.95 for FPCR specifically.
-# DISCLOSED (Phase 113): measured Phase-112 Python-vs-R FPCR Pearson corr = 0.96;
-# this threshold of 0.95 is intentionally below 0.99 for FPCR only — it confirms
-# functional agreement (high correlation) while accommodating scale-normalization
-# differences between fdars/Simpson's, scikit-fda/trapezoid, and R/fregre.pc weight schemes.
-_FPCR_CORR_THRESHOLD = 0.95          # fpcr only (disclosed relaxation; see above comment)
+_FPCA_CORR_THRESHOLD = 0.99          # minimum |Pearson correlation| per loading component [HARD-GATED]
+_DEPTH_CORR_THRESHOLD = 0.99         # depth, functional_boxplot (Phase 113 calibration) [HARD-GATED]
+# FPCR DISCLOSURE THRESHOLD (Phase 113 Plan 02, user-approved 2026-09-22):
+# This is NO LONGER a hard-abort threshold — FPCR is not in _GATED_OPS. It is used only
+# to LABEL whether the FPCR cross-library correlation cleared the disclosure bar in the
+# recorded notes. scikit-fda (FPCA->OLS) and R fda.usc (fregre.pc) implement FPCR with
+# related-but-not-identical procedures: Phase-112 measured Python-vs-R FPCR corr = 0.96
+# at n=60; at n=100 it drops to 0.9495 (genuine cross-library divergence, disclosed for
+# the Phase-116 report, NOT a bug). Recording the measured per-cell corr in comparison.csv
+# notes is how this divergence is surfaced honestly.
+_FPCR_CORR_THRESHOLD = 0.95          # fpcr DISCLOSURE label only — NOT a gate/abort threshold
 _MAX_ABS_DIFF_THRESHOLD = 1e-3       # basis_smoothing only
 _ELASTIC_LINF_THRESHOLD = 1e-2       # L-infinity on warping functions
 
@@ -272,27 +283,66 @@ def check_agreement(
 # -------------------------------------------------------------------
 
 
-# Overlapping ops that are gated (random-projection depth excluded, Pitfall 5)
+# Overlapping ops that HARD-GATE the run (random-projection depth excluded, Pitfall 5).
+# FPCR is deliberately EXCLUDED (Phase 113 Plan 02): it is a disclosed cross-library
+# divergence — computed and recorded, but must NOT abort the grid run.
 _GATED_OPS = frozenset(["fpca", "basis_smoothing", "depth", "functional_boxplot",
-                         "fpcr", "elastic"])
+                        "elastic"])
+
+# Ops that are COMPUTED for disclosure but do NOT hard-gate the run.
+# Their cross-library correlation is measured and recorded (comparison.csv notes),
+# but a sub-threshold value never aborts the run.
+_DISCLOSED_OPS = frozenset(["fpcr"])
+
+
+def compute_fpcr_disclosure_corr(fdars_fp: dict, other_fp: dict) -> float:
+    """
+    Compute the FPCR cross-library Pearson correlation for DISCLOSURE only.
+
+    This never aborts and never prints a GATE FAIL — it simply returns the
+    measured |Pearson correlation| between the two fitted-values vectors so the
+    caller can record it (comparison.csv notes) and label whether it cleared the
+    _FPCR_CORR_THRESHOLD disclosure bar. See the FPCR disclosure policy in the
+    module docstring (Phase 113 Plan 02).
+
+    Returns:
+        |Pearson correlation| in [0, 1].  Returns float('nan') if the fitted
+        values are missing or degenerate.
+    """
+    try:
+        fdars_fitted = np.array(fdars_fp["fitted_values"], dtype=np.float64)
+        other_fitted = np.array(other_fp["fitted_values"], dtype=np.float64)
+    except (KeyError, TypeError, ValueError):
+        return float("nan")
+    if fdars_fitted.size == 0 or other_fitted.size != fdars_fitted.size:
+        return float("nan")
+    corr, _ = pearsonr(fdars_fitted, other_fitted)
+    return float(abs(corr))
 
 
 def run_gate(results: list[dict]) -> bool:
     """
-    Check every overlapping op against every non-fdars library.
+    Check every HARD-GATED overlapping op against every non-fdars library.
 
-    Iterates all (op, lib) pairs in `results` where lib != 'rust'. For each,
-    finds the fdars (rust) record for the same op and runs check_agreement.
-    Returns False (fail-closed) if ANY op is out of tolerance, printing a
-    "GATE FAIL [<lib>] <op>" line naming the offending library and op.
+    Iterates all (op, lib) pairs in `results` where lib != 'rust'. For each
+    HARD-GATED op (_GATED_OPS), finds the fdars (rust) record for the same op
+    and runs check_agreement. Returns False (fail-closed) if ANY hard-gated op
+    is out of tolerance, printing a "GATE FAIL [<lib>] <op>" line naming the
+    offending library and op.
+
+    FPCR (and any op in _DISCLOSED_OPS) is COMPUTED for disclosure but does NOT
+    affect the return value — a sub-threshold FPCR correlation is recorded and
+    labeled (via a DISCLOSURE line to stdout) but never aborts the run.
+    Phase 113 Plan 02 (user-approved 2026-09-22).
 
     Args:
         results: list of records, each with keys:
                    op, library, n, m, mean_ns, result_fingerprint (optional)
 
     Returns:
-        True if ALL gated ops pass for ALL non-fdars libraries.
-        False if ANY op/library pair is out of tolerance.
+        True if ALL HARD-GATED ops pass for ALL non-fdars libraries.
+        False if ANY hard-gated op/library pair is out of tolerance.
+        (FPCR / disclosed ops never change this value.)
     """
     # Index fdars records by op
     fdars_by_op: dict[str, dict] = {}
@@ -306,8 +356,6 @@ def run_gate(results: list[dict]) -> bool:
         op = rec.get("op", "")
         if lib == "rust":
             continue  # skip fdars records — they are the reference
-        if op not in _GATED_OPS:
-            continue  # op not gated
         if "result_fingerprint" not in rec:
             continue  # no fingerprint to check
 
@@ -315,6 +363,22 @@ def run_gate(results: list[dict]) -> bool:
         if fdars_rec is None:
             # No fdars reference for this op — skip (fdars may not have this bench yet)
             continue
+
+        # Disclosed (non-gating) ops: compute + report, but NEVER abort.
+        if op in _DISCLOSED_OPS:
+            disc_corr = compute_fpcr_disclosure_corr(
+                fdars_rec["result_fingerprint"], rec["result_fingerprint"]
+            )
+            cleared = (not np.isnan(disc_corr)) and disc_corr >= _FPCR_CORR_THRESHOLD
+            label_status = "CLEARED" if cleared else "DISCLOSED-BELOW"
+            print(
+                f"[DISCLOSURE] [{lib}] {op}: |corr|={disc_corr:.4f} "
+                f"(disclosure bar {_FPCR_CORR_THRESHOLD}; {label_status}; NOT hard-gated)"
+            )
+            continue  # never affects all_passed
+
+        if op not in _GATED_OPS:
+            continue  # op not hard-gated and not disclosed — skip
 
         label = f"[{lib}] {op}"
         passed, metric, details = check_agreement(
@@ -540,8 +604,24 @@ def main() -> None:
             if not passed:
                 gate_passed = False
 
+        # Disclosed (non-gating) ops: compute + report, never affect gate_passed.
+        for op in _DISCLOSED_OPS:
+            py_rec = py_by_op.get(op)
+            r_rec = r_by_op.get(op)
+            if py_rec is None or r_rec is None:
+                print(f"  {op}: SKIPPED (missing python or r record)")
+                continue
+            disc_corr = compute_fpcr_disclosure_corr(
+                py_rec["result_fingerprint"], r_rec["result_fingerprint"]
+            )
+            cleared = (not np.isnan(disc_corr)) and disc_corr >= _FPCR_CORR_THRESHOLD
+            label_status = "CLEARED" if cleared else "DISCLOSED-BELOW"
+            print(f"  {op}: DISCLOSURE |corr|={disc_corr:.4f} "
+                  f"({label_status}; NOT hard-gated)")
+
         if gate_passed:
-            print("\nGATE: PASS — all overlapping ops agree between python and R")
+            print("\nGATE: PASS — all HARD-GATED overlapping ops agree between python and R "
+                  "(FPCR disclosed separately)")
         else:
             print("\nGATE: FAIL — see GATE FAIL lines above", file=sys.stderr)
         sys.exit(0 if gate_passed else 1)
