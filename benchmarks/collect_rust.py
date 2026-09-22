@@ -93,11 +93,16 @@ def iter_estimates(criterion_dir: pathlib.Path = CRITERION_DIR) -> Iterator[dict
     criterion_dir = criterion_dir.resolve()
 
     for est_path in criterion_dir.rglob("new/estimates.json"):
-        # Threat mitigation T-112-01: assert each path is under CRITERION_DIR
+        # Threat mitigation T-112-01: assert each path is under CRITERION_DIR.
+        # Resolve est_path before the check so that symlinks pointing outside
+        # criterion_dir are caught. On Python <= 3.12 Path.rglob() follows
+        # directory symlinks, so the lexical relative_to() check alone is
+        # insufficient — a symlink inside criterion_dir can point to a path
+        # that is textually under criterion_dir yet resolves outside it.
         try:
-            est_path.relative_to(criterion_dir)
+            est_path.resolve().relative_to(criterion_dir)
         except ValueError:
-            # Path traversal: skip silently
+            # Path traversal (or symlink escape): skip silently
             continue
 
         rel = est_path.relative_to(criterion_dir)
