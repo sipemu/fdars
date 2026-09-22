@@ -21,7 +21,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 
 ## Phases
 
-- [ ] **Phase 112: Benchmark Harness Setup** - External `benchmarks/` harness driving Rust/Python/R on matched inputs, with fairness + numeric-agreement gates
+- [x] **Phase 112: Benchmark Harness Setup** - External `benchmarks/` harness driving Rust/Python/R on matched inputs, with fairness + numeric-agreement gates (completed 2026-09-22)
 - [ ] **Phase 113: Cross-Language Baseline & Hotspot Ranking** - Fair baseline across all three ecosystems, merged into `comparison.csv`, plus an evidence-ranked hotspot list
 - [ ] **Phase 114: Elastic Alignment Optimization** - Optimize the anchor O(N²·M²) hot path in `src/alignment/`, numeric-identical, with before/after criterion evidence
 - [ ] **Phase 115: SVD/FPCA & Covariance Optimization** - Optimize the next-ranked hot paths + the consolidated build-variant / numeric-identity / pmat proof
@@ -60,7 +60,10 @@ The approach is **measure-first**: stand up an external benchmark harness and es
   2. An evidence-ranked hotspot list exists combining the cross-language results with the criterion suite, ranked by both absolute time and relative-to-baseline leverage.
   3. The ranking is gated on measurement noise (RSD < 5% / CI < ±5%) so no spurious speedup target is chosen; the elastic-alignment anchor is confirmed and the secondary targets (SVD/FPCA, covariance) are ordered.
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 113-01-PLAN.md — Recalibrate agreement gate (depth/functional_boxplot/fpcr → Pearson corr) + fpca_native_r R branch + populate missing criterion output (tracer slice)
+- [ ] 113-02-PLAN.md — N×M grid baseline run (gate-before-timing) + assemble committed comparison.csv + re-capture env.json
+- [ ] 113-03-PLAN.md — Noise-gated leverage ranking + committed hotspot_ranking.md (elastic anchor confirmed, secondary targets ordered) + human fair/honest sign-off
 
 ### Phase 114: Elastic Alignment Optimization
 
@@ -118,7 +121,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 112. Benchmark Harness Setup | 3/3 | In Progress|  |
+| 112. Benchmark Harness Setup | 3/3 | Complete    | 2026-09-22 |
 | 113. Cross-Language Baseline & Hotspot Ranking | 0/TBD | Not started | - |
 | 114. Elastic Alignment Optimization | 0/TBD | Not started | - |
 | 115. SVD/FPCA & Covariance Optimization | 0/TBD | Not started | - |
