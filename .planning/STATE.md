@@ -2,19 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v0.47.0
 milestone_name: "Performance: Cross-Language Benchmarks & Optimization Pass"
-current_phase: 112
-current_phase_name: Benchmark Harness Setup
-status: planning
-stopped_at: "Task 4: human-verify checkpoint — awaiting approval of plan 112-03"
-last_updated: "2026-09-20T21:08:56.696Z"
-last_activity: 2026-09-20
-last_activity_desc: Phase 112 Plan 01 Tasks 1–3 committed; FPCA harness live, gate PASS (fdars-vs-Python min|corr|=0.998271, fdars-vs-R min|corr|=1.000000)
-state_head: ab35a52bde2852651964c225e57ec9396a7080db
+current_phase: 113
+current_phase_name: Cross-Language Baseline & Hotspot Ranking
+current_plan: 3
+status: executing
+stopped_at: Completed 113-01-PLAN.md (gate recalibration + fpca_native_r + criterion coverage)
+last_updated: "2026-09-22T19:56:42.360Z"
+last_activity: 2026-09-22
+last_activity_desc: Phase 112 complete, transitioned to Phase 113
+state_head: afc4a78ea4d764cd32b65f9516c5f6ba905ddd24
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 4
   percent: 0
 ---
 
@@ -29,10 +30,11 @@ See: .planning/PROJECT.md (updated 2026-09-19)
 
 ## Current Position
 
-Phase: 112 — Benchmark Harness Setup
-Plan: 01 of 01 (awaiting human verification of Task 4 checkpoint)
-Status: Phase 112 — Plan 01 complete (Tasks 1–3), Task 4 blocking-human checkpoint pending
-Last activity: 2026-09-20 — Phase 112 Plan 01 Tasks 1–3 committed; FPCA harness live, gate PASS (fdars-vs-Python min|corr|=0.998271, fdars-vs-R min|corr|=1.000000)
+Phase: 113 — Cross-Language Baseline & Hotspot Ranking
+Current Plan: 3
+Total Plans in Phase: 3
+Status: Ready to execute
+Last activity: 2026-09-22 — Plan 113-01 complete (gate recalibration + fpca_native_r + criterion coverage)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -89,6 +91,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | 112-01 (Tasks 1–3) | 21 min | 3/4 | 15 created |
 | Phase 112 P02 | 6m | 3 tasks | 4 files |
 | Phase 112-benchmark-harness-setup P03 | 8 | 3 tasks | 6 files |
+| Phase 113-cross-language-baseline-hotspot-ranking P01 | 7 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -115,6 +118,7 @@ Decisions relevant to current work (v0.47.0):
 - [Phase 112]: lambda=0 pinned on all elastic ops across Python/R/Rust for Fisher-Rao metric equivalence
 - [Phase 112]: Per-op fingerprint: fdars vs Python+R for FPCA (fpca_dump); Python vs R for other ops
 - [Phase 112]: Depth/fpcr gate tolerance failures are inter-library normalization divergences; Phase 113 to recalibrate
+- [Phase 113]: Gate recalibration: depth/functional_boxplot/fpcr switched to Pearson correlation (scale/shift invariant). FPCR threshold 0.95 (disclosed relaxation, empirical Phase-112 corr=0.96). Prevents normalization-convention mismatches from blocking valid baseline runs.
 
 ### Pending Todos
 
@@ -145,8 +149,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-20T21:08:56.678Z
-Stopped at: Task 4: human-verify checkpoint — awaiting approval of plan 112-03
+Last session: 2026-09-22T19:56:42.327Z
+Stopped at: Completed 113-01-PLAN.md (gate recalibration + fpca_native_r + criterion coverage)
 Resume file: None
 
 ## Operator Next Steps

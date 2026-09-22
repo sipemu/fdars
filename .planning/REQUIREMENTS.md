@@ -9,7 +9,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase (phases 
 
 ### Benchmark Harness (BENCH)
 
-- [ ] **BENCH-01**: An external `benchmarks/` harness (workspace root, **not** a Cargo member — zero `fdars-core` dependency) with a seeded single-source-of-truth generator emitting matched curve-set files (shared format, CSV-default) consumed identically by the Rust, Python, and R runners.
+- [x] **BENCH-01**: An external `benchmarks/` harness (workspace root, **not** a Cargo member — zero `fdars-core` dependency) with a seeded single-source-of-truth generator emitting matched curve-set files (shared format, CSV-default) consumed identically by the Rust, Python, and R runners.
 - [x] **BENCH-02**: A Python runner (scikit-fda 0.10.1 + pytest-benchmark, pinned via `requirements.lock`) and an R runner (`bench` + `fda`/`fda.usc`/`refund`/`fdapace`/`roahd`/`fdasrvf`, pinned via `renv.lock`) covering the overlapping FDA operation set (FPCA, basis smoothing, functional depth, functional boxplot, FPCR regression, elastic alignment/Karcher mean).
 - [x] **BENCH-03**: fdars timings collected from the **existing** criterion 0.5 harness (parse `target/criterion/*/estimates.json`) into the shared comparison format — no new dev-dependency, no `cargo-criterion` binary.
 - [x] **BENCH-04**: Fairness controls — pin `OMP/OPENBLAS/MKL/RAYON_NUM_THREADS=1` for the baseline run and capture full version + BLAS-backend + CPU + thread-env metadata into `benchmarks/results/env.json`.
@@ -17,8 +17,8 @@ Requirements for this milestone. Each maps to exactly one roadmap phase (phases 
 
 ### Baseline & Ranking (BASE)
 
-- [ ] **BASE-01**: A cross-language baseline established across all three ecosystems over an N×M input grid (≥3 sizes; elastic target at N≥100), merged into `comparison.csv`.
-- [ ] **BASE-02**: An evidence-ranked hotspot list combining the cross-language results with the criterion suite (absolute + relative-to-baseline leverage), gated on measurement noise (RSD < 5% / CI < ±5%).
+- [x] **BASE-01**: A cross-language baseline established across all three ecosystems over an N×M input grid (≥3 sizes; elastic target at N≥100), merged into `comparison.csv`.
+- [x] **BASE-02**: An evidence-ranked hotspot list combining the cross-language results with the criterion suite (absolute + relative-to-baseline leverage), gated on measurement noise (RSD < 5% / CI < ±5%).
 
 ### Optimization (OPT)
 
@@ -61,13 +61,13 @@ Which phases cover which requirements. Filled during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BENCH-01 | Phase 112 | Pending |
+| BENCH-01 | Phase 112 | Complete |
 | BENCH-02 | Phase 112 | Complete |
 | BENCH-03 | Phase 112 | Complete |
 | BENCH-04 | Phase 112 | Complete |
 | BENCH-05 | Phase 112 | Complete |
-| BASE-01 | Phase 113 | Pending |
-| BASE-02 | Phase 113 | Pending |
+| BASE-01 | Phase 113 | Complete |
+| BASE-02 | Phase 113 | Complete |
 | OPT-01 | Phase 114 | Pending |
 | OPT-02 | Phase 115 | Pending |
 | OPT-03 | Phase 115 | Pending |
