@@ -9,7 +9,8 @@ load-bearing invariant of BENCH-05.
 Full-op orchestration sequence:
   1. Generate all shared CSV fixtures (seeded, bit-identical)
   2. Run Python runner (all ops or specified op)
-  3. Run R runner (all ops or specified op)
+  3. Run R runner (all ops or specified op) — in --grid mode, fpca_native_r is
+     also invoked explicitly (not in ALL_OPS) for the ecosystem-realistic timing.
   4. Run cargo bench (full bench suite or specified bench files) — skipped in --dry-run
   5. Collect criterion output into results/rust.json
   6. Capture environment metadata into results/env.json
@@ -20,11 +21,22 @@ Full-op orchestration sequence:
      - Abort (exit non-zero) on any op mismatch; no timing recorded on failure
   8. Write merged per-op timing comparison (only on gate pass)
 
+Grid mode (--grid):
+  Iterates the locked N×M baseline grid (N ∈ {100,300,500} × M ∈ {50,200}) —
+  6 cells total.  Each cell runs the full sequence above SEQUENTIALLY (never
+  concurrent — shared CSV filenames per Pitfall 2 in RESEARCH.md).  Rust
+  criterion output is NOT re-run per cell; it is collected from whatever is
+  already on disk (Plan 01 populated it).  Per-cell result files are written to
+  results/python_n{n}_m{m}.json and results/r_n{n}_m{m}.json so that the
+  assembler (assemble_comparison.py) can merge them without re-running.
+
 Usage:
     python run_all.py --op fpca [--dry-run] [--env-only]
     python run_all.py --env-only                   # capture env.json only
     python run_all.py --dry-run                    # all ops, no cargo bench
     python run_all.py                              # full run including cargo bench
+    python run_all.py --grid                       # full N×M grid baseline run
+    python run_all.py --grid --dry-run             # grid wiring check, no cargo bench
 
 All subprocess calls use list-form only (no shell=True) per T-112-02.
 """
@@ -58,6 +70,12 @@ _VENV_PYTHON = _SCRIPT_DIR / ".venv" / "bin" / "python"
 _PYTHON = str(_VENV_PYTHON) if _VENV_PYTHON.exists() else sys.executable
 
 ALL_OPS = ["fpca", "basis_smoothing", "depth", "functional_boxplot", "fpcr", "elastic"]
+
+# Locked N×M grid for the --grid baseline run (BASE-01).
+# Cells run sequentially (never concurrent — shared CSV filenames; Pitfall 2).
+# N=300 exists only on the Python/R side; Rust criterion reuses N=100/N=500 output.
+GRID_N = [100, 300, 500]
+GRID_M = [50, 200]
 
 # Bench files that cover the overlapping op set
 BENCH_FILES = [
@@ -415,6 +433,168 @@ def write_timing_comparison(n: int, m: int) -> None:
 
 
 # -------------------------------------------------------------------
+# Grid support — per-cell result-file persistence for assembler
+# -------------------------------------------------------------------
+
+
+def _write_cell_results(n: int, m: int, py_records: list, r_records: list) -> None:
+    """
+    Persist per-cell Python and R timing records for the assembler.
+
+    Writes:
+        results/python_n{n}_m{m}.json  — all Python op records for this cell
+        results/r_n{n}_m{m}.json       — all R op records for this cell
+           (including fpca_native_r if present)
+
+    These files are consumed by assemble_comparison.py to build comparison.csv
+    without re-running the benchmarks.
+    """
+    results_dir = _SCRIPT_DIR / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    py_out = results_dir / f"python_n{n}_m{m}.json"
+    r_out = results_dir / f"r_n{n}_m{m}.json"
+
+    with py_out.open("w") as f:
+        json.dump(py_records, f, indent=2)
+    with r_out.open("w") as f:
+        json.dump(r_records, f, indent=2)
+
+    print(f"  Wrote {py_out.name} ({len(py_records)} records)")
+    print(f"  Wrote {r_out.name} ({len(r_records)} records)")
+
+
+def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict) -> list:
+    """
+    Run R runner for ALL_OPS and also fpca_native_r; return merged records.
+
+    fpca_native_r is not in ALL_OPS (keeps smoke/default contract unchanged per
+    Plan 01), so it must be invoked explicitly via --op fpca_native_r.
+    """
+    r_out = _SCRIPT_DIR / "results" / "r.json"
+    accumulated: list[dict] = []
+
+    # All overlapping ops
+    for single_op in ALL_OPS:
+        _run(
+            ["Rscript", str(_SCRIPT_DIR / "r_runner.R"),
+             "--op", single_op,
+             "--n", str(n), "--m", str(m), "--seed", str(seed)],
+            env=env,
+        )
+        if r_out.exists():
+            with r_out.open() as f:
+                records = json.load(f)
+            accumulated.extend(records)
+
+    # Explicitly invoke fpca_native_r — ecosystem-realistic pca.fd timing
+    print(f"[3b] Running R fpca_native_r (n={n}, m={m})...")
+    _run(
+        ["Rscript", str(_SCRIPT_DIR / "r_runner.R"),
+         "--op", "fpca_native_r",
+         "--n", str(n), "--m", str(m), "--seed", str(seed)],
+        env=env,
+    )
+    if r_out.exists():
+        with r_out.open() as f:
+            native_records = json.load(f)
+        accumulated.extend(native_records)
+
+    # Write merged list back to r.json
+    r_out.parent.mkdir(parents=True, exist_ok=True)
+    with r_out.open("w") as f:
+        json.dump(accumulated, f, indent=2)
+
+    return accumulated
+
+
+def run_grid(dry_run: bool = False, seed: int = 42) -> None:
+    """
+    Execute the full N×M baseline grid run (BASE-01).
+
+    Iterates GRID_N × GRID_M strictly sequentially (never concurrent —
+    shared CSV filenames per Pitfall 2 in RESEARCH.md).  For each cell:
+
+      1. Generate CSV fixtures (seeded, bit-identical across ecosystems)
+      2. Run Python runner (all ops, per-op timing)
+      3. Run R runner (all ops + fpca_native_r explicitly)
+      4. Collect Rust criterion output (existing on disk; no new cargo bench)
+      5. Run gate — ABORT the whole grid run on any failure (BENCH-05)
+      6. Persist per-cell result files (python_n{n}_m{m}.json, r_n{n}_m{m}.json)
+
+    In --dry-run mode: steps 1–3 are skipped entirely (proves wiring without
+    the heavy Python/R runs); gate and persist are also skipped; the loop
+    still iterates all 6 cells to verify the grid structure.
+
+    Note: N=300 cells on the Rust criterion side reuse whatever criterion
+    output is on disk (typically N=100/N=500 cells); no new cargo bench is
+    run for N=300.  See RESEARCH.md open-question 2.
+    """
+    env = _build_env()
+    cells_run = 0
+    failed_cell = None
+
+    print(f"[GRID] Starting baseline grid run: N={GRID_N} × M={GRID_M} "
+          f"({len(GRID_N) * len(GRID_M)} cells, dry_run={dry_run})")
+
+    for n in GRID_N:
+        for m in GRID_M:
+            print(f"\n[GRID] Cell n={n} m={m} ({'DRY RUN — skipping runners' if dry_run else 'running'})")
+
+            if dry_run:
+                # Prove the loop wiring without heavy runs
+                print(f"  [dry] would run: generate(n={n}, m={m}, seed={seed})")
+                print(f"  [dry] would run: python_runner (all ops, n={n}, m={m})")
+                print(f"  [dry] would run: r_runner (all ops + fpca_native_r, n={n}, m={m})")
+                print(f"  [dry] would run: collect_rust + gate")
+                print(f"  [dry] would write: python_n{n}_m{m}.json, r_n{n}_m{m}.json")
+                cells_run += 1
+                continue
+
+            # Step 1: Generate CSV fixtures for this cell
+            step_generate(n=n, m=m, seed=seed, env=env)
+
+            # Step 2: Python runner — all ops, per-op real timings
+            _run_all_ops_python(n=n, m=m, seed=seed, env=env)
+            py_path = _SCRIPT_DIR / "results" / "python.json"
+            with py_path.open() as f:
+                py_records = json.load(f)
+
+            # Step 3: R runner — all ops + fpca_native_r
+            r_records = _run_r_with_native_fpca(n=n, m=m, seed=seed, env=env)
+            r_path = _SCRIPT_DIR / "results" / "r.json"
+
+            # Step 4: Collect Rust criterion output (existing on disk)
+            step_collect_rust(env=env)
+
+            # Step 5: Gate — ABORT on any failure (BENCH-05 measure-first)
+            print(f"[GRID] Running agreement gate for n={n} m={m}...")
+            gate_passed = step_run_gate(n=n, m=m, env=env,
+                                        py_path=py_path, r_path=r_path)
+            if not gate_passed:
+                # step_run_gate calls sys.exit(1) on failure; reaching here
+                # means it returned False rather than exiting (defensive).
+                failed_cell = (n, m)
+                print(
+                    f"\nGATE FAIL for cell n={n} m={m} — aborting grid run.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+            # Step 6: Persist per-cell result files for assembler
+            _write_cell_results(n=n, m=m, py_records=py_records, r_records=r_records)
+            cells_run += 1
+            print(f"[GRID] Cell n={n} m={m}: DONE (gate passed, results written)")
+
+    if dry_run:
+        print(f"\n[GRID] Dry-run complete: verified loop structure for "
+              f"{cells_run}/{len(GRID_N) * len(GRID_M)} cells.")
+    else:
+        print(f"\n[GRID] Grid run complete: {cells_run} cells processed, "
+              f"gate passed for all cells.")
+
+
+# -------------------------------------------------------------------
 # Main
 # -------------------------------------------------------------------
 
@@ -428,9 +608,15 @@ def main() -> None:
         help="Operation to benchmark (default: all)",
     )
     parser.add_argument("--dry-run", action="store_true",
-                        help="Generator + runners + gate only; skip cargo bench")
+                        help="Generator + runners + gate only; skip cargo bench; "
+                             "in --grid mode: proves loop wiring without any runner calls")
     parser.add_argument("--env-only", action="store_true",
                         help="Capture env.json only; skip all runners")
+    parser.add_argument("--grid", action="store_true",
+                        help="Run the full N×M baseline grid "
+                             "(N in {100,300,500} × M in {50,200}, 6 cells) "
+                             "sequentially with gate-before-timing per cell (BASE-01). "
+                             "Combine with --dry-run to verify loop wiring only.")
     parser.add_argument("--n", type=int, default=60, help="Number of curves")
     parser.add_argument("--m", type=int, default=50, help="Number of eval points")
     parser.add_argument("--seed", type=int, default=42, help="RNG seed")
@@ -441,6 +627,15 @@ def main() -> None:
 
     if args.env_only:
         step_capture_env(env)
+        return
+
+    # --grid: run the full N×M baseline grid (BASE-01)
+    if args.grid:
+        run_grid(dry_run=args.dry_run, seed=args.seed)
+        if not args.dry_run:
+            # Re-capture env.json after the grid run so it reflects this run
+            step_capture_env(env)
+            print("\nGrid baseline run complete. Run assemble_comparison.py to build comparison.csv.")
         return
 
     op = None if args.op == "all" else args.op
