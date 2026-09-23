@@ -171,6 +171,69 @@ pub fn cov_irreg(ifd: &IrregFdata, s_grid: &[f64], t_grid: &[f64], bandwidth: f6
     FdMatrix::from_column_major(cov, ns, nt).expect("dimension invariant: data.len() == n * m")
 }
 
+/// Symmetric-grid specialisation of [`cov_irreg`] for the case where `s_grid == t_grid`.
+///
+/// Computes only the upper triangle (`si <= ti`) using the SAME inner accumulation
+/// order (i → j1 → j2) and identical kernel-weight table as `cov_irreg` with equal
+/// grids, then bit-copies the mirror (`cov[ti + si*m] = val`). Upper-triangle values
+/// are bit-identical to those produced by `cov_irreg(ifd, grid, grid, bandwidth)`.
+///
+/// Called exclusively from `face_covariance`. The public `cov_irreg` is unchanged.
+pub(crate) fn sym_cov_irreg(ifd: &IrregFdata, grid: &[f64], bandwidth: f64) -> FdMatrix {
+    let n = ifd.n_obs();
+    let m = grid.len();
+
+    // Same mean / centered computation as cov_irreg.
+    let mean_at_obs = mean_irreg(ifd, &ifd.argvals, bandwidth, KernelType::Gaussian);
+    let centered: Vec<f64> = ifd
+        .values
+        .iter()
+        .zip(mean_at_obs.iter())
+        .map(|(&v, &mean)| v - mean)
+        .collect();
+
+    // Single kernel-weight table (s_grid == t_grid → w_s == w_t → one table suffices).
+    let total_obs = ifd.argvals.len();
+    let mut w = vec![0.0f64; total_obs * m];
+    for (obs_idx, &ot) in ifd.argvals.iter().enumerate() {
+        for (gi, &g) in grid.iter().enumerate() {
+            w[obs_idx + gi * total_obs] = kernel_gaussian((ot - g) / bandwidth);
+        }
+    }
+
+    // Upper-triangle loop (si <= ti). Accumulation body is word-for-word the
+    // cov_irreg inner loop (order i → j1 → j2, same reductions).
+    let mut cov = vec![0.0; m * m];
+    for si in 0..m {
+        for ti in si..m {
+            let mut sum_weights = 0.0;
+            let mut sum_products = 0.0;
+            for i in 0..n {
+                let start = ifd.offsets[i];
+                let end = ifd.offsets[i + 1];
+                for j1 in start..end {
+                    let w1 = w[j1 + si * total_obs];
+                    for j2 in start..end {
+                        let w2 = w[j2 + ti * total_obs];
+                        let ww = w1 * w2;
+                        sum_weights += ww;
+                        sum_products += ww * centered[j1] * centered[j2];
+                    }
+                }
+            }
+            let val = if sum_weights > 0.0 {
+                sum_products / sum_weights
+            } else {
+                0.0
+            };
+            cov[si + ti * m] = val;
+            cov[ti + si * m] = val; // bit-copy mirror
+        }
+    }
+
+    FdMatrix::from_column_major(cov, m, m).expect("dimension invariant: m*m")
+}
+
 // =============================================================================
 // Distance Metrics
 // =============================================================================

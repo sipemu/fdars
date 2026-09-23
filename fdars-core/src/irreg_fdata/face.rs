@@ -25,7 +25,8 @@ use crate::error::FdarError;
 use crate::fpca_variants::gaussian_smooth_cov;
 use crate::helpers::simpsons_weights;
 use crate::irreg_fdata::kernels::kernel_gaussian;
-use crate::irreg_fdata::{cov_irreg, mean_irreg, IrregFdata, KernelType};
+use crate::irreg_fdata::smoothing::sym_cov_irreg;
+use crate::irreg_fdata::{mean_irreg, IrregFdata, KernelType};
 use crate::matrix::FdMatrix;
 use crate::pace_fpca::{pace_fpca, PaceFpcaConfig, PaceFpcaResult};
 use nalgebra::DMatrix;
@@ -145,7 +146,7 @@ pub fn face_covariance(
         });
     }
 
-    let raw_cov = cov_irreg(ifd, grid, grid, bandwidth);
+    let raw_cov = sym_cov_irreg(ifd, grid, bandwidth);
     let smooth_cov = gaussian_smooth_cov(&raw_cov, grid, bandwidth);
     psd_project(&smooth_cov, grid)
 }
