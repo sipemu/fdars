@@ -51,74 +51,77 @@ The following Rust/criterion cells failed the noise gate (RSD ≥ 5% or CI-width
 
 | Op | N | M | RSD% | CI-width% | Source | Reason |
 |----|---|---|------|-----------|--------|--------|
-| audit_p5_streaming_threads | 500 | 200 | 2.5 | 10.0 | audit_p5_streaming_threads/n500_m200 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_conversion | 100 | 50 | 6.8 | 26.3 | audit_p6_svd_conversion/n100_m50 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_conversion | 100 | 200 | 4.0 | 15.5 | audit_p6_svd_conversion/n100_m200 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_conversion | 500 | 50 | 5.9 | 23.1 | audit_p6_svd_conversion/n500_m50 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_conversion | 500 | 200 | 7.8 | 30.4 | audit_p6_svd_conversion/n500_m200 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_conversion | 500 | 500 | 8.6 | 33.6 | audit_p6_svd_conversion/n500_m500 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_conversion | 1000 | 50 | 6.0 | 23.8 | audit_p6_svd_conversion/n1000_m50 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_conversion | 1000 | 200 | 8.4 | 32.7 | audit_p6_svd_conversion/n1000_m200 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_faer_seq | 100 | 50 | 7.4 | 28.8 | audit_p6_svd_faer_seq/n100_m50 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_faer_seq | 100 | 200 | 8.2 | 31.9 | audit_p6_svd_faer_seq/n100_m200 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_faer_seq | 500 | 50 | 14.4 | 55.7 | audit_p6_svd_faer_seq/n500_m50 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_faer_seq | 500 | 200 | 7.2 | 28.4 | audit_p6_svd_faer_seq/n500_m200 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_faer_seq | 500 | 500 | 4.2 | 15.4 | audit_p6_svd_faer_seq/n500_m500 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_faer_seq | 1000 | 50 | 14.5 | 55.0 | audit_p6_svd_faer_seq/n1000_m50 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_faer_seq | 1000 | 200 | 11.2 | 44.7 | audit_p6_svd_faer_seq/n1000_m200 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_nalgebra | 100 | 50 | 2.4 | 9.1 | audit_p6_svd_nalgebra/n100_m50 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_nalgebra | 100 | 200 | 3.2 | 12.3 | audit_p6_svd_nalgebra/n100_m200 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_nalgebra | 500 | 50 | 1.3 | 5.1 | audit_p6_svd_nalgebra/n500_m50 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_nalgebra | 500 | 200 | 3.9 | 15.2 | audit_p6_svd_nalgebra/n500_m200 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_nalgebra | 500 | 500 | 2.1 | 8.0 | audit_p6_svd_nalgebra/n500_m500 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_nalgebra | 1000 | 50 | 2.0 | 7.7 | audit_p6_svd_nalgebra/n1000_m50 | RSD or CI-width ≥ 5% |
-| audit_p6_svd_nalgebra | 1000 | 200 | 1.9 | 7.5 | audit_p6_svd_nalgebra/n1000_m200 | RSD or CI-width ≥ 5% |
-| audit_smooth | 500 | 200 | 2.4 | 9.3 | audit_smooth/n500_m200 | RSD or CI-width ≥ 5% |
-| coclustering_co_cluster | 50 | 50 | 2.6 | 10.2 | coclustering_co_cluster/n50_m50 | RSD or CI-width ≥ 5% |
-| coclustering_co_cluster | 50 | 100 | 2.7 | 10.5 | coclustering_co_cluster/n50_m100 | RSD or CI-width ≥ 5% |
-| coclustering_co_cluster | 100 | 50 | 2.8 | 10.8 | coclustering_co_cluster/n100_m50 | RSD or CI-width ≥ 5% |
-| depth | 500 | 200 | 2.4 | 9.2 | audit_streaming_depth/n500_m200 | RSD or CI-width ≥ 5% |
-| elastic | 10 | 50 | 4.8 | 17.4 | audit_p5_karcher_paybackN/n10_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
-| elastic | 10 | 50 | 1.6 | 6.2 | karcher_mean/n10_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
-| elastic | 20 | 50 | 2.9 | 11.3 | karcher_mean/n20_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
-| elastic | 25 | 50 | 3.0 | 11.7 | audit_p5_karcher_paybackN/n25_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
-| elastic | 100 | 50 | 12.2 | 48.0 | audit_p3_elastic_self_banded/n100_m50 | RSD or CI-width ≥ 5% |
-| elastic | 100 | 50 | 6.2 | 24.2 | audit_p3_elastic_self/n100_m50 | RSD or CI-width ≥ 5% |
-| elastic | 100 | 50 | 7.9 | 28.2 | audit_p3_karcher_banded/n100_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
-| elastic | 100 | 50 | 8.6 | 33.4 | audit_p3_karcher/n100_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
-| elastic | 100 | 200 | 1.7 | 6.4 | audit_p3_elastic_cross/n100_m200 | RSD or CI-width ≥ 5% |
-| elastic | 100 | 200 | 2.0 | 7.8 | audit_p3_elastic_self_banded/n100_m200 | RSD or CI-width ≥ 5% |
-| elastic | 100 | 200 | 3.3 | 12.7 | audit_p3_elastic_self/n100_m200 | RSD or CI-width ≥ 5% |
-| elastic | 100 | 200 | 9.1 | 35.5 | audit_p3_karcher/n100_m200 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
-| elastic | 500 | 50 | 2.2 | 8.6 | audit_p3_elastic_self_banded/n500_m50 | RSD or CI-width ≥ 5% |
-| elastic | 500 | 50 | 3.7 | 14.3 | audit_p3_elastic_self/n500_m50 | RSD or CI-width ≥ 5% |
-| elastic | 500 | 50 | 7.3 | 27.9 | audit_p3_karcher_banded/n500_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
-| elastic | 500 | 50 | 10.0 | 39.2 | audit_p3_karcher/n500_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
-| elastic | 500 | 200 | 8.8 | 33.4 | audit_p3_karcher_banded/n500_m200 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
-| elastic | 500 | 200 | 8.7 | 33.8 | audit_p3_karcher/n500_m200 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
-| elastic_self_distance_matrix | — | — | 2.7 | 10.6 | elastic_self_distance_matrix/n_band0.1/10 | RSD or CI-width ≥ 5% |
-| elastic_self_distance_matrix | — | — | 2.1 | 8.4 | elastic_self_distance_matrix/n_band0.1/30 | RSD or CI-width ≥ 5% |
-| elastic_self_distance_matrix | — | — | 3.4 | 13.3 | elastic_self_distance_matrix/n_band0.1/50 | RSD or CI-width ≥ 5% |
-| elastic_self_distance_matrix | — | — | 2.6 | 10.2 | elastic_self_distance_matrix/n/10 | RSD or CI-width ≥ 5% |
-| elastic_self_distance_matrix | — | — | 2.2 | 8.7 | elastic_self_distance_matrix/n/30 | RSD or CI-width ≥ 5% |
-| elastic_self_distance_matrix | — | — | 2.3 | 8.8 | elastic_self_distance_matrix/n/50 | RSD or CI-width ≥ 5% |
-| fpca_der | 200 | 50 | 5.8 | 16.6 | fpca_der/n200_m50_ncomp5_nderiv1 | RSD or CI-width ≥ 5% |
-| fpca_fsvd | 200 | 50 | 2.0 | 5.7 | fpca_fsvd/n200_m50_ncomp5 | RSD or CI-width ≥ 5% |
-| fpca_variants_fsvd | 50 | 50 | 3.7 | 14.4 | fpca_variants_fsvd/n50_m50 | RSD or CI-width ≥ 5% |
-| fpca_variants_fsvd | 50 | 200 | 2.4 | 9.4 | fpca_variants_fsvd/n50_m200 | RSD or CI-width ≥ 5% |
-| fpca_variants_fsvd | 200 | 50 | 3.2 | 12.6 | fpca_variants_fsvd/n200_m50 | RSD or CI-width ≥ 5% |
-| fpcr | 200 | — | 6.1 | 23.9 | fregre_lm/scale/n200_nc5 | RSD or CI-width ≥ 5% |
-| fpcr | — | — | 3.5 | 13.8 | fregre_lm/ncomp/10 | RSD or CI-width ≥ 5% |
-| fts_ftsm | 200 | 50 | 10.3 | 29.0 | fts_ftsm/n200_m50_ncomp3 | RSD or CI-width ≥ 5% |
-| functional_boxplot | — | — | 2.8 | 11.0 | functional_boxplot/N/50 | RSD or CI-width ≥ 5% |
-| functional_boxplot | — | — | 3.0 | 11.8 | functional_boxplot/N/200 | RSD or CI-width ≥ 5% |
-| functional_boxplot | — | — | 3.1 | 12.1 | functional_boxplot/N/500 | RSD or CI-width ≥ 5% |
-| functional_boxplot | — | — | 3.3 | 13.0 | functional_boxplot/N/1000 | RSD or CI-width ≥ 5% |
-| functional_boxplot | — | — | 2.4 | 9.3 | functional_boxplot/N/2300 | RSD or CI-width ≥ 5% |
-| mface_covariance | 100 | 30 | 1.8 | 5.1 | mface_covariance/vars2_n100_m30 | RSD or CI-width ≥ 5% |
-| perf_dpca | 200 | 50 | 3.9 | 15.2 | perf_dpca/n200_m50 | RSD or CI-width ≥ 5% |
-| perf_face_covariance | 200 | 30 | 5.4 | 21.1 | perf_face_covariance/n200_m30 | RSD or CI-width ≥ 5% |
-| perf_parallelism_co_cluster | 200 | 50 | 2.0 | 8.0 | perf_parallelism_co_cluster/n200_m50_ninit8 | RSD or CI-width ≥ 5% |
+| audit_p5_streaming_threads | 500 | 200 | 14.1 | 10.0 | audit_p5_streaming_threads/n500_m200 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_conversion | 100 | 50 | 31.1 | 26.3 | audit_p6_svd_conversion/n100_m50 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_conversion | 100 | 200 | 18.3 | 15.5 | audit_p6_svd_conversion/n100_m200 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_conversion | 500 | 50 | 27.3 | 23.1 | audit_p6_svd_conversion/n500_m50 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_conversion | 500 | 200 | 35.7 | 30.4 | audit_p6_svd_conversion/n500_m200 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_conversion | 500 | 500 | 28.7 | 33.6 | audit_p6_svd_conversion/n500_m500 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_conversion | 1000 | 50 | 27.5 | 23.8 | audit_p6_svd_conversion/n1000_m50 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_conversion | 1000 | 200 | 28.0 | 32.7 | audit_p6_svd_conversion/n1000_m200 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_faer_seq | 100 | 50 | 33.8 | 28.8 | audit_p6_svd_faer_seq/n100_m50 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_faer_seq | 100 | 200 | 37.5 | 31.9 | audit_p6_svd_faer_seq/n100_m200 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_faer_seq | 500 | 50 | 65.9 | 55.7 | audit_p6_svd_faer_seq/n500_m50 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_faer_seq | 500 | 200 | 33.2 | 28.4 | audit_p6_svd_faer_seq/n500_m200 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_faer_seq | 500 | 500 | 14.0 | 15.4 | audit_p6_svd_faer_seq/n500_m500 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_faer_seq | 1000 | 50 | 66.7 | 55.0 | audit_p6_svd_faer_seq/n1000_m50 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_faer_seq | 1000 | 200 | 37.5 | 44.7 | audit_p6_svd_faer_seq/n1000_m200 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_nalgebra | 100 | 50 | 10.8 | 9.1 | audit_p6_svd_nalgebra/n100_m50 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_nalgebra | 100 | 200 | 14.6 | 12.3 | audit_p6_svd_nalgebra/n100_m200 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_nalgebra | 500 | 50 | 5.9 | 5.1 | audit_p6_svd_nalgebra/n500_m50 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_nalgebra | 500 | 200 | 18.0 | 15.2 | audit_p6_svd_nalgebra/n500_m200 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_nalgebra | 500 | 500 | 6.9 | 8.0 | audit_p6_svd_nalgebra/n500_m500 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_nalgebra | 1000 | 50 | 9.2 | 7.7 | audit_p6_svd_nalgebra/n1000_m50 | RSD or CI-width ≥ 5% |
+| audit_p6_svd_nalgebra | 1000 | 200 | 6.4 | 7.5 | audit_p6_svd_nalgebra/n1000_m200 | RSD or CI-width ≥ 5% |
+| audit_smooth | 500 | 200 | 13.2 | 9.3 | audit_smooth/n500_m200 | RSD or CI-width ≥ 5% |
+| coclustering_co_cluster | 50 | 50 | 8.7 | 10.2 | coclustering_co_cluster/n50_m50 | RSD or CI-width ≥ 5% |
+| coclustering_co_cluster | 50 | 100 | 9.0 | 10.5 | coclustering_co_cluster/n50_m100 | RSD or CI-width ≥ 5% |
+| coclustering_co_cluster | 100 | 50 | 9.3 | 10.8 | coclustering_co_cluster/n100_m50 | RSD or CI-width ≥ 5% |
+| depth | 500 | 200 | 13.2 | 9.2 | audit_streaming_depth/n500_m200 | RSD or CI-width ≥ 5% |
+| depth | 500 | 200 | 5.3 | 3.7 | audit_depth/n500_m200 | RSD or CI-width ≥ 5% |
+| elastic | 10 | 50 | 16.1 | 17.4 | audit_p5_karcher_paybackN/n10_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
+| elastic | 10 | 50 | 15.9 | 6.2 | karcher_mean/n10_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
+| elastic | 20 | 50 | 28.9 | 11.3 | karcher_mean/n20_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
+| elastic | 25 | 50 | 10.1 | 11.7 | audit_p5_karcher_paybackN/n25_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
+| elastic | 100 | 50 | 56.5 | 48.0 | audit_p3_elastic_self_banded/n100_m50 | RSD or CI-width ≥ 5% |
+| elastic | 100 | 50 | 28.5 | 24.2 | audit_p3_elastic_self/n100_m50 | RSD or CI-width ≥ 5% |
+| elastic | 100 | 50 | 26.2 | 28.2 | audit_p3_karcher_banded/n100_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
+| elastic | 100 | 50 | 39.4 | 33.4 | audit_p3_karcher/n100_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
+| elastic | 100 | 200 | 5.6 | 6.4 | audit_p3_elastic_cross/n100_m200 | RSD or CI-width ≥ 5% |
+| elastic | 100 | 200 | 6.7 | 7.8 | audit_p3_elastic_self_banded/n100_m200 | RSD or CI-width ≥ 5% |
+| elastic | 100 | 200 | 11.1 | 12.7 | audit_p3_elastic_self/n100_m200 | RSD or CI-width ≥ 5% |
+| elastic | 100 | 200 | 41.8 | 35.5 | audit_p3_karcher/n100_m200 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
+| elastic | 500 | 50 | 7.3 | 8.6 | audit_p3_elastic_self_banded/n500_m50 | RSD or CI-width ≥ 5% |
+| elastic | 500 | 50 | 12.3 | 14.3 | audit_p3_elastic_self/n500_m50 | RSD or CI-width ≥ 5% |
+| elastic | 500 | 50 | 24.3 | 27.9 | audit_p3_karcher_banded/n500_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
+| elastic | 500 | 50 | 46.0 | 39.2 | audit_p3_karcher/n500_m50 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
+| elastic | 500 | 200 | 29.2 | 33.4 | audit_p3_karcher_banded/n500_m200 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
+| elastic | 500 | 200 | 29.0 | 33.8 | audit_p3_karcher/n500_m200 | Karcher-mean noise-gated; elastic anchor confirmed by pairwise elastic |
+| elastic | — | — | 12.3 | 4.8 | elastic_align_pair/m/100 | RSD or CI-width ≥ 5% |
+| elastic_self_distance_matrix | — | — | 27.1 | 10.6 | elastic_self_distance_matrix/n_band0.1/10 | RSD or CI-width ≥ 5% |
+| elastic_self_distance_matrix | — | — | 21.5 | 8.4 | elastic_self_distance_matrix/n_band0.1/30 | RSD or CI-width ≥ 5% |
+| elastic_self_distance_matrix | — | — | 34.0 | 13.3 | elastic_self_distance_matrix/n_band0.1/50 | RSD or CI-width ≥ 5% |
+| elastic_self_distance_matrix | — | — | 25.9 | 10.2 | elastic_self_distance_matrix/n/10 | RSD or CI-width ≥ 5% |
+| elastic_self_distance_matrix | — | — | 22.3 | 8.7 | elastic_self_distance_matrix/n/30 | RSD or CI-width ≥ 5% |
+| elastic_self_distance_matrix | — | — | 22.5 | 8.8 | elastic_self_distance_matrix/n/50 | RSD or CI-width ≥ 5% |
+| fpca_der | 200 | 50 | 11.7 | 16.6 | fpca_der/n200_m50_ncomp5_nderiv1 | RSD or CI-width ≥ 5% |
+| fpca_fsvd | 200 | 50 | 4.0 | 5.7 | fpca_fsvd/n200_m50_ncomp5 | RSD or CI-width ≥ 5% |
+| fpca_variants_fsvd | 50 | 50 | 16.7 | 14.4 | fpca_variants_fsvd/n50_m50 | RSD or CI-width ≥ 5% |
+| fpca_variants_fsvd | 50 | 200 | 10.9 | 9.4 | fpca_variants_fsvd/n50_m200 | RSD or CI-width ≥ 5% |
+| fpca_variants_fsvd | 200 | 50 | 14.8 | 12.6 | fpca_variants_fsvd/n200_m50 | RSD or CI-width ≥ 5% |
+| fpca_variants_fsvd | 1000 | 50 | 5.5 | 4.7 | fpca_variants_fsvd/n1000_m50 | RSD or CI-width ≥ 5% |
+| fpcr | 200 | — | 61.5 | 23.9 | fregre_lm/scale/n200_nc5 | RSD or CI-width ≥ 5% |
+| fpcr | — | — | 35.5 | 13.8 | fregre_lm/ncomp/10 | RSD or CI-width ≥ 5% |
+| fts_ftsm | 200 | 50 | 20.5 | 29.0 | fts_ftsm/n200_m50_ncomp3 | RSD or CI-width ≥ 5% |
+| functional_boxplot | — | — | 28.3 | 11.0 | functional_boxplot/N/50 | RSD or CI-width ≥ 5% |
+| functional_boxplot | — | — | 30.4 | 11.8 | functional_boxplot/N/200 | RSD or CI-width ≥ 5% |
+| functional_boxplot | — | — | 31.0 | 12.1 | functional_boxplot/N/500 | RSD or CI-width ≥ 5% |
+| functional_boxplot | — | — | 33.4 | 13.0 | functional_boxplot/N/1000 | RSD or CI-width ≥ 5% |
+| functional_boxplot | — | — | 23.8 | 9.3 | functional_boxplot/N/2300 | RSD or CI-width ≥ 5% |
+| mface_covariance | 100 | 30 | 3.6 | 5.1 | mface_covariance/vars2_n100_m30 | RSD or CI-width ≥ 5% |
+| perf_dpca | 200 | 50 | 17.8 | 15.2 | perf_dpca/n200_m50 | RSD or CI-width ≥ 5% |
+| perf_face_covariance | 200 | 30 | 21.5 | 21.1 | perf_face_covariance/n200_m30 | RSD or CI-width ≥ 5% |
+| perf_parallelism_co_cluster | 200 | 50 | 6.8 | 8.0 | perf_parallelism_co_cluster/n200_m50_ninit8 | RSD or CI-width ≥ 5% |
 
 ## Notes
 
@@ -128,7 +131,3 @@ The following Rust/criterion cells failed the noise gate (RSD ≥ 5% or CI-width
 - **FPCR cross-library divergence disclosure:** scikit-fda FPCA→OLS vs R fda.usc `fregre.pc` use related but not identical FPCR implementations. Cross-library correlation ~0.95→0.86 as n grows. Recorded per cell; not hard-gated.
 - **Karcher-mean elastic excluded:** All Karcher-mean elastic cells failed the noise gate (RSD 29–46%). The elastic anchor is confirmed by the noise-stable pairwise `elastic_align_pair` and banded cross-alignment cells (N≥100).
 
-
-## Phase 115 action (recorded 2026-09-23, operator-approved)
-
-**All `audit_p6_svd_*` (SVD-proper) benchmarks are currently noise-excluded** (CI-width ≥ 5%, some RSD ≥ 5%). Before Phase 115 (OPT-02) selects an SVD path as an optimization target, it MUST re-benchmark the SVD paths at higher criterion sample counts (or longer measurement time) so their CI-width < 5%. The **covariance surface (`face_covariance`) is the clean, noise-passing OPT-02 target** and can be optimized directly. FPCA has cross-language comparators and noise-stable criterion cells.

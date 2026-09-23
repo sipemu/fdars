@@ -2,7 +2,7 @@
 Unit tests for gate.py — full-op numeric-agreement gate.
 
 Per-op tolerance table (RESEARCH.md Agreement Tolerance Validation):
-  fpca            sign-aligned Pearson correlation > 0.99
+  fpca            SUBSPACE agreement: cos(largest principal angle) >= 0.99  [HARD-GATED] [Phase 113 Plan 02]
   basis_smoothing max absolute difference < 1e-3
   depth           Pearson correlation >= 0.99  (depths vector) [Phase 113 calibration]
   functional_boxplot Pearson correlation >= 0.99 (MBD depth vector) [Phase 113 calibration]
