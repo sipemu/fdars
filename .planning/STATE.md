@@ -2,21 +2,21 @@
 gsd_state_version: "1.0"
 milestone: v0.47.0
 milestone_name: "Performance: Cross-Language Benchmarks & Optimization Pass"
-current_phase: 113
-current_phase_name: Cross-Language Baseline & Hotspot Ranking
+current_phase: 115
+current_phase_name: SVD/FPCA & Covariance Optimization
 current_plan: Not started
 status: planning
-stopped_at: Completed 114-02-PLAN.md (dp_fill_grid band-iteration refactor)
-last_updated: "2026-09-23T11:05:55.566Z"
+stopped_at: Completed 115-01-PLAN.md
+last_updated: "2026-09-23T14:40:01.049Z"
 last_activity: 2026-09-23
-last_activity_desc: Phase 112 complete, transitioned to Phase 113
-state_head: aed0251cdee694020fd80d3d54978ade7fd3e849
+last_activity_desc: Phase 114 complete, transitioned to Phase 115
+state_head: 9fd46576768b94f5e3da22df5076159adebc5f5b
 progress:
   total_phases: 6
-  completed_phases: 0
-  total_plans: 8
-  completed_plans: 8
-  percent: 0
+  completed_phases: 1
+  total_plans: 11
+  completed_plans: 9
+  percent: 17
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-09-19)
 
 ## Current Position
 
-Phase: 113 — Cross-Language Baseline & Hotspot Ranking
+Phase: 115 — SVD/FPCA & Covariance Optimization
 Current Plan: Not started
 Total Plans in Phase: 3
 Status: Ready to plan
-Last activity: 2026-09-23 — Phase 112 complete, transitioned to Phase 113
+Last activity: 2026-09-23 — Phase 114 complete, transitioned to Phase 115
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -95,6 +95,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | Phase 113 P02 | 9min | 2 tasks | 3 files |
 | Phase 114-elastic-alignment-optimization P01 | 161 | 2 tasks | 4 files |
 | Phase 114-elastic-alignment-optimization P02 | 591 | 2 tasks | 4 files |
+| Phase 115 P01 | 75 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,8 @@ Decisions relevant to current work (v0.47.0):
 - [Phase 113]: Golden fixture constants captured at generate_curves(20,50) from un-optimized code in Wave 1 — provides immovable numeric-identity reference for Plan 02 OPT-01 verification
 - [Phase 113]: BEFORE-baseline mean 7.310s CI [7.073s, 7.552s] — Plan 02 must achieve after-upper < 7.073s for non-overlapping-CI OPT-01 success
 - [Phase 113]: dp_fill_grid banded arm now iterates diagonal corridor directly (O(n*r)); dp_skip_cell removed (dead code); numeric identity proven by golden fixture in debug+release at 1e-10; AFTER criterion within noise at n500_m50 (-2%, CIs overlap) — reported honestly per D-honesty-clause; unbanded arm intentionally untouched (near-optimal per RESEARCH)
+- [Phase 115]: Committed BEFORE-baseline on perf_face_covariance/n200_m30 at SHA 328215e7 (268 ms mean); Plan 02 speedup check uses this as the reference.
+- [Phase 115]: Golden fixture uses separate consts for (0,5) and (5,0) mirror cells (pre-opt differ by ~8e-18); assert_abs_close at 1e-10 ensures green on both pre- and post-opt code.
 
 ### Pending Todos
 
@@ -163,8 +166,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-23T11:05:55.542Z
-Stopped at: Completed 114-02-PLAN.md (dp_fill_grid band-iteration refactor)
+Last session: 2026-09-23T14:40:01.020Z
+Stopped at: Completed 115-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

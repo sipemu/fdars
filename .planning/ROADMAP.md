@@ -93,8 +93,9 @@ The approach is **measure-first**: stand up an external benchmark harness and es
   2. Every optimization commit preserves numeric identity — `cargo test --release --features linalg` is green and the determinism guardrail is green.
   3. All five build variants (default / `linalg` / `serde` / `linalg,serde,parallel` / WASM) compile after the optimizations, and the pmat quality-gate stays green (no new complexity/entropy/SATD/defect violations from decomposition helpers).
 
-**Plans**: 3 plans
-- [ ] 115-01-PLAN.md — Capture committed BEFORE-baseline criterion (perf_face_covariance/n200_m30) + golden-value face_covariance fixture (tracer, un-optimized code)
+**Plans**: 1/3 plans executed
+
+- [x] 115-01-PLAN.md — Capture committed BEFORE-baseline criterion (perf_face_covariance/n200_m30) + golden-value face_covariance fixture (tracer, un-optimized code)
 - [ ] 115-02-PLAN.md — sym_cov_irreg upper-triangle+mirror optimization (numeric-identical) + AFTER criterion (~2x) + SVD re-benchmark/near-optimal verdict
 - [ ] 115-03-PLAN.md — OPT-03 consolidated proof battery (release test + determinism guardrail + 5 builds + pmat gate + fmt/clippy), committed
 
@@ -131,7 +132,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 | 112. Benchmark Harness Setup | 3/3 | Complete    | 2026-09-22 |
 | 113. Cross-Language Baseline & Hotspot Ranking | 3/3 | Complete    | 2026-09-23 |
 | 114. Elastic Alignment Optimization | 2/2 | Complete    | 2026-09-23 |
-| 115. SVD/FPCA & Covariance Optimization | 0/TBD | Not started | - |
+| 115. SVD/FPCA & Covariance Optimization | 1/3 | In Progress|  |
 | 116. Cross-Language Re-Run & Published Report | 0/TBD | Not started | - |
 | 117. Release Preparation & Verification | 0/TBD | Not started | - |
 
