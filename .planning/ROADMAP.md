@@ -22,7 +22,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 ## Phases
 
 - [x] **Phase 112: Benchmark Harness Setup** - External `benchmarks/` harness driving Rust/Python/R on matched inputs, with fairness + numeric-agreement gates (completed 2026-09-22)
-- [ ] **Phase 113: Cross-Language Baseline & Hotspot Ranking** - Fair baseline across all three ecosystems, merged into `comparison.csv`, plus an evidence-ranked hotspot list
+- [x] **Phase 113: Cross-Language Baseline & Hotspot Ranking** - Fair baseline across all three ecosystems, merged into `comparison.csv`, plus an evidence-ranked hotspot list (completed 2026-09-23)
 - [ ] **Phase 114: Elastic Alignment Optimization** - Optimize the anchor O(N²·M²) hot path in `src/alignment/`, numeric-identical, with before/after criterion evidence
 - [ ] **Phase 115: SVD/FPCA & Covariance Optimization** - Optimize the next-ranked hot paths + the consolidated build-variant / numeric-identity / pmat proof
 - [ ] **Phase 116: Cross-Language Re-Run & Published Report** - Re-run the full harness post-optimization; publish the before/after perf report + reproduction instructions
@@ -64,7 +64,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 
 - [x] 113-01-PLAN.md — Recalibrate agreement gate (depth/functional_boxplot/fpcr → Pearson corr) + fpca_native_r R branch + populate missing criterion output (tracer slice)
 - [x] 113-02-PLAN.md — N×M grid baseline run (gate-before-timing) + assemble committed comparison.csv + re-capture env.json
-- [ ] 113-03-PLAN.md — Noise-gated leverage ranking + committed hotspot_ranking.md (elastic anchor confirmed, secondary targets ordered) + human fair/honest sign-off
+- [x] 113-03-PLAN.md — Noise-gated leverage ranking + committed hotspot_ranking.md (elastic anchor confirmed, secondary targets ordered) + human fair/honest sign-off
 
 ### Phase 114: Elastic Alignment Optimization
 
@@ -77,7 +77,9 @@ The approach is **measure-first**: stand up an external benchmark harness and es
   2. Output is numeric-identical — the full test suite stays green and a golden-value assertion confirms bit-identical (or ≤1e-10) results before/after.
   3. The change is strictly non-breaking: no public signature change; the optimization lives in internals that compile under the R binding's default-only feature set (or is gated behind `linalg`/`parallel`).
 
-**Plans**: TBD
+**Plans**: 2 plans
+- [ ] 114-01-PLAN.md — Tracer: commit BEFORE-baseline criterion (`audit_p3_elastic_cross_banded/n500_m50`) + golden-value fixture (`equivalence_phase114.rs`, n=20,m=50, ≤1e-10) locking current elastic self-distance output
+- [ ] 114-02-PLAN.md — `dp_fill_grid` band-iteration refactor (numeric-identical) + prove (golden + release + determinism guardrail + five build variants) + committed AFTER criterion with honest before/after verdict
 
 ### Phase 115: SVD/FPCA & Covariance Optimization
 
@@ -123,7 +125,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 112. Benchmark Harness Setup | 3/3 | Complete    | 2026-09-22 |
-| 113. Cross-Language Baseline & Hotspot Ranking | 2/3 | In Progress|  |
+| 113. Cross-Language Baseline & Hotspot Ranking | 3/3 | Complete    | 2026-09-23 |
 | 114. Elastic Alignment Optimization | 0/TBD | Not started | - |
 | 115. SVD/FPCA & Covariance Optimization | 0/TBD | Not started | - |
 | 116. Cross-Language Re-Run & Published Report | 0/TBD | Not started | - |
