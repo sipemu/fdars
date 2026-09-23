@@ -381,6 +381,26 @@ def step_run_gate(n: int, m: int, env: dict,
     return True
 
 
+def _match_rust_rec(rust_records: list, op: str, n: int, m: int) -> dict:
+    """
+    Return the best-matching Rust record for (op, n, m), or {} if none.
+
+    Prefers an exact n/m match (parsed from the record's bench field) so that
+    write_timing_comparison does not associate Python/R timings for one grid cell
+    with Rust timings from a different cell when multiple sizes exist on disk.
+    Falls back to op-only match for single-size runs.
+    """
+    # Prefer exact n/m match (parsed from bench field, e.g. "n100_m50")
+    exact = [
+        r for r in rust_records
+        if r.get("op") == op and r.get("n") == n and r.get("m") == m
+    ]
+    if exact:
+        return exact[0]
+    # Fall back to op-only match (single-size runs or n/m not parsed)
+    return next((r for r in rust_records if r.get("op") == op), {})
+
+
 def write_timing_comparison(n: int, m: int) -> None:
     """
     Write the merged per-op timing comparison record.
@@ -412,12 +432,10 @@ def write_timing_comparison(n: int, m: int) -> None:
     for op in ALL_OPS:
         py_rec = py_by_op.get(op, {})
         r_rec = r_by_op.get(op, {})
-        # Get fdars timing: find the best matching criterion record
-        # (prefer criterion groups that have already been run)
-        rust_rec = next(
-            (r for r in rust_records if r.get("op") == op),
-            {}
-        )
+        # Get fdars timing: find the best matching criterion record by op AND n/m.
+        # rust.json may contain multiple sizes for the same op; match by n and m
+        # to avoid associating Python/R timings for one cell with Rust from another.
+        rust_rec = _match_rust_rec(rust_records, op, n, m)
         timing_rows.append({
             "op": op,
             "n": n,
