@@ -24,7 +24,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase (phases 
 
 - [x] **OPT-01**: Optimize the elastic-alignment hot path (anchor target, O(N²·M²)) in `src/alignment/`, strictly non-breaking + numeric-identical, with committed before/after criterion evidence.
 - [x] **OPT-02**: Optimize the next-ranked hot paths (SVD/FPCA + covariance surface, conditional on the BASE-02 ranking), same non-breaking + numeric-identity proof pipeline.
-- [ ] **OPT-03**: Every optimization commit preserves numeric identity and all build variants — `cargo test --release --features linalg` green, determinism guardrail green, all five builds (default / `linalg` / `serde` / `linalg,serde,parallel` / WASM) compile, and the pmat quality-gate stays green.
+- [x] **OPT-03**: Every optimization commit preserves numeric identity and all build variants — `cargo test --release --features linalg` green, determinism guardrail green, all five builds (default / `linalg` / `serde` / `linalg,serde,parallel` / WASM) compile, and the pmat quality-gate stays green.
 
 ### Report (RPT)
 
@@ -70,7 +70,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | BASE-02 | Phase 113 | Complete |
 | OPT-01 | Phase 114 | Complete |
 | OPT-02 | Phase 115 | Complete |
-| OPT-03 | Phase 115 | Pending |
+| OPT-03 | Phase 115 | Complete |
 | RPT-01 | Phase 116 | Pending |
 | REL-01 | Phase 117 | Pending |
 
