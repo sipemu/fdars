@@ -615,7 +615,13 @@ def run_grid(dry_run: bool = False, seed: int = 42) -> None:
                 )
                 sys.exit(1)
 
-            # Step 6: Persist per-cell result files for assembler
+            # Step 6: Persist per-cell result files for assembler.
+            # Re-load py_records from disk: step_run_gate patched python.json in
+            # place with the FPCA fdars-vs-python disclosure (fpca_disclosure),
+            # so the persisted per-cell file must reflect that patch, not the
+            # stale pre-gate in-memory records.
+            with py_path.open() as f:
+                py_records = json.load(f)
             _write_cell_results(n=n, m=m, py_records=py_records, r_records=r_records)
             cells_run += 1
             print(f"[GRID] Cell n={n} m={m}: DONE (gate passed, results written)")
