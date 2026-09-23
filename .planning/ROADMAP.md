@@ -77,10 +77,10 @@ The approach is **measure-first**: stand up an external benchmark harness and es
   2. Output is numeric-identical — the full test suite stays green and a golden-value assertion confirms bit-identical (or ≤1e-10) results before/after.
   3. The change is strictly non-breaking: no public signature change; the optimization lives in internals that compile under the R binding's default-only feature set (or is gated behind `linalg`/`parallel`).
 
-**Plans**: 1/2 plans executed
+**Plans**: 2/2 plans executed
 
 - [x] 114-01-PLAN.md — Tracer: commit BEFORE-baseline criterion (`audit_p3_elastic_cross_banded/n500_m50`) + golden-value fixture (`equivalence_phase114.rs`, n=20,m=50, ≤1e-10) locking current elastic self-distance output
-- [ ] 114-02-PLAN.md — `dp_fill_grid` band-iteration refactor (numeric-identical) + prove (golden + release + determinism guardrail + five build variants) + committed AFTER criterion with honest before/after verdict
+- [x] 114-02-PLAN.md — `dp_fill_grid` band-iteration refactor (numeric-identical) + prove (golden + release + determinism guardrail + five build variants) + committed AFTER criterion with honest before/after verdict
 
 ### Phase 115: SVD/FPCA & Covariance Optimization
 
@@ -127,7 +127,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 |-------|----------------|--------|-----------|
 | 112. Benchmark Harness Setup | 3/3 | Complete    | 2026-09-22 |
 | 113. Cross-Language Baseline & Hotspot Ranking | 3/3 | Complete    | 2026-09-23 |
-| 114. Elastic Alignment Optimization | 1/2 | In Progress|  |
+| 114. Elastic Alignment Optimization | 2/2 | In Progress|  |
 | 115. SVD/FPCA & Covariance Optimization | 0/TBD | Not started | - |
 | 116. Cross-Language Re-Run & Published Report | 0/TBD | Not started | - |
 | 117. Release Preparation & Verification | 0/TBD | Not started | - |
