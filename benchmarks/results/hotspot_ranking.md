@@ -128,3 +128,7 @@ The following Rust/criterion cells failed the noise gate (RSD ≥ 5% or CI-width
 - **FPCR cross-library divergence disclosure:** scikit-fda FPCA→OLS vs R fda.usc `fregre.pc` use related but not identical FPCR implementations. Cross-library correlation ~0.95→0.86 as n grows. Recorded per cell; not hard-gated.
 - **Karcher-mean elastic excluded:** All Karcher-mean elastic cells failed the noise gate (RSD 29–46%). The elastic anchor is confirmed by the noise-stable pairwise `elastic_align_pair` and banded cross-alignment cells (N≥100).
 
+
+## Phase 115 action (recorded 2026-09-23, operator-approved)
+
+**All `audit_p6_svd_*` (SVD-proper) benchmarks are currently noise-excluded** (CI-width ≥ 5%, some RSD ≥ 5%). Before Phase 115 (OPT-02) selects an SVD path as an optimization target, it MUST re-benchmark the SVD paths at higher criterion sample counts (or longer measurement time) so their CI-width < 5%. The **covariance surface (`face_covariance`) is the clean, noise-passing OPT-02 target** and can be optimized directly. FPCA has cross-language comparators and noise-stable criterion cells.
