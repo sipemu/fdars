@@ -351,7 +351,12 @@ def step_run_gate(n: int, m: int, env: dict,
     py_by_op = {r["op"]: r for r in py_records}
     r_by_op = {r["op"]: r for r in r_records}
 
-    for op in ["fpca", "basis_smoothing", "depth", "functional_boxplot", "fpcr", "elastic"]:
+    # NOTE: fpca is NOT in this Python-vs-R list. FPCA agreement is established
+    # authoritatively in step 6a (fdars-vs-R hard-gated at 1.0; fdars-vs-python
+    # disclosed). A Python-vs-R FPCA check here would re-introduce the trapezoidal-
+    # vs-Simpson's quadrature divergence we agreed to DISCLOSE, not hard-gate
+    # (user-approved 2026-09-23) — so it is intentionally excluded.
+    for op in ["basis_smoothing", "depth", "functional_boxplot", "fpcr", "elastic"]:
         py_rec = py_by_op.get(op)
         r_rec = r_by_op.get(op)
         if py_rec and r_rec:
