@@ -521,8 +521,15 @@ where
 
 /// Fill the DP cost grid and parent pointers.
 ///
-/// Visits every cell in row-major order, skipping the origin and any cells
-/// outside the optional Sakoe–Chiba band, then relaxes via the coprime neighborhood.
+/// Visits cells in row-major order, skipping the origin (pre-initialised to 0),
+/// then relaxes via the coprime neighbourhood.
+///
+/// * `band = None` — full O(nrows·ncols) scan.
+/// * `band = Some(r)` — iterates only the diagonal corridor `|tr − tc| ≤ r`,
+///   turning the fill into O(min(nrows, ncols)·r).  The corridor bounds are
+///   computed per row, so exactly the same set of cells is relaxed in the same
+///   row-major order as the previous skip-based implementation — output is
+///   bit-identical.
 fn dp_fill_grid<F>(
     e: &mut [f64],
     parent: &mut [u32],
@@ -533,31 +540,30 @@ fn dp_fill_grid<F>(
 ) where
     F: Fn(usize, usize, usize, usize) -> f64,
 {
-    for tr in 0..nrows {
-        for tc in 0..ncols {
-            if dp_skip_cell(tr, tc, band) {
-                continue;
+    match band {
+        None => {
+            for tr in 0..nrows {
+                for tc in 0..ncols {
+                    if tr == 0 && tc == 0 {
+                        continue;
+                    }
+                    dp_relax_cell(e, parent, ncols, tr, tc, edge_cost);
+                }
             }
-            dp_relax_cell(e, parent, ncols, tr, tc, edge_cost);
+        }
+        Some(r) => {
+            for tr in 0..nrows {
+                let tc_lo = tr.saturating_sub(r);
+                let tc_hi = (tr + r).min(ncols - 1);
+                for tc in tc_lo..=tc_hi {
+                    if tr == 0 && tc == 0 {
+                        continue;
+                    }
+                    dp_relax_cell(e, parent, ncols, tr, tc, edge_cost);
+                }
+            }
         }
     }
-}
-
-/// Return `true` if the cell `(tr, tc)` should be skipped during grid fill.
-///
-/// Skips the origin `(0, 0)` (pre-initialized to 0) and any cell outside the
-/// optional Sakoe–Chiba band `|tr − tc| > r`.
-#[inline]
-fn dp_skip_cell(tr: usize, tc: usize, band: Option<usize>) -> bool {
-    if tr == 0 && tc == 0 {
-        return true;
-    }
-    if let Some(r) = band {
-        if tr.abs_diff(tc) > r {
-            return true;
-        }
-    }
-    false
 }
 
 /// Convert a band width expressed as a fraction of the domain into an index

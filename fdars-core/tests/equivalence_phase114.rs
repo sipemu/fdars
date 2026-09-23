@@ -13,7 +13,7 @@
 //! Two tests:
 //!   - `golden_elastic_self_distance_unbanded_n20_m50`: exercises the UNBANDED dp_fill_grid arm.
 //!   - `golden_elastic_self_distance_banded_n20_m50`:  exercises the BANDED dp_fill_grid arm
-//!       (band_frac=0.1); THIS is the arm Plan 02 restructures.
+//!     (band_frac=0.1); THIS is the arm Plan 02 restructures.
 //!
 //! Both tests use `generate_curves(20, 50)` — the same deterministic no-RNG generator as the
 //! criterion harness in `benches/audit_hotpaths.rs`.
