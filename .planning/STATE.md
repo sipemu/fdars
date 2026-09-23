@@ -100,6 +100,8 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 
 ### Decisions
 
+- **[Phase 114 — OPT-01 outcome, user-approved 2026-09-23]** The elastic-alignment anchor is **already near-optimal** — symmetry (upper-triangle), feature-gated parallelism, one-time SRSF precompute, uniform-grid DP √(dr/dc) slope table, and thread-local scratch reuse were all pre-existing. The one numeric-identity-SAFE change found (band-iteration in `dp_fill_grid`, proven ≤1e-10 in debug+release, all 5 builds compile) is a legitimate cleanup but its speedup at n500,m50 is **within noise** (7.310s→7.164s, CIs overlap, ~2%). User accepted this as the honest OPT-01 outcome: OPT-01 satisfied by the numeric-identical optimization + committed before/after criterion evidence + the documented near-optimal finding (this is a performance-AUDIT milestone; "already near-optimal, here is the proof" is a valid result). Phase 116 reports it honestly. Real gains are likelier in Phase 115 (covariance/SVD).
+
 Decisions relevant to current work (v0.47.0):
 
 - **Performance milestone, NOT a feature milestone** — the deliverable is *evidence* (head-to-head fdars vs scikit-fda + R timings) plus provably-improved implementations of the worst bottlenecks. No new FDA algorithms or capabilities. The runtime complement to the v0.14.0 capability/API audit (which explicitly avoided runtime benchmarking).
