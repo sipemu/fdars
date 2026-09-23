@@ -25,14 +25,11 @@ covered_files:
   - benchmarks/verify_inputs.py
   - fdars-core/benches/depth_benchmarks.rs
 covered_digest: "v1:sha256:15d263776c5d5db4a4b2975872faf0302ee62b7b91a5e217bb2608814f9d1e6e"
-re_verification:
-  reason: "Phase 113 legitimately evolved the shared benchmarks/ harness (gate.py recalibration, run_all.py --grid mode, collect_rust.py std_dev fix, r_runner.R native pca.fd) — files that are in Phase 112's covered_files. That edited the covered set and made 112's digest stale, NOT any regression of 112's deliverable. Phase 112's goal (a reproducible external harness + numeric-agreement gate) remains satisfied by the evolved harness; digest re-blessed to the current tree. 5/5 must-haves still hold."
-  digest_updated: "2026-09-23"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
-  reason: "Post-verification code-review fix pass (CR-01/CR-02/WR-01..WR-04) changed benchmarks/ source; digest recomputed. Fixes were independently re-reviewed clean (112-REVIEW.md status: clean) with no regressions and the BENCH-05 gate-before-timing invariant preserved — the 5/5 must-haves remain satisfied (fixes strengthen correctness: R timing ns units, non-zero all-ops timings, fail-closed gate)."
-  digest_updated: "2026-09-22"
+  reason: "Two re-blessings of the 5/5-passed verification, neither a regression: (1) 2026-09-22 — post-verification code-review fix pass (CR-01/CR-02/WR-01..WR-04) strengthened correctness (R timing ns units, non-zero all-ops timings, fail-closed gate), re-reviewed clean. (2) 2026-09-23 — Phase 113 legitimately evolved the shared benchmarks/ harness (gate.py recalibration, run_all.py --grid mode, collect_rust.py std_dev fix, r_runner.R native pca.fd), which are in 112's covered_files, so the digest was recomputed to the current tree. Phase 112's goal (a reproducible external harness + numeric-agreement gate) remains satisfied; 5/5 must-haves still hold."
+  digest_updated: "2026-09-23"
 ---
 
 # Phase 112: Benchmark Harness Setup Verification Report
