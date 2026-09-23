@@ -132,6 +132,15 @@ def _build_rust_rows(rust_records: list[dict]) -> list[dict]:
 # correlation cleared the disclosure floor in the recorded notes.
 _FPCR_DISCLOSURE_THRESHOLD = 0.95
 
+# Karcher-mean exclusion disclosure (Phase 113 Plan 02, user-approved 2026-09-23).
+# The grid times ONLY the fast pairwise elastic (elastic_align_pair); the slow
+# fdasrvf/scikit-fda Karcher mean is excluded from the grid timing (noise-gated
+# out of the ranking at RSD 29–46%; ~10 min/cell at m=200).
+_KARCHER_EXCLUSION_NOTE = (
+    "Karcher-mean elastic excluded from grid baseline: noise-gated (RSD 29-46%); "
+    "anchor uses pairwise elastic_align_pair"
+)
+
 
 def _fpcr_disclosure_note(corr: float, n_val, m_val) -> str:
     """
@@ -193,7 +202,12 @@ def _build_python_rows(py_records: list[dict], fpcr_corr: float = float("nan")) 
         n_val = rec.get("n")
         m_val = rec.get("m")
         mean_ns = float(rec.get("mean_ns", 0.0))
-        notes = _fpcr_disclosure_note(fpcr_corr, n_val, m_val) if op == "fpcr" else ""
+        if op == "fpcr":
+            notes = _fpcr_disclosure_note(fpcr_corr, n_val, m_val)
+        elif op == "elastic":
+            notes = _KARCHER_EXCLUSION_NOTE
+        else:
+            notes = ""
         rows.append({
             "op": op,
             "library": "python",
@@ -234,6 +248,9 @@ def _build_r_rows(r_records: list[dict], fpcr_corr: float = float("nan")) -> lis
         elif op == "fpcr":
             library = "r_svd"
             notes = _fpcr_disclosure_note(fpcr_corr, n_val, m_val)
+        elif op == "elastic":
+            library = "r_svd"
+            notes = _KARCHER_EXCLUSION_NOTE
         else:
             library = "r_svd"
             notes = ""

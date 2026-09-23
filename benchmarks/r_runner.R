@@ -34,16 +34,18 @@ parse_args <- function() {
     smoke = FALSE,
     n = 60L,
     m = 50L,
-    seed = 42L
+    seed = 42L,
+    pairwise_only = FALSE
   )
   i <- 1L
   while (i <= length(args)) {
     switch(args[[i]],
-      "--op"     = { i <- i + 1L; parsed$op <- args[[i]] },
-      "--smoke"  = { parsed$smoke <- TRUE },
-      "--n"      = { i <- i + 1L; parsed$n <- as.integer(args[[i]]) },
-      "--m"      = { i <- i + 1L; parsed$m <- as.integer(args[[i]]) },
-      "--seed"   = { i <- i + 1L; parsed$seed <- as.integer(args[[i]]) }
+      "--op"             = { i <- i + 1L; parsed$op <- args[[i]] },
+      "--smoke"          = { parsed$smoke <- TRUE },
+      "--n"              = { i <- i + 1L; parsed$n <- as.integer(args[[i]]) },
+      "--m"              = { i <- i + 1L; parsed$m <- as.integer(args[[i]]) },
+      "--seed"           = { i <- i + 1L; parsed$seed <- as.integer(args[[i]]) },
+      "--pairwise-only"  = { parsed$pairwise_only <- TRUE }
     )
     i <- i + 1L
   }
@@ -410,7 +412,7 @@ run_fpcr <- function(csv_path, y_path, ncomp = 5L, n_iterations = 10L,
 #   time_warping(f, time, lambda=0, max_iter=20, ...)
 
 run_elastic <- function(csv_path, elastic_csv_path, n_iterations = 5L,
-                        smoke = FALSE) {
+                        smoke = FALSE, pairwise_only = FALSE) {
   suppressPackageStartupMessages(library(fdasrvf))
 
   # Full curve set for Karcher mean
@@ -430,6 +432,41 @@ run_elastic <- function(csv_path, elastic_csv_path, n_iterations = 5L,
   # fdasrvf expects f as (m x n) matrix for time_warping (columns = curves)
   f_mat <- t(mat)  # (m x n)
 
+  # Phase 113 Plan 02 (user-approved 2026-09-23): in grid baseline mode
+  # (pairwise_only = TRUE), TIME only the fast, N-independent pairwise alignment;
+  # EXCLUDE the slow fdasrvf time_warping (Karcher mean) from timing — it is
+  # noise-gated out of the ranking (RSD 29-46%) and takes ~10 min/cell at m=200.
+  # The Karcher fingerprint is still computed ONCE (untimed) so the gate's
+  # secondary karcher check has data; only its TIMING is dropped.
+  if (isTRUE(pairwise_only)) {
+    pairwise_fn <- function() {
+      pair_res <- pair_align_functions(f1, f2, grid,
+                                       lambda = 0, pen = "roughness", method = "DP")
+      as.numeric(pair_res$gam)  # length m
+    }
+    res <- time_fn(pairwise_fn, n_iterations = n_iterations, smoke = smoke)
+    warping_vals <- res$result
+
+    # Karcher fingerprint computed ONCE, untimed (excluded from grid timing).
+    km_res <- time_warping(f_mat, grid, lambda = 0, max_iter = 20L)
+    karcher_vals <- as.numeric(km_res$fn[, 1L])
+
+    record <- list(
+      op = "elastic",
+      library = "r",
+      n = n,
+      m = m,
+      mean_ns = res$mean_ns,
+      elastic_timing_scope = "pairwise_only",
+      result_fingerprint = list(
+        warping_values = as.list(warping_vals),
+        karcher_mean   = as.list(karcher_vals)
+      )
+    )
+    return(record)
+  }
+
+  # Legacy single-cell path: time pairwise + Karcher together.
   elastic_fn <- function() {
     # Pairwise alignment
     pair_res <- pair_align_functions(f1, f2, grid,
@@ -453,6 +490,7 @@ run_elastic <- function(csv_path, elastic_csv_path, n_iterations = 5L,
     n = n,
     m = m,
     mean_ns = res$mean_ns,
+    elastic_timing_scope = "pairwise_plus_karcher",
     result_fingerprint = list(
       warping_values = as.list(warping_vals),
       karcher_mean   = as.list(karcher_vals)
@@ -509,7 +547,8 @@ main <- function() {
         if (!file.exists(elastic_path)) {
           stop(sprintf("Elastic pair CSV not found: %s\nRun: python benchmarks/generate_data.py first.", elastic_path))
         }
-        run_elastic(csv_path, elastic_path, smoke = args$smoke)
+        run_elastic(csv_path, elastic_path, smoke = args$smoke,
+                    pairwise_only = args$pairwise_only)
       },
       stop(sprintf("Unknown op: %s", op))
     )

@@ -313,30 +313,34 @@ def run_elastic(
     elastic_csv_path: pathlib.Path,
     n_repeats: int = 10,
     smoke: bool = False,
+    pairwise_only: bool = False,
 ) -> dict:
     """
-    Time elastic alignment and Karcher mean via FisherRaoElasticRegistration.
+    Time elastic alignment via FisherRaoElasticRegistration.
 
-    Two sub-operations:
+    Sub-operations:
     1. Pairwise alignment: align curve 1 to curve 0 using FisherRaoElasticRegistration
-       with penalty=0.0 (no warp penalty = pure Fisher-Rao metric).
+       with penalty=0.0 (no warp penalty = pure Fisher-Rao metric). N-independent, fast.
     2. Karcher mean: compute the Fréchet mean of all n curves via
-       fisher_rao_karcher_mean (FisherRaoElasticRegistration internal algorithm).
+       fisher_rao_karcher_mean. N-dependent, slow (~minutes at m=200).
+
+    Phase 113 Plan 02 (user-approved 2026-09-23): when `pairwise_only=True`
+    (grid baseline mode), ONLY the fast, N-independent pairwise alignment is
+    TIMED — the slow Karcher mean is EXCLUDED from the grid timing (it is
+    noise-gated out of the ranking at RSD 29–46% and takes ~10 min/cell at m=200).
+    The Karcher-mean fingerprint is still computed ONCE (outside the timed loop)
+    so the agreement gate's secondary karcher check remains available; only its
+    TIMING is dropped. When `pairwise_only=False`, the legacy behavior (Karcher
+    inside the timed loop) is preserved for the single-cell path.
 
     Elastic class (scikit-fda 0.10.1):
-        skfda.preprocessing.registration.FisherRaoElasticRegistration
-        Parameters: template=<reference FDataGrid>, penalty=0.0 (no penalty),
-                    grid_dim=7 (default DP grid dimension)
-
-    Karcher mean function (scikit-fda 0.10.1):
-        skfda.exploratory.stats.fisher_rao_karcher_mean
+        skfda.preprocessing.registration.FisherRaoElasticRegistration (penalty=0.0)
+    Karcher mean function: skfda.exploratory.stats.fisher_rao_karcher_mean
 
     Fingerprint: warping function values from pairwise alignment (length m),
                  plus first curve values of the Karcher mean (length m).
     """
     FDataGrid, _ = _import_skfda()
-    # FisherRaoElasticRegistration — verified path in scikit-fda 0.10.1:
-    #   skfda.preprocessing.registration.FisherRaoElasticRegistration
     from skfda.preprocessing.registration import FisherRaoElasticRegistration
     from skfda.exploratory.stats import fisher_rao_karcher_mean
 
@@ -351,16 +355,40 @@ def run_elastic(
     fd_ref = FDataGrid(data_matrix=mat_pair[[0]], grid_points=[argvals])   # reference (template)
     fd_target = FDataGrid(data_matrix=mat_pair[[1]], grid_points=[argvals])  # curve to align
 
+    if pairwise_only:
+        # Grid baseline: TIME only the pairwise alignment (N-independent).
+        def _run_pairwise():
+            reg = FisherRaoElasticRegistration(template=fd_ref, penalty=0.0)
+            reg.fit_transform(fd_target)
+            return reg.warping_.data_matrix[0, :, 0]  # shape (m,)
+
+        mean_ns, warping_vals = _time_fn(_run_pairwise, n_repeats, smoke)
+
+        # Compute the Karcher fingerprint ONCE, untimed, so the gate's secondary
+        # karcher check still has data (its timing is intentionally excluded).
+        karcher = fisher_rao_karcher_mean(fd_all)
+        karcher_vals = karcher.data_matrix[0, :, 0]
+
+        return {
+            "op": "elastic",
+            "library": "python",
+            "n": n,
+            "m": m,
+            "mean_ns": mean_ns,
+            "elastic_timing_scope": "pairwise_only",
+            "result_fingerprint": {
+                "warping_values": warping_vals.tolist(),
+                "karcher_mean": karcher_vals.tolist(),
+            },
+        }
+
+    # Legacy single-cell path: time pairwise + Karcher together.
     def _run():
-        # Pairwise alignment
         reg = FisherRaoElasticRegistration(template=fd_ref, penalty=0.0)
         reg.fit_transform(fd_target)
         warping_vals = reg.warping_.data_matrix[0, :, 0]  # shape (m,)
-
-        # Karcher mean of the full curve set
         karcher = fisher_rao_karcher_mean(fd_all)
         karcher_vals = karcher.data_matrix[0, :, 0]    # shape (m,)
-
         return warping_vals, karcher_vals
 
     mean_ns, (warping_vals, karcher_vals) = _time_fn(_run, n_repeats, smoke)
@@ -371,10 +399,9 @@ def run_elastic(
         "n": n,
         "m": m,
         "mean_ns": mean_ns,
+        "elastic_timing_scope": "pairwise_plus_karcher",
         "result_fingerprint": {
-            # Warping function from pairwise alignment (length m)
             "warping_values": warping_vals.tolist(),
-            # Karcher mean curve values (length m)
             "karcher_mean": karcher_vals.tolist(),
         },
     }
@@ -395,6 +422,10 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42, help="RNG seed")
     parser.add_argument("--n-repeats", type=int, default=50,
                         help="Number of timing repetitions")
+    parser.add_argument("--pairwise-only", action="store_true",
+                        help="Elastic: time ONLY the fast pairwise alignment, "
+                             "exclude the slow N-dependent Karcher mean from timing "
+                             "(grid baseline mode, Phase 113 Plan 02)")
     args = parser.parse_args()
 
     # When --smoke is passed without --op, run all ops
@@ -448,7 +479,7 @@ def main() -> None:
                                smoke=args.smoke)
         elif op == "elastic":
             record = run_elastic(csv_path, elastic_csv_path, n_repeats=args.n_repeats // 5,
-                                 smoke=args.smoke)
+                                 smoke=args.smoke, pairwise_only=args.pairwise_only)
         else:
             raise ValueError(f"Unknown op: {op}")
 

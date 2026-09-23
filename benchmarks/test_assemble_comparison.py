@@ -404,3 +404,28 @@ class TestFpcrDisclosureNote:
         note = str(fpcr_rows.iloc[0]["notes"])
         assert "FPCR cross-library agreement" in note
         assert "corr=n/a" in note, note
+
+
+# ---------------------------------------------------------------------------
+# Test: Karcher-mean exclusion note on elastic rows (Phase 113 Plan 02)
+# ---------------------------------------------------------------------------
+
+class TestKarcherExclusionNote:
+    def test_elastic_rows_carry_karcher_exclusion_note(self, tmp_path):
+        """Elastic python + r_svd rows must disclose the Karcher-mean exclusion."""
+        assembler = _import_assembler()
+        rust_recs = [_rust_record("elastic_align_pair", "m/50",
+                                  3_000_000.0, 2_970_000.0, 3_030_000.0, 40_000.0,
+                                  op="elastic")]
+        py_recs = [_python_record("elastic", 100, 50, 2_900_000.0)]
+        r_recs = [_r_svd_record("elastic", 100, 50, 3_100_000.0)]
+        _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
+        _write_rust_json(tmp_path, rust_recs)
+
+        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        elastic_xlib = df[(df["op"] == "elastic") & (df["library"].isin(["python", "r_svd"]))]
+        assert set(elastic_xlib["library"]) >= {"python", "r_svd"}, set(elastic_xlib["library"])
+        for _, row in elastic_xlib.iterrows():
+            note = str(row["notes"])
+            assert "Karcher-mean elastic excluded" in note, note
+            assert "pairwise elastic_align_pair" in note, note

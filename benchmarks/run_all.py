@@ -141,7 +141,8 @@ def step_python_runner(op: str | None, n: int, m: int, seed: int, env: dict,
         )
 
 
-def _run_all_ops_python(n: int, m: int, seed: int, env: dict) -> None:
+def _run_all_ops_python(n: int, m: int, seed: int, env: dict,
+                        pairwise_only: bool = False) -> None:
     """Run all ops via python_runner, timing each op individually.
 
     WR-04: the previous implementation passed --smoke, which sets mean_ns=0.0
@@ -149,16 +150,20 @@ def _run_all_ops_python(n: int, m: int, seed: int, env: dict) -> None:
     timings are recorded. Because python_runner.py overwrites results/python.json
     on each call, we accumulate records from each per-op invocation and write the
     merged list back to python.json after all ops complete.
+
+    Phase 113 Plan 02: when pairwise_only=True (grid baseline), the elastic op is
+    run with --pairwise-only so only the fast pairwise alignment is timed (the
+    slow N-dependent Karcher mean is excluded from grid timing).
     """
     py_out = _SCRIPT_DIR / "results" / "python.json"
     accumulated: list[dict] = []
     for single_op in ALL_OPS:
-        _run(
-            [_PYTHON, str(_SCRIPT_DIR / "python_runner.py"),
-             "--op", single_op,
-             "--n", str(n), "--m", str(m), "--seed", str(seed)],
-            env=env,
-        )
+        cmd = [_PYTHON, str(_SCRIPT_DIR / "python_runner.py"),
+               "--op", single_op,
+               "--n", str(n), "--m", str(m), "--seed", str(seed)]
+        if pairwise_only and single_op == "elastic":
+            cmd.append("--pairwise-only")
+        _run(cmd, env=env)
         # python_runner.py writes a 1-element list; read it back and accumulate
         if py_out.exists():
             with py_out.open() as f:
@@ -307,12 +312,12 @@ def step_run_gate(n: int, m: int, env: dict,
         p1, mc1, _ = check_fpca_agreement(fdars_load,
                                            fingerprint_to_array(py_fpca["result_fingerprint"]),
                                            threshold=0.99, label="fdars-vs-python")
-        print(f"    fdars vs python: {'PASS' if p1 else 'FAIL'} (min |corr|={mc1:.6f})")
+        print(f"    fdars vs python: {'PASS' if p1 else 'FAIL'} (subspace cos={mc1:.6f})")
 
         p2, mc2, _ = check_fpca_agreement(fdars_load,
                                            fingerprint_to_array(r_fpca["result_fingerprint"]),
                                            threshold=0.99, label="fdars-vs-r")
-        print(f"    fdars vs r:      {'PASS' if p2 else 'FAIL'} (min |corr|={mc2:.6f})")
+        print(f"    fdars vs r:      {'PASS' if p2 else 'FAIL'} (subspace cos={mc2:.6f})")
 
         if not p1 or not p2:
             fpca_passed = False
@@ -464,24 +469,29 @@ def _write_cell_results(n: int, m: int, py_records: list, r_records: list) -> No
     print(f"  Wrote {r_out.name} ({len(r_records)} records)")
 
 
-def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict) -> list:
+def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict,
+                            pairwise_only: bool = False) -> list:
     """
     Run R runner for ALL_OPS and also fpca_native_r; return merged records.
 
     fpca_native_r is not in ALL_OPS (keeps smoke/default contract unchanged per
     Plan 01), so it must be invoked explicitly via --op fpca_native_r.
+
+    Phase 113 Plan 02: when pairwise_only=True (grid baseline), the elastic op is
+    run with --pairwise-only so only the fast pairwise alignment is timed (the
+    slow fdasrvf time_warping Karcher mean is excluded from grid timing).
     """
     r_out = _SCRIPT_DIR / "results" / "r.json"
     accumulated: list[dict] = []
 
     # All overlapping ops
     for single_op in ALL_OPS:
-        _run(
-            ["Rscript", str(_SCRIPT_DIR / "r_runner.R"),
-             "--op", single_op,
-             "--n", str(n), "--m", str(m), "--seed", str(seed)],
-            env=env,
-        )
+        cmd = ["Rscript", str(_SCRIPT_DIR / "r_runner.R"),
+               "--op", single_op,
+               "--n", str(n), "--m", str(m), "--seed", str(seed)]
+        if pairwise_only and single_op == "elastic":
+            cmd.append("--pairwise-only")
+        _run(cmd, env=env)
         if r_out.exists():
             with r_out.open() as f:
                 records = json.load(f)
@@ -544,8 +554,8 @@ def run_grid(dry_run: bool = False, seed: int = 42) -> None:
             if dry_run:
                 # Prove the loop wiring without heavy runs
                 print(f"  [dry] would run: generate(n={n}, m={m}, seed={seed})")
-                print(f"  [dry] would run: python_runner (all ops, n={n}, m={m})")
-                print(f"  [dry] would run: r_runner (all ops + fpca_native_r, n={n}, m={m})")
+                print(f"  [dry] would run: python_runner (all ops, elastic pairwise-only, n={n}, m={m})")
+                print(f"  [dry] would run: r_runner (all ops + fpca_native_r, elastic pairwise-only, n={n}, m={m})")
                 print(f"  [dry] would run: collect_rust + gate")
                 print(f"  [dry] would write: python_n{n}_m{m}.json, r_n{n}_m{m}.json")
                 cells_run += 1
@@ -554,14 +564,17 @@ def run_grid(dry_run: bool = False, seed: int = 42) -> None:
             # Step 1: Generate CSV fixtures for this cell
             step_generate(n=n, m=m, seed=seed, env=env)
 
-            # Step 2: Python runner — all ops, per-op real timings
-            _run_all_ops_python(n=n, m=m, seed=seed, env=env)
+            # Step 2: Python runner — all ops, per-op real timings.
+            # pairwise_only=True: elastic times only the fast pairwise alignment
+            # (Karcher mean excluded from grid timing — Phase 113 Plan 02).
+            _run_all_ops_python(n=n, m=m, seed=seed, env=env, pairwise_only=True)
             py_path = _SCRIPT_DIR / "results" / "python.json"
             with py_path.open() as f:
                 py_records = json.load(f)
 
-            # Step 3: R runner — all ops + fpca_native_r
-            r_records = _run_r_with_native_fpca(n=n, m=m, seed=seed, env=env)
+            # Step 3: R runner — all ops + fpca_native_r (elastic pairwise-only)
+            r_records = _run_r_with_native_fpca(n=n, m=m, seed=seed, env=env,
+                                                pairwise_only=True)
             r_path = _SCRIPT_DIR / "results" / "r.json"
 
             # Step 4: Collect Rust criterion output (existing on disk)

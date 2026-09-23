@@ -39,7 +39,13 @@ def rng():
 
 
 class TestFpcaAgreement:
-    """check_agreement('fpca', ...) — sign-aligned Pearson correlation > 0.99."""
+    """
+    check_agreement('fpca', ...) — SUBSPACE agreement via principal angles.
+
+    Phase 113 Plan 02 (directed 2026-09-23): FPCA is gated on cos(largest
+    principal angle) between the leading-k loading subspaces >= 0.99, robust to
+    rotational ambiguity in near-degenerate eigenspaces. Still HARD-GATED.
+    """
 
     def test_identical_fpca_passes(self, rng):
         """Identical loadings matrix passes (trivial)."""
@@ -108,6 +114,67 @@ class TestFpcaAgreement:
         passed, metric, _ = check_agreement("fpca", fp_a, fp_b)
         assert not passed, (
             f"Orthogonal FPCA should FAIL; metric={metric:.6f}"
+        )
+
+    def test_degenerate_rotation_same_subspace_passes(self, rng):
+        """
+        SAME subspace with PC3/PC4 rotated within their plane must PASS.
+
+        This is the core Phase 113 Plan 02 behavior: when two principal
+        components have near-equal eigenvalues, fdars and scikit-fda place the
+        individual axes differently within the shared 2D plane. A per-component
+        Pearson gate would FAIL (the individual axes correlate poorly), but the
+        subspace is identical, so the subspace gate must PASS.
+        """
+        from gate import check_agreement
+
+        m, ncomp = 50, 5
+        U, _, _ = np.linalg.svd(rng.standard_normal((m, ncomp)), full_matrices=False)
+        # Rotate PC3 (idx 2) and PC4 (idx 3) by 45° within their plane — same span
+        theta = np.pi / 4
+        c, s = np.cos(theta), np.sin(theta)
+        rotated = U.copy()
+        rotated[:, 2] = c * U[:, 2] - s * U[:, 3]
+        rotated[:, 3] = s * U[:, 2] + c * U[:, 3]
+        fp_a = {"loadings": U.T.tolist()}
+        fp_b = {"loadings": rotated.T.tolist()}
+
+        passed, metric, details = check_agreement("fpca", fp_a, fp_b)
+        assert passed, (
+            f"Rotated PC3/PC4 within the same subspace must PASS "
+            f"(subspace cos={metric:.6f}); the subspace is identical"
+        )
+        # Confirm the subspace metric is high while a per-component check would fail
+        assert metric >= 0.99, f"subspace cos should be ~1.0; got {metric:.6f}"
+        worst_per_comp = min(details[0]["per_component_corr"])
+        assert worst_per_comp < 0.99, (
+            f"the rotated axes should have poor per-component corr "
+            f"(got worst={worst_per_comp:.4f}) — proves subspace metric is doing the work"
+        )
+
+    def test_partially_wrong_subspace_fails(self, rng):
+        """
+        A loading set whose subspace genuinely differs (one axis replaced by an
+        out-of-subspace direction) must FAIL — the subspace metric is not a
+        rubber stamp.
+        """
+        from gate import check_agreement
+
+        m, ncomp = 50, 5
+        U, _, _ = np.linalg.svd(rng.standard_normal((m, ncomp)), full_matrices=False)
+        # Replace PC5 with a direction orthogonal to the whole span → different subspace
+        wrong = U.copy()
+        rand = rng.standard_normal(m)
+        for j in range(ncomp):
+            rand = rand - np.dot(rand, U[:, j]) * U[:, j]
+        rand = rand / np.linalg.norm(rand)
+        wrong[:, 4] = rand  # now spans a different 5-D subspace
+        fp_a = {"loadings": U.T.tolist()}
+        fp_b = {"loadings": wrong.T.tolist()}
+
+        passed, metric, _ = check_agreement("fpca", fp_a, fp_b)
+        assert not passed, (
+            f"A genuinely different subspace must FAIL; subspace cos={metric:.6f}"
         )
 
 

@@ -2,7 +2,7 @@
 Numeric agreement gate for the fdars cross-language harness.
 
 Per-op tolerance table (RESEARCH.md Agreement Tolerance Validation):
-  fpca            sign-aligned Pearson correlation > 0.99   [HARD-GATED]
+  fpca            SUBSPACE agreement: cos(largest principal angle) >= 0.99  [HARD-GATED] [Phase 113 Plan 02]
   basis_smoothing max absolute difference < 1e-3            [HARD-GATED]
   depth           Pearson correlation >= 0.99  (depths)     [HARD-GATED] [Phase 113]
   functional_boxplot Pearson correlation >= 0.99 (MBD)      [HARD-GATED] [Phase 113]
@@ -19,9 +19,14 @@ FPCR disclosure policy (Phase 113 Plan 02, user-approved 2026-09-22):
   functional_boxplot, elastic) remain HARD-GATED and DO abort on failure.
   _FPCR_CORR_THRESHOLD is used only to LABEL agreement, never to abort.
 
-FPCA sign convention mirrors fdars `fix_svd_signs` (regression.rs:288-301):
-for each loading vector, the element with the largest absolute value is
-made strictly positive.
+FPCA agreement (Phase 113 Plan 02, directed 2026-09-23): gated on SUBSPACE
+agreement between the leading-k loading subspaces via principal angles
+(smallest singular value of Q_fdars^T Q_other, where Q are orthonormal bases).
+This is robust to rotational ambiguity within near-degenerate eigenspaces
+(PC3/PC4 rotate when eigenvalues are near-equal, but the subspace is stable).
+Principal-angle cosines are sign-invariant, so the old per-component
+`fix_svd_signs` sign flip is subsumed; per-component correlations are retained
+in the details for diagnostics only.
 
 Excludes random-projection depth from the gated path — use deterministic
 MBD/Fraiman-Muniz instead (RESEARCH Pitfall 5).
@@ -46,7 +51,7 @@ from scipy.stats import pearsonr
 # Per-op tolerance constants (RESEARCH.md §5)
 # -------------------------------------------------------------------
 
-_FPCA_CORR_THRESHOLD = 0.99          # minimum |Pearson correlation| per loading component [HARD-GATED]
+_FPCA_CORR_THRESHOLD = 0.99          # minimum cos(largest principal angle) between loading SUBSPACES [HARD-GATED; Phase 113 Plan 02]
 _DEPTH_CORR_THRESHOLD = 0.99         # depth, functional_boxplot (Phase 113 calibration) [HARD-GATED]
 # FPCR DISCLOSURE THRESHOLD (Phase 113 Plan 02, user-approved 2026-09-22):
 # This is NO LONGER a hard-abort threshold — FPCR is not in _GATED_OPS. It is used only
@@ -73,68 +78,98 @@ def check_fpca_agreement(
     label: str = "",
 ) -> tuple[bool, float, list[dict]]:
     """
-    Sign-align and check Pearson correlation between FPCA loading matrices.
+    Check SUBSPACE agreement between two FPCA loading matrices via principal angles.
 
-    Mirrors the fdars `fix_svd_signs` convention (regression.rs:288-301):
-    for each component k, if dot(fdars_col_k, other_col_k) < 0, flip other_col_k.
-    Then compute Pearson correlation and check against threshold.
+    Phase 113 Plan 02 (directed 2026-09-23): the gate now measures agreement of the
+    leading-k FPCA loading SUBSPACE, not per-component Pearson correlation. This is
+    the mathematically correct criterion for near-degenerate eigenspaces: when two
+    principal components have near-equal eigenvalues (e.g. PC3/PC4 at n=300), their
+    individual axes rotate freely within the shared plane, so a per-component Pearson
+    check spuriously fails (measured 0.987/0.988) even though the k-dimensional
+    subspace is essentially identical (measured cos 0.9998/0.9991).
+
+    Method:
+      1. Orthonormalize each loading matrix (QR) → Q_fdars, Q_other ∈ R^{m×ncomp}.
+      2. Singular values of Q_fdars^T Q_other are the cosines of the principal
+         angles between the two subspaces.
+      3. The SMALLEST singular value = cos(largest principal angle) = the worst-case
+         alignment. Gate passes iff that ≥ threshold (0.99), i.e. the largest
+         principal angle is small enough that the subspaces coincide.
+
+    This stays HARD-GATED at 0.99 — it is the right metric, not a relaxation.
+
+    Sign convention: principal-angle cosines are sign-invariant (SVD singular values
+    are non-negative), so the fdars `fix_svd_signs` per-column sign flip is subsumed —
+    a sign flip of any loading column does not change the subspace it spans. We keep
+    the per-component correlation in the details for diagnostics only.
 
     Args:
         fdars_loadings: shape (m, ncomp) — rotation matrix from fdata_to_pc.
                         Each column k is the k-th loading vector.
         other_loadings: shape (m, ncomp) — from scikit-fda or R (same shape).
-        threshold:      minimum |corr| required for each component (default 0.99).
+        threshold:      minimum cos(largest principal angle) required (default 0.99).
         label:          description string for error messages.
 
     Returns:
-        (passed, min_corr, details)
-        - passed:   True if all |corr| >= threshold.
-        - min_corr: minimum |corr| across all components.
-        - details:  list of {component, correlation, sign_flipped} per component.
+        (passed, min_cos, details)
+        - passed:   True if cos(largest principal angle) >= threshold.
+        - min_cos:  smallest principal-angle cosine (worst-case subspace alignment).
+        - details:  [{subspace_cosines: [...], min_cosine: ...,
+                      per_component_corr: [...]}] — cosines gate; per-component
+                      correlations retained for diagnostics.
     """
     assert fdars_loadings.shape == other_loadings.shape, (
         f"Shape mismatch: {fdars_loadings.shape} vs {other_loadings.shape}"
     )
     m, ncomp = fdars_loadings.shape
-    details = []
-    min_corr = 1.0
 
+    # 1. Orthonormal bases of the two loading subspaces (QR).
+    q_fdars, _ = np.linalg.qr(fdars_loadings)
+    q_other, _ = np.linalg.qr(other_loadings)
+
+    # 2. Principal-angle cosines = singular values of Q_fdars^T Q_other.
+    #    Clip to [0, 1] to guard against tiny numerical overshoot (e.g. 1.0000002).
+    cosines = np.linalg.svd(q_fdars.T @ q_other, compute_uv=False)
+    cosines = np.clip(cosines, 0.0, 1.0)
+    min_cos = float(np.min(cosines))
+
+    # Per-component Pearson correlation (sign-aligned) — DIAGNOSTIC ONLY, not gated.
+    per_component_corr = []
     for k in range(ncomp):
         l1 = fdars_loadings[:, k]
         l2 = other_loadings[:, k].copy()
-
-        # Sign-align l2 to l1 (mirrors fdars fix_svd_signs: dot < 0 → flip)
-        sign_flipped = False
         if np.dot(l1, l2) < 0:
             l2 = -l2
-            sign_flipped = True
-
         corr, _ = pearsonr(l1, l2)
-        abs_corr = abs(corr)
-        details.append({
-            "component": k,
-            "correlation": float(corr),
-            "abs_correlation": float(abs_corr),
-            "sign_flipped": sign_flipped,
-        })
-        min_corr = min(min_corr, abs_corr)
+        per_component_corr.append(float(abs(corr)))
 
-    passed = min_corr >= threshold
+    passed = min_cos >= threshold
+
+    details = [{
+        "subspace_cosines": [float(c) for c in cosines],
+        "min_cosine": min_cos,
+        "per_component_corr": per_component_corr,
+    }]
 
     if not passed:
         tag = f" [{label}]" if label else ""
         print(
-            f"GATE FAIL{tag} FPCA: min |corr| = {min_corr:.6f} < {threshold}",
+            f"GATE FAIL{tag} FPCA: cos(largest principal angle) = {min_cos:.6f} "
+            f"< {threshold} (subspace disagreement)",
             file=sys.stderr,
         )
-        for d in details:
-            print(
-                f"  PC{d['component']+1}: corr={d['correlation']:.6f} "
-                f"(flip={d['sign_flipped']})",
-                file=sys.stderr,
-            )
+        print(
+            f"  subspace cosines: "
+            f"{['%.6f' % c for c in cosines]}",
+            file=sys.stderr,
+        )
+        print(
+            f"  per-component |corr| (diagnostic): "
+            f"{['%.6f' % c for c in per_component_corr]}",
+            file=sys.stderr,
+        )
 
-    return passed, min_corr, details
+    return passed, min_cos, details
 
 
 # -------------------------------------------------------------------
@@ -409,25 +444,49 @@ def self_test() -> bool:
     m, ncomp, n = 50, 5, 60
     passed_all = True
 
-    # --- FPCA sub-test ---
+    # --- FPCA sub-test (Phase 113 Plan 02: SUBSPACE agreement via principal angles) ---
     raw = rng.standard_normal((m, ncomp))
     U, _, _ = np.linalg.svd(raw, full_matrices=False)
     fdars_load = U  # shape (m, ncomp)
 
+    # Agree case: sign flip + tiny noise (subspace essentially identical) → PASS
     other_agree = fdars_load.copy()
     other_agree[:, 2] = -other_agree[:, 2]  # sign flip
     other_agree += rng.standard_normal((m, ncomp)) * 1e-4
 
-    passed_agree, min_corr_agree, _ = check_fpca_agreement(
+    passed_agree, cos_agree, _ = check_fpca_agreement(
         fdars_load, other_agree, threshold=0.99, label="self-test-agree"
     )
     if not passed_agree:
-        print(f"SELF-TEST FAIL [FPCA agree]: should PASS (min_corr={min_corr_agree:.4f})",
+        print(f"SELF-TEST FAIL [FPCA agree]: should PASS (subspace cos={cos_agree:.4f})",
               file=sys.stderr)
         passed_all = False
     else:
-        print(f"Self-test FPCA agree: PASS  (min |corr| = {min_corr_agree:.6f} >= 0.99)")
+        print(f"Self-test FPCA agree: PASS  (subspace cos = {cos_agree:.6f} >= 0.99)")
 
+    # Degenerate-rotation case: SAME subspace but PC3/PC4 rotated 45° within their
+    # plane (simulates near-degenerate eigenvalues). Per-component Pearson would FAIL
+    # here; subspace agreement must PASS (this is the whole point of the new metric).
+    theta = np.pi / 4
+    c, s = np.cos(theta), np.sin(theta)
+    other_rot = fdars_load.copy()
+    other_rot[:, 2] = c * fdars_load[:, 2] - s * fdars_load[:, 3]
+    other_rot[:, 3] = s * fdars_load[:, 2] + c * fdars_load[:, 3]
+    passed_rot, cos_rot, det_rot = check_fpca_agreement(
+        fdars_load, other_rot, threshold=0.99, label="self-test-degenerate-rotation"
+    )
+    per_comp = det_rot[0]["per_component_corr"]
+    worst_per_comp = min(per_comp)
+    if not passed_rot:
+        print(f"SELF-TEST FAIL [FPCA degenerate-rotation]: should PASS "
+              f"(subspace cos={cos_rot:.4f})", file=sys.stderr)
+        passed_all = False
+    else:
+        print(f"Self-test FPCA degenerate-rotation: PASS  "
+              f"(subspace cos={cos_rot:.6f} >= 0.99; worst per-component "
+              f"|corr|={worst_per_comp:.4f} — would fail old per-component gate)")
+
+    # Disagree case: an orthogonal complement subspace → FAIL
     random_load = rng.standard_normal((m, ncomp))
     other_disagree = fdars_load.copy()
     for k in range(ncomp):
@@ -437,15 +496,15 @@ def self_test() -> bool:
         norm = np.linalg.norm(v)
         other_disagree[:, k] = v / norm if norm > 1e-10 else rng.standard_normal(m)
 
-    passed_disagree, min_corr_disagree, _ = check_fpca_agreement(
+    passed_disagree, cos_disagree, _ = check_fpca_agreement(
         fdars_load, other_disagree, threshold=0.99, label="self-test-disagree"
     )
     if passed_disagree:
-        print(f"SELF-TEST FAIL [FPCA disagree]: should FAIL (corr={min_corr_disagree:.4f})",
+        print(f"SELF-TEST FAIL [FPCA disagree]: should FAIL (subspace cos={cos_disagree:.4f})",
               file=sys.stderr)
         passed_all = False
     else:
-        print(f"Self-test FPCA disagree: PASS  (correctly REJECTED, min corr={min_corr_disagree:.6f})")
+        print(f"Self-test FPCA disagree: PASS  (correctly REJECTED, subspace cos={cos_disagree:.6f})")
 
     # --- basis_smoothing sub-test (unchanged: abs-diff) ---
     for op, key in [("basis_smoothing", "smoothed_values")]:
