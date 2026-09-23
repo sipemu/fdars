@@ -4,19 +4,19 @@ milestone: v0.47.0
 milestone_name: "Performance: Cross-Language Benchmarks & Optimization Pass"
 current_phase: 113
 current_phase_name: Cross-Language Baseline & Hotspot Ranking
-current_plan: 3
-status: executing
-stopped_at: "113-02: FPCR disclosure done (user-approved, committed 79146973); grid cleared cells 1-2; halted at cell 3 — NEW FPCA hard-gate failure (fdars-vs-python 0.9874<0.99 @ n=300,m=50, PC3/PC4 degeneracy)."
-last_updated: "2026-09-22T22:10:14.236Z"
-last_activity: 2026-09-22
+current_plan: Not started
+status: planning
+stopped_at: "Completed 114-01-PLAN.md (tracer: BEFORE-baseline + golden fixture)"
+last_updated: "2026-09-23T10:07:03.564Z"
+last_activity: 2026-09-23
 last_activity_desc: Phase 112 complete, transitioned to Phase 113
-state_head: 791469731a7311cf56538f96ddfcd7de98eade37
+state_head: 13be52015ba48074829d41bb970f450f72ae8d60
 progress:
   total_phases: 6
-  completed_phases: 0
-  total_plans: 6
-  completed_plans: 5
-  percent: 0
+  completed_phases: 2
+  total_plans: 8
+  completed_plans: 7
+  percent: 33
 ---
 
 # Project State
@@ -31,10 +31,10 @@ See: .planning/PROJECT.md (updated 2026-09-19)
 ## Current Position
 
 Phase: 113 — Cross-Language Baseline & Hotspot Ranking
-Current Plan: 3
+Current Plan: Not started
 Total Plans in Phase: 3
-Status: Ready to execute
-Last activity: 2026-09-22 — Plan 113-01 complete (gate recalibration + fpca_native_r + criterion coverage)
+Status: Ready to plan
+Last activity: 2026-09-23 — Phase 112 complete, transitioned to Phase 113
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -93,6 +93,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | Phase 112-benchmark-harness-setup P03 | 8 | 3 tasks | 6 files |
 | Phase 113-cross-language-baseline-hotspot-ranking P01 | 7 | 3 tasks | 3 files |
 | Phase 113 P02 | 9min | 2 tasks | 3 files |
+| Phase 114-elastic-alignment-optimization P01 | 161 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,8 @@ Decisions relevant to current work (v0.47.0):
 - [Phase 113]: Gate recalibration: depth/functional_boxplot/fpcr switched to Pearson correlation (scale/shift invariant). FPCR threshold 0.95 (disclosed relaxation, empirical Phase-112 corr=0.96). Prevents normalization-convention mismatches from blocking valid baseline runs.
 - [Phase 113]: FPCR gate failure at n=100,m=50 (|corr|=0.9495 < 0.95): plan-mandated HARD STOP; comparison.csv not written; threshold not relaxed (Plan 02 halted)
 - [Phase 113]: FPCR made compute-but-not-block (user-approved): removed from _GATED_OPS, disclosed in comparison.csv notes; five ops still hard-gated. Grid cells 1-2 passed with FPCR disclosed.
+- [Phase 113]: Golden fixture constants captured at generate_curves(20,50) from un-optimized code in Wave 1 — provides immovable numeric-identity reference for Plan 02 OPT-01 verification
+- [Phase 113]: BEFORE-baseline mean 7.310s CI [7.073s, 7.552s] — Plan 02 must achieve after-upper < 7.073s for non-overlapping-CI OPT-01 success
 
 ### Pending Todos
 
@@ -156,9 +159,9 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-22T22:10:14.215Z
-Stopped at: 113-02: FPCR disclosure done (user-approved, committed 79146973); grid cleared cells 1-2; halted at cell 3 — NEW FPCA hard-gate failure (fdars-vs-python 0.9874<0.99 @ n=300,m=50, PC3/PC4 degeneracy).
-Resume file: 113-02-PLAN.md
+Last session: 2026-09-23T10:07:03.536Z
+Stopped at: Completed 114-01-PLAN.md (tracer: BEFORE-baseline + golden fixture)
+Resume file: None
 
 ## Operator Next Steps
 
