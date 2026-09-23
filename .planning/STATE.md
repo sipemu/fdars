@@ -6,17 +6,17 @@ current_phase: 115
 current_phase_name: SVD/FPCA & Covariance Optimization
 current_plan: Not started
 status: planning
-stopped_at: Completed 115-01-PLAN.md
-last_updated: "2026-09-23T14:40:01.049Z"
+stopped_at: Completed 115-02-PLAN.md
+last_updated: "2026-09-23T14:50:17.332Z"
 last_activity: 2026-09-23
 last_activity_desc: Phase 114 complete, transitioned to Phase 115
-state_head: 9fd46576768b94f5e3da22df5076159adebc5f5b
+state_head: 74b9ab0d04e21b44910b05511dded839ea0ac3af
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 11
-  completed_plans: 9
-  percent: 17
+  completed_plans: 10
+  percent: 0
 ---
 
 # Project State
@@ -96,6 +96,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | Phase 114-elastic-alignment-optimization P01 | 161 | 2 tasks | 4 files |
 | Phase 114-elastic-alignment-optimization P02 | 591 | 2 tasks | 4 files |
 | Phase 115 P01 | 75 min | 2 tasks | 4 files |
+| Phase 115-svd-fpca-covariance-optimization P02 | 439 | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,8 @@ Decisions relevant to current work (v0.47.0):
 - [Phase 113]: dp_fill_grid banded arm now iterates diagonal corridor directly (O(n*r)); dp_skip_cell removed (dead code); numeric identity proven by golden fixture in debug+release at 1e-10; AFTER criterion within noise at n500_m50 (-2%, CIs overlap) — reported honestly per D-honesty-clause; unbanded arm intentionally untouched (near-optimal per RESEARCH)
 - [Phase 115]: Committed BEFORE-baseline on perf_face_covariance/n200_m30 at SHA 328215e7 (268 ms mean); Plan 02 speedup check uses this as the reference.
 - [Phase 115]: Golden fixture uses separate consts for (0,5) and (5,0) mirror cells (pre-opt differ by ~8e-18); assert_abs_close at 1e-10 ensures green on both pre- and post-opt code.
+- [Phase 115]: sym_cov_irreg: single kernel table + upper-triangle loop + bit-copy mirror achieves ~3.45x speedup with bit-identical upper-triangle values (OPT-02)
+- [Phase 115]: SVD documented near-optimal: faer thin SVD already production path under linalg feature (regression.rs:455-499)
 
 ### Pending Todos
 
@@ -166,8 +169,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-23T14:40:01.020Z
-Stopped at: Completed 115-01-PLAN.md
+Last session: 2026-09-23T14:50:17.304Z
+Stopped at: Completed 115-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
