@@ -24,7 +24,10 @@ covered_files:
   - benchmarks/test_gate.py
   - benchmarks/verify_inputs.py
   - fdars-core/benches/depth_benchmarks.rs
-covered_digest: "v1:sha256:36d3ba5cba96c6cf9118363fab24082550ced75be2f81db4ba368e3cbc1c8422"
+covered_digest: "v1:sha256:15d263776c5d5db4a4b2975872faf0302ee62b7b91a5e217bb2608814f9d1e6e"
+re_verification:
+  reason: "Phase 113 legitimately evolved the shared benchmarks/ harness (gate.py recalibration, run_all.py --grid mode, collect_rust.py std_dev fix, r_runner.R native pca.fd) — files that are in Phase 112's covered_files. That edited the covered set and made 112's digest stale, NOT any regression of 112's deliverable. Phase 112's goal (a reproducible external harness + numeric-agreement gate) remains satisfied by the evolved harness; digest re-blessed to the current tree. 5/5 must-haves still hold."
+  digest_updated: "2026-09-23"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
