@@ -503,6 +503,14 @@ pub(super) fn dp_grid_solve_banded<F>(
 where
     F: Fn(usize, usize, usize, usize) -> f64,
 {
+    // Precondition: the DP grid is at least 1×1. All callers pass nrows = ncols = m
+    // with m >= 2 (dp_alignment_core_banded early-returns for m < 2). The banded arm
+    // of dp_fill_grid computes `ncols - 1`, so ncols == 0 would underflow; this guards
+    // the pub(super) surface in debug/test builds (free in release).
+    debug_assert!(
+        nrows >= 1 && ncols >= 1,
+        "dp_grid_solve_banded requires a non-empty grid (nrows={nrows}, ncols={ncols})"
+    );
     DP_SCRATCH.with(|cell| {
         let mut scratch = cell.borrow_mut();
         let (e, parent) = &mut *scratch;
