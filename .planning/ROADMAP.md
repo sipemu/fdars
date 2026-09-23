@@ -23,7 +23,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 
 - [x] **Phase 112: Benchmark Harness Setup** - External `benchmarks/` harness driving Rust/Python/R on matched inputs, with fairness + numeric-agreement gates (completed 2026-09-22)
 - [x] **Phase 113: Cross-Language Baseline & Hotspot Ranking** - Fair baseline across all three ecosystems, merged into `comparison.csv`, plus an evidence-ranked hotspot list (completed 2026-09-23)
-- [ ] **Phase 114: Elastic Alignment Optimization** - Optimize the anchor O(N²·M²) hot path in `src/alignment/`, numeric-identical, with before/after criterion evidence
+- [x] **Phase 114: Elastic Alignment Optimization** - Optimize the anchor O(N²·M²) hot path in `src/alignment/`, numeric-identical, with before/after criterion evidence (completed 2026-09-23)
 - [ ] **Phase 115: SVD/FPCA & Covariance Optimization** - Optimize the next-ranked hot paths + the consolidated build-variant / numeric-identity / pmat proof
 - [ ] **Phase 116: Cross-Language Re-Run & Published Report** - Re-run the full harness post-optimization; publish the before/after perf report + reproduction instructions
 - [ ] **Phase 117: Release Preparation & Verification** - Bump 0.46.0 → 0.47.0, CHANGELOG, all whole-crate gates + pmat green (terminal)
@@ -93,7 +93,10 @@ The approach is **measure-first**: stand up an external benchmark harness and es
   2. Every optimization commit preserves numeric identity — `cargo test --release --features linalg` is green and the determinism guardrail is green.
   3. All five build variants (default / `linalg` / `serde` / `linalg,serde,parallel` / WASM) compile after the optimizations, and the pmat quality-gate stays green (no new complexity/entropy/SATD/defect violations from decomposition helpers).
 
-**Plans**: TBD
+**Plans**: 3 plans
+- [ ] 115-01-PLAN.md — Capture committed BEFORE-baseline criterion (perf_face_covariance/n200_m30) + golden-value face_covariance fixture (tracer, un-optimized code)
+- [ ] 115-02-PLAN.md — sym_cov_irreg upper-triangle+mirror optimization (numeric-identical) + AFTER criterion (~2x) + SVD re-benchmark/near-optimal verdict
+- [ ] 115-03-PLAN.md — OPT-03 consolidated proof battery (release test + determinism guardrail + 5 builds + pmat gate + fmt/clippy), committed
 
 ### Phase 116: Cross-Language Re-Run & Published Report
 
@@ -127,7 +130,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 |-------|----------------|--------|-----------|
 | 112. Benchmark Harness Setup | 3/3 | Complete    | 2026-09-22 |
 | 113. Cross-Language Baseline & Hotspot Ranking | 3/3 | Complete    | 2026-09-23 |
-| 114. Elastic Alignment Optimization | 2/2 | In Progress|  |
+| 114. Elastic Alignment Optimization | 2/2 | Complete    | 2026-09-23 |
 | 115. SVD/FPCA & Covariance Optimization | 0/TBD | Not started | - |
 | 116. Cross-Language Re-Run & Published Report | 0/TBD | Not started | - |
 | 117. Release Preparation & Verification | 0/TBD | Not started | - |
