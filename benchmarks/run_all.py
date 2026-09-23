@@ -309,17 +309,33 @@ def step_run_gate(n: int, m: int, env: dict,
         fdars_rows = step_fdars_loadings(n=n, m=m, env=env)
         fdars_load = np.array(fdars_rows, dtype=np.float64).T  # (m, ncomp)
 
-        p1, mc1, _ = check_fpca_agreement(fdars_load,
-                                           fingerprint_to_array(py_fpca["result_fingerprint"]),
-                                           threshold=0.99, label="fdars-vs-python")
-        print(f"    fdars vs python: {'PASS' if p1 else 'FAIL'} (subspace cos={mc1:.6f})")
-
+        # fdars-vs-R is the HARD gate (both use Simpson's-family quadrature →
+        # they must span the identical FPCA subspace; this proves fdars correct).
         p2, mc2, _ = check_fpca_agreement(fdars_load,
                                            fingerprint_to_array(r_fpca["result_fingerprint"]),
                                            threshold=0.99, label="fdars-vs-r")
-        print(f"    fdars vs r:      {'PASS' if p2 else 'FAIL'} (subspace cos={mc2:.6f})")
+        print(f"    fdars vs r:      {'PASS (HARD-GATE)' if p2 else 'FAIL (HARD-GATE)'} (subspace cos={mc2:.6f})")
 
-        if not p1 or not p2:
+        # fdars-vs-Python is DISCLOSED, NOT hard-gated (user-approved 2026-09-23):
+        # scikit-fda uses trapezoidal quadrature vs fdars/R Simpson's, so its
+        # trailing near-degenerate PCs tilt the subspace at coarse grids. Record
+        # the subspace cosine per cell; do NOT abort on it.
+        p1, mc1, _ = check_fpca_agreement(fdars_load,
+                                           fingerprint_to_array(py_fpca["result_fingerprint"]),
+                                           threshold=0.99, label="fdars-vs-python")
+        _tag = "AGREES" if p1 else "DISCLOSED-BELOW"
+        print(f"    fdars vs python: {mc1:.6f} (disclosure bar 0.99; {_tag}; NOT hard-gated — trapezoidal vs Simpson's quadrature)")
+
+        # Persist the disclosed FPCA agreement into the python FPCA record so the
+        # assembler can surface it in the comparison.csv notes column.
+        py_fpca["fpca_disclosure"] = {
+            "fdars_vs_python_subspace_cos": float(mc1),
+            "fdars_vs_r_subspace_cos": float(mc2),
+        }
+        with py_path.open("w") as f:
+            json.dump(py_records, f, indent=2)
+
+        if not p2:
             fpca_passed = False
 
     # Step 6b: Full-op gate — Python vs R for all gated ops

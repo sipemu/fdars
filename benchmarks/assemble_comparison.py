@@ -162,6 +162,27 @@ def _fpcr_disclosure_note(corr: float, n_val, m_val) -> str:
     )
 
 
+def _fpca_disclosure_note(rec: dict) -> str:
+    """
+    Build the FPCA fdars-vs-Python disclosure string for the python FPCA row.
+
+    fdars matches R exactly (Simpson's-family quadrature). scikit-fda uses
+    trapezoidal quadrature, so its trailing near-degenerate PCs tilt the
+    subspace at coarse grids — a disclosed cross-library divergence, NOT an
+    fdars bug and NOT hard-gated on the Python pair (user-approved 2026-09-23).
+    Reads the subspace cosine the grid persisted in the record's fpca_disclosure.
+    """
+    disc = rec.get("fpca_disclosure") or {}
+    cos = disc.get("fdars_vs_python_subspace_cos")
+    if cos is None:
+        return ""
+    return (
+        f"FPCA fdars-vs-python subspace cos={float(cos):.4f} "
+        f"(hard-gated on fdars-vs-r=1.0; python DISCLOSED — scikit-fda trapezoidal "
+        f"vs fdars/R Simpson's quadrature tilts trailing PCs; Phase 116 finding)"
+    )
+
+
 def _compute_cell_fpcr_corr(py_records: list[dict], r_records: list[dict]) -> float:
     """
     Compute the FPCR cross-library Pearson correlation for one cell.
@@ -206,6 +227,8 @@ def _build_python_rows(py_records: list[dict], fpcr_corr: float = float("nan")) 
             notes = _fpcr_disclosure_note(fpcr_corr, n_val, m_val)
         elif op == "elastic":
             notes = _KARCHER_EXCLUSION_NOTE
+        elif op == "fpca":
+            notes = _fpca_disclosure_note(rec)
         else:
             notes = ""
         rows.append({
