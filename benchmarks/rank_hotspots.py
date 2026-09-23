@@ -100,6 +100,12 @@ def apply_noise_gate(
             excluded.append(row)
             continue
 
+        # NaN comparisons are always False in Python, so a NaN rsd_pct or
+        # ci_width_pct would silently pass the gate. Exclude explicitly.
+        if math.isnan(rsd_f) or math.isnan(ci_f):
+            excluded.append(row)
+            continue
+
         if rsd_f < _RSD_THRESHOLD and ci_f < _CI_THRESHOLD:
             passed.append(row)
         else:
@@ -115,7 +121,10 @@ def compute_leverage(fdars_ns: float, min_other_ns: float) -> float:
     Formula: fdars_ns × max(1.0, fdars_ns / min_other_ns)
 
     Guards:
-    - If min_other_ns <= 0 or fdars_ns <= 0 → return fdars_ns (no ratio).
+    - If fdars_ns is NaN or <= 0 → return fdars_ns (no ratio).
+    - If min_other_ns is NaN or <= 0 → return fdars_ns (no ratio).
+      NaN comparisons are always False in Python, so explicit math.isnan()
+      checks are required to detect NaN inputs.
 
     Parameters
     ----------
@@ -126,7 +135,9 @@ def compute_leverage(fdars_ns: float, min_other_ns: float) -> float:
     -------
     float leverage score.
     """
-    if fdars_ns <= 0 or min_other_ns <= 0:
+    if math.isnan(fdars_ns) or fdars_ns <= 0:
+        return fdars_ns
+    if math.isnan(min_other_ns) or min_other_ns <= 0:
         return fdars_ns
 
     ratio = fdars_ns / min_other_ns
@@ -173,6 +184,8 @@ def rank_rows(
         try:
             mns = float(row["mean_ns"])
         except (TypeError, ValueError):
+            continue
+        if math.isnan(mns) or mns <= 0:  # explicit NaN + non-positive guard
             continue
         competitor_map.setdefault(k, []).append(mns)
 
