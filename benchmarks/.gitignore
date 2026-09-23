@@ -15,3 +15,10 @@ fpca_dump/Cargo.lock
 .Rhistory
 .RData
 *.Rproj.user/
+
+# Python bytecode
+__pycache__/
+
+# R renv project artifacts
+.Rprofile
+renv/
