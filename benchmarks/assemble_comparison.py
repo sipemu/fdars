@@ -14,6 +14,7 @@ Key design invariants:
 - comparison.csv is only written when gate_passed=True is passed explicitly
   (BENCH-05 measure-first invariant enforced at write time).
 - Rust/criterion rows: ci_lower_ns, ci_upper_ns, std_dev_ns populated;
+  std_dev_ns = std_dev.point_estimate from criterion estimates.json (TRUE sample SD);
   rsd_pct = std_dev_ns/mean_ns*100; ci_width_pct = (ci_upper-ci_lower)/mean*100;
   noise_gate = 'PASS' if rsd_pct<5.0 AND ci_width_pct<5.0 else 'FAIL-NOISY'.
 - Python and r_svd rows: ci/std_dev/rsd/ci_width left blank; noise_gate = 'NA'.
@@ -59,6 +60,11 @@ def _noise_gate_rust(mean_ns: float, ci_lower_ns: float,
                      ci_upper_ns: float, std_dev_ns: float) -> tuple[float, float, str]:
     """
     Compute noise metrics and gate label for a Rust/criterion row.
+
+    std_dev_ns must be the TRUE sample standard deviation (std_dev.point_estimate
+    from criterion's estimates.json) — NOT mean.standard_error (the SE of the mean).
+    Using SE would underestimate RSD by sqrt(n_samples), allowing noisy benchmarks
+    to pass the noise gate.
 
     Returns (rsd_pct, ci_width_pct, noise_gate).
     """
@@ -298,17 +304,17 @@ def _build_r_rows(r_records: list[dict], fpcr_corr: float = float("nan")) -> lis
 
 def assemble(
     results_dir: pathlib.Path | None = None,
-    gate_passed: bool = True,
 ) -> pd.DataFrame:
     """
     Merge per-cell JSON result files into a schema-correct DataFrame.
+
+    Does NOT enforce the BENCH-05 gate invariant — pass the resulting DataFrame
+    to write_comparison_csv(gate_passed=True) to enforce it at write time.
 
     Args:
         results_dir: directory containing python_n{n}_m{m}.json,
                      r_n{n}_m{m}.json, and rust.json.
                      Defaults to benchmarks/results/.
-        gate_passed: must be True (caller asserts the gate passed before
-                     assembling — BENCH-05).  Passing False raises ValueError.
 
     Returns:
         DataFrame with columns in SCHEMA_COLUMNS order.
@@ -417,7 +423,7 @@ def main() -> None:
     args = parser.parse_args()
 
     results_dir = pathlib.Path(args.results_dir) if args.results_dir else None
-    df = assemble(results_dir=results_dir, gate_passed=True)  # assemble always OK
+    df = assemble(results_dir=results_dir)
 
     if args.dry_run:
         print(f"Assembled {len(df)} rows")

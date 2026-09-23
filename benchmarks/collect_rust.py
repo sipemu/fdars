@@ -86,7 +86,8 @@ def iter_estimates(criterion_dir: pathlib.Path = CRITERION_DIR) -> Iterator[dict
         mean_ns:       mean.point_estimate in nanoseconds
         ci_lower_ns:   mean confidence interval lower bound (ns)
         ci_upper_ns:   mean confidence interval upper bound (ns)
-        std_err_ns:    mean standard error (ns)
+        std_dev_ns:    std_dev.point_estimate in nanoseconds (true sample SD from criterion)
+        std_err_ns:    mean.standard_error in nanoseconds (SE of the mean; kept for reference)
         source_path:   string path to the estimates.json (for debugging)
     """
     # Security: assert criterion_dir is a resolved absolute path
@@ -122,12 +123,14 @@ def iter_estimates(criterion_dir: pathlib.Path = CRITERION_DIR) -> Iterator[dict
 
         mean = data.get("mean", {})
         ci = mean.get("confidence_interval", {})
+        std_dev_section = data.get("std_dev", {})
         yield {
             "group": group,
             "bench": bench,
             "mean_ns": mean.get("point_estimate", 0.0),
             "ci_lower_ns": ci.get("lower_bound", 0.0),
             "ci_upper_ns": ci.get("upper_bound", 0.0),
+            "std_dev_ns": std_dev_section.get("point_estimate", 0.0),
             "std_err_ns": mean.get("standard_error", 0.0),
             "source_path": str(est_path),
         }
@@ -143,7 +146,7 @@ def collect(group_filter: str | None = None,
               to the raw group name for groups not in the map.
       - 'library': 'rust'
       - 'group': original criterion group name
-      - 'bench', 'mean_ns', 'ci_lower_ns', 'ci_upper_ns', 'std_err_ns'
+      - 'bench', 'mean_ns', 'ci_lower_ns', 'ci_upper_ns', 'std_dev_ns', 'std_err_ns'
 
     No result_fingerprint — Rust side emits timing only from criterion.
     """
@@ -162,6 +165,7 @@ def collect(group_filter: str | None = None,
             "mean_ns": rec["mean_ns"],
             "ci_lower_ns": rec["ci_lower_ns"],
             "ci_upper_ns": rec["ci_upper_ns"],
+            "std_dev_ns": rec["std_dev_ns"],
             "std_err_ns": rec["std_err_ns"],
             # No result_fingerprint on the Rust side — timing only from criterion
         })

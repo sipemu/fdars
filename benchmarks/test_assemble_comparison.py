@@ -138,7 +138,7 @@ class TestRustNoiseFields:
         _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         rust_row = df[(df["library"] == "rust") & (df["op"] == "fpca")].iloc[0]
 
         expected_rsd = std_dev / mean * 100
@@ -162,7 +162,7 @@ class TestRustNoiseFields:
         _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         rust_row = df[(df["library"] == "rust") & (df["op"] == "fpcr")].iloc[0]
 
         expected_ci = (ci_upper - ci_lower) / mean * 100
@@ -190,7 +190,7 @@ class TestNoiseGateLabels:
         _write_cell_files(tmp_path, 500, 200, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         rust_row = df[(df["library"] == "rust") & (df["op"] == "fpca")].iloc[0]
         assert rust_row["noise_gate"] == "FAIL-NOISY", rust_row["noise_gate"]
 
@@ -210,7 +210,7 @@ class TestNoiseGateLabels:
         _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         rust_row = df[(df["library"] == "rust") & (df["op"] == "fpca")].iloc[0]
         assert rust_row["noise_gate"] == "PASS", rust_row["noise_gate"]
 
@@ -225,7 +225,7 @@ class TestNoiseGateLabels:
         _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         py_row = df[df["library"] == "python"].iloc[0]
         r_row = df[df["library"] == "r_svd"].iloc[0]
         assert py_row["noise_gate"] == "NA", py_row["noise_gate"]
@@ -251,7 +251,7 @@ class TestNativePcaFdNotes:
         _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         native_rows = df[df["library"] == "r_native_pca_fd"]
         assert len(native_rows) > 0, "No r_native_pca_fd row in assembled CSV"
         for _, row in native_rows.iterrows():
@@ -272,7 +272,7 @@ class TestNativePcaFdNotes:
         _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         native_rows = df[df["library"] == "r_native_pca_fd"]
         for _, row in native_rows.iterrows():
             assert row["noise_gate"] == "NA", row["noise_gate"]
@@ -295,7 +295,7 @@ class TestCsvHeaderOrder:
         _write_rust_json(tmp_path, rust_recs)
 
         out_csv = tmp_path / "comparison.csv"
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         assembler.write_comparison_csv(df, out_csv)
 
         written = pd.read_csv(out_csv)
@@ -313,7 +313,7 @@ class TestCsvHeaderOrder:
         _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         assert list(df.columns) == SCHEMA_COLUMNS, \
             f"Column mismatch: {list(df.columns)}"
 
@@ -334,7 +334,7 @@ class TestGateGuard:
         _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         out_csv = tmp_path / "comparison.csv"
 
         # Should raise if gate_passed=False
@@ -375,7 +375,7 @@ class TestFpcrDisclosureNote:
         _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         # The cross-library disclosure note lives on the python + r_svd fpcr rows
         # (the rust row is criterion timing only — no cross-library comparison).
         fpcr_xlib = df[(df["op"] == "fpcr") & (df["library"].isin(["python", "r_svd"]))]
@@ -398,7 +398,7 @@ class TestFpcrDisclosureNote:
         _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         fpcr_rows = df[(df["op"] == "fpcr") & (df["library"] == "python")]
         assert len(fpcr_rows) == 1
         note = str(fpcr_rows.iloc[0]["notes"])
@@ -422,7 +422,7 @@ class TestKarcherExclusionNote:
         _write_cell_files(tmp_path, 100, 50, py_recs, r_recs)
         _write_rust_json(tmp_path, rust_recs)
 
-        df = assembler.assemble(results_dir=tmp_path, gate_passed=True)
+        df = assembler.assemble(results_dir=tmp_path)
         elastic_xlib = df[(df["op"] == "elastic") & (df["library"].isin(["python", "r_svd"]))]
         assert set(elastic_xlib["library"]) >= {"python", "r_svd"}, set(elastic_xlib["library"])
         for _, row in elastic_xlib.iterrows():
