@@ -24,7 +24,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 - [x] **Phase 112: Benchmark Harness Setup** - External `benchmarks/` harness driving Rust/Python/R on matched inputs, with fairness + numeric-agreement gates (completed 2026-09-22)
 - [x] **Phase 113: Cross-Language Baseline & Hotspot Ranking** - Fair baseline across all three ecosystems, merged into `comparison.csv`, plus an evidence-ranked hotspot list (completed 2026-09-23)
 - [x] **Phase 114: Elastic Alignment Optimization** - Optimize the anchor O(N²·M²) hot path in `src/alignment/`, numeric-identical, with before/after criterion evidence (completed 2026-09-23)
-- [ ] **Phase 115: SVD/FPCA & Covariance Optimization** - Optimize the next-ranked hot paths + the consolidated build-variant / numeric-identity / pmat proof
+- [x] **Phase 115: SVD/FPCA & Covariance Optimization** - Optimize the next-ranked hot paths + the consolidated build-variant / numeric-identity / pmat proof (completed 2026-09-23)
 - [ ] **Phase 116: Cross-Language Re-Run & Published Report** - Re-run the full harness post-optimization; publish the before/after perf report + reproduction instructions
 - [ ] **Phase 117: Release Preparation & Verification** - Bump 0.46.0 → 0.47.0, CHANGELOG, all whole-crate gates + pmat green (terminal)
 
@@ -93,11 +93,11 @@ The approach is **measure-first**: stand up an external benchmark harness and es
   2. Every optimization commit preserves numeric identity — `cargo test --release --features linalg` is green and the determinism guardrail is green.
   3. All five build variants (default / `linalg` / `serde` / `linalg,serde,parallel` / WASM) compile after the optimizations, and the pmat quality-gate stays green (no new complexity/entropy/SATD/defect violations from decomposition helpers).
 
-**Plans**: 1/3 plans executed
+**Plans**: 3/3 plans executed
 
 - [x] 115-01-PLAN.md — Capture committed BEFORE-baseline criterion (perf_face_covariance/n200_m30) + golden-value face_covariance fixture (tracer, un-optimized code)
-- [ ] 115-02-PLAN.md — sym_cov_irreg upper-triangle+mirror optimization (numeric-identical) + AFTER criterion (~2x) + SVD re-benchmark/near-optimal verdict
-- [ ] 115-03-PLAN.md — OPT-03 consolidated proof battery (release test + determinism guardrail + 5 builds + pmat gate + fmt/clippy), committed
+- [x] 115-02-PLAN.md — sym_cov_irreg upper-triangle+mirror optimization (numeric-identical) + AFTER criterion (~2x) + SVD re-benchmark/near-optimal verdict
+- [x] 115-03-PLAN.md — OPT-03 consolidated proof battery (release test + determinism guardrail + 5 builds + pmat gate + fmt/clippy), committed
 
 ### Phase 116: Cross-Language Re-Run & Published Report
 
@@ -110,7 +110,15 @@ The approach is **measure-first**: stand up an external benchmark harness and es
   2. A published perf report exists with head-to-head before/after tables, N×M scaling analysis, and full methodology disclosure (likely a README speed story).
   3. The report includes reproduction instructions a reader can follow end-to-end to regenerate the numbers from scratch.
 
-**Plans**: TBD
+**Plans**: 7 plans (6 waves)
+
+- [ ] 116-01-PLAN.md — Tracer: FPCA end-to-end at N=500,M=200 (grid-aligned crosslang_grid bench → scikit-fda/R → gate → CSV → generated headline row) + freeze Phase 113 baseline/env + Phase 114/115 A/B evidence + results/ ignore carve-out
+- [ ] 116-02-PLAN.md — crosslang_grid bench expanded to all six ops (Python/R-matched params, shared CSVs) + OP_MAP labels + functional_boxplot noise-settings bump
+- [ ] 116-03-PLAN.md — run_all.py full-run plumbing: 67-chunk resumable budgeted scheduler + run log, per-cell timeouts, prebuild, footprint, single `--full` command (+ tests)
+- [ ] 116-04-PLAN.md — render_report.py: 13 generated blocks (head-to-head, A/B, before/after incl. fdars-internal, not-rerun, N×M scaling vs theory, methodology) + --check/--check-prose/--noise-report/--ab-check (+ tests)
+- [ ] 116-05-PLAN.md — Controlled thread-pinned A/B re-confirmation of the face_covariance headline (pre-OPT-02 vs HEAD worktrees, noise-gated, bounded bumps) [INLINE]
+- [ ] 116-06-PLAN.md — Full 3-ecosystem re-run (fdars 67 chunks + 6-cell scikit-fda/R grid, gate before timing), headline noise remediation, commit after-data comparison.csv [INLINE, ~3-4.5 h]
+- [ ] 116-07-PLAN.md — Publish documentation/PERFORMANCE.md + README speed story + benchmarks/README + multimethod patch; clean-clone --check
 
 ### Phase 117: Release Preparation & Verification
 
@@ -132,7 +140,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 | 112. Benchmark Harness Setup | 3/3 | Complete    | 2026-09-22 |
 | 113. Cross-Language Baseline & Hotspot Ranking | 3/3 | Complete    | 2026-09-23 |
 | 114. Elastic Alignment Optimization | 2/2 | Complete    | 2026-09-23 |
-| 115. SVD/FPCA & Covariance Optimization | 1/3 | In Progress|  |
+| 115. SVD/FPCA & Covariance Optimization | 3/3 | Complete    | 2026-09-23 |
 | 116. Cross-Language Re-Run & Published Report | 0/TBD | Not started | - |
 | 117. Release Preparation & Verification | 0/TBD | Not started | - |
 
