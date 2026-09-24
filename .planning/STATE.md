@@ -4,18 +4,18 @@ milestone: v0.47.0
 milestone_name: "Performance: Cross-Language Benchmarks & Optimization Pass"
 current_phase: 116
 current_phase_name: Cross-Language Re-Run & Published Report
-current_plan: Not started
+current_plan: 2
 status: executing
-stopped_at: Phase 115 complete, ready to plan Phase 116
-last_updated: "2026-09-24T19:09:28.030Z"
-last_activity: 2026-09-23
-last_activity_desc: Phase 115 complete, transitioned to Phase 116
-state_head: 501670b8d34da532bf2442f02558cc5660c23ff9
+stopped_at: Completed 116-01-PLAN.md
+last_updated: "2026-09-24T19:27:00.631Z"
+last_activity: 2026-09-24
+last_activity_desc: Phase 116 execution started
+state_head: 6af0a7c229de712986a328c12ca8b31a172e9e24
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 18
-  completed_plans: 11
+  completed_plans: 12
   percent: 17
 ---
 
@@ -26,15 +26,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-19)
 
 **Core value:** A comprehensive, *fast* Rust functional-data-analysis library — this milestone produces evidence for the "fast" half (head-to-head vs scikit-fda + R) and improves the worst bottlenecks, behavior-preservingly.
-**Current focus:** Phase 112 — Benchmark Harness Setup
+**Current focus:** Phase 116 — Cross-Language Re-Run & Published Report
 
 ## Current Position
 
-Phase: 116 (Cross-Language Re-Run & Published Report) — READY TO EXECUTE
-Current Plan: Not started
+Phase: 116 (Cross-Language Re-Run & Published Report) — EXECUTING
+Current Plan: 2
 Total Plans in Phase: 7
 Status: Ready to execute
-Last activity: 2026-09-23 — Phase 115 complete, transitioned to Phase 116
+Last activity: 2026-09-24 — Phase 116 execution started
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -98,6 +98,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | Phase 115 P01 | 75 min | 2 tasks | 4 files |
 | Phase 115-svd-fpca-covariance-optimization P02 | 439 | 2 tasks | 8 files |
 | Phase 115-svd-fpca-covariance-optimization P03 | 10min | 1 tasks | 1 files |
+| Phase 116 P01 | 20min | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -137,6 +138,8 @@ Decisions relevant to current work (v0.47.0):
 - [Phase 115]: sym_cov_irreg: single kernel table + upper-triangle loop + bit-copy mirror achieves ~3.45x speedup with bit-identical upper-triangle values (OPT-02)
 - [Phase 115]: SVD documented near-optimal: faer thin SVD already production path under linalg feature (regression.rs:455-499)
 - [Phase 115]: OPT-03 consolidated proof: 114+115 pass proven numeric-identical, non-breaking (5 builds), deterministic (6 guardrail modules), pmat-clean
+- [Phase 116]: 116-01: crosslang bench group named crosslang_fpca (not fpca); render_report.py matches fdars rows by criterion source string, not op label
+- [Phase 116]: 116-01: gitignore switched results/ -> results/* + explicit negations; a bare directory pattern cannot be selectively re-included
 
 ### Pending Todos
 
@@ -173,8 +176,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-23T14:56:21.927Z
-Stopped at: Phase 115 complete, ready to plan Phase 116
+Last session: 2026-09-24T19:27:00.599Z
+Stopped at: Completed 116-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
