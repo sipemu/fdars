@@ -434,7 +434,6 @@ fpca,r_svd,100.0,50.0,1300000.0,,,,,,NA,r_runner,
 
 _AFTER_ROWS_CSV = """op,library,n,m,mean_ns,ci_lower_ns,ci_upper_ns,std_dev_ns,rsd_pct,ci_width_pct,noise_gate,source,notes
 fpca,rust,100.0,50.0,800000.0,785000.0,815000.0,8000.0,1.0,3.75,PASS,criterion:audit_fpca/n100_m50,
-fake_op,rust,,,500000.0,480000.0,520000.0,10000.0,2.0,4.0,PASS,criterion:orphan_group/n1,
 face_covariance,rust,200.0,30.0,1200000.0,1180000.0,1220000.0,24000.0,2.0,3.33,PASS,criterion:perf_face_covariance/n200_m30,
 scaling_op,rust,1.0,1.0,2900000.0,2800000.0,3000000.0,58000.0,2.0,6.9,FAIL-NOISY,criterion:perf_parallelism_co_cluster/n1,
 fpca,rust,100.0,50.0,120000.0,118000.0,122000.0,1200.0,1.0,3.33,PASS,criterion:crosslang_fpca/n100_m50,
