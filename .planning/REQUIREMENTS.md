@@ -28,7 +28,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase (phases 
 
 ### Report (RPT)
 
-- [ ] **RPT-01**: Re-run the full harness post-optimization and publish a perf report with head-to-head before/after tables, N×M scaling analysis, methodology disclosure, and reproduction instructions (likely a README speed story).
+- [x] **RPT-01**: Re-run the full harness post-optimization and publish a perf report with head-to-head before/after tables, N×M scaling analysis, methodology disclosure, and reproduction instructions (likely a README speed story).
 
 ### Release (REL)
 
@@ -71,7 +71,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | OPT-01 | Phase 114 | Complete |
 | OPT-02 | Phase 115 | Complete |
 | OPT-03 | Phase 115 | Complete |
-| RPT-01 | Phase 116 | Pending |
+| RPT-01 | Phase 116 | Complete |
 | REL-01 | Phase 117 | Pending |
 
 **Coverage:**

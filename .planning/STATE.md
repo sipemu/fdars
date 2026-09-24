@@ -4,18 +4,18 @@ milestone: v0.47.0
 milestone_name: "Performance: Cross-Language Benchmarks & Optimization Pass"
 current_phase: 116
 current_phase_name: Cross-Language Re-Run & Published Report
-current_plan: 3
+current_plan: 4
 status: executing
-stopped_at: Completed 116-02-PLAN.md
-last_updated: "2026-09-24T19:37:32.812Z"
+stopped_at: Completed 116-04-PLAN.md
+last_updated: "2026-09-24T20:00:22.281Z"
 last_activity: 2026-09-24
 last_activity_desc: Phase 116 execution started
-state_head: b73af348733e8d0377a904f4c997405113d71b8a
+state_head: 352877e1b910cc22dd0597f27e1107bceb73d1b6
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 18
-  completed_plans: 13
+  completed_plans: 14
   percent: 17
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-19)
 ## Current Position
 
 Phase: 116 (Cross-Language Re-Run & Published Report) — EXECUTING
-Current Plan: 3
+Current Plan: 4
 Total Plans in Phase: 7
 Status: Ready to execute
 Last activity: 2026-09-24 — Phase 116 execution started
@@ -100,6 +100,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | Phase 115-svd-fpca-covariance-optimization P03 | 10min | 1 tasks | 1 files |
 | Phase 116 P01 | 20min | 2 tasks | 16 files |
 | Phase 116 P02 | 15min | 2 tasks | 4 files |
+| Phase 116 P04 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,7 @@ Decisions relevant to current work (v0.47.0):
 - [Phase 116]: 116-01: crosslang bench group named crosslang_fpca (not fpca); render_report.py matches fdars rows by criterion source string, not op label
 - [Phase 116]: 116-01: gitignore switched results/ -> results/* + explicit negations; a bare directory pattern cannot be selectively re-included
 - [Phase 116]: 116-02: crosslang_grid.rs expanded to all six overlapping ops (basis_smoothing/depth/functional_boxplot/fpcr/elastic added alongside fpca); collect_rust.py OP_MAP labels them with shared op names (TDD RED/GREEN); functional_boxplot criterion settings raised (sample_size 50, measurement_time 20s) per D-10 noise finding
+- [Phase 116]: 116-04: render_report.py's analysis core + all 13 emitters implemented and fully unit-tested (67 tests); THEORETICAL_COMPLEXITY grounded in actual fdars-core source (depth/functional_boxplot are O(N*M*log N) via StreamingMbd's sorted-reference rank query, not naive O(N^2*M); elastic is O(M^2), N-independent); before-after tables exclude new crosslang_* rows and _THREAD_SCALING_GROUPS; real ab-check shows Phase 115 face_covariance before-cell is FAIL-NOISY under the strict gate (RSD ~5.98%), so headline_eligible is honestly False until a cleaner phase116_ A/B entry lands
 
 ### Pending Todos
 
@@ -178,8 +180,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-24T19:37:32.716Z
-Stopped at: Completed 116-02-PLAN.md
+Last session: 2026-09-24T20:00:22.248Z
+Stopped at: Completed 116-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
