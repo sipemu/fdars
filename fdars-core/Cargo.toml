@@ -151,6 +151,10 @@ harness = false
 name = "optimal_design"   # Phase 65 FOD-05 — design_criterion + optimal_design pipeline coverage
 harness = false
 
+[[bench]]
+name = "crosslang_grid"   # Phase 116 RPT-01 — grid-aligned cross-language harness timings
+harness = false
+
 [[example]]
 name = "simulation"
 path = "examples/01_simulation/main.rs"

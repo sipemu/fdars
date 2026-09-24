@@ -45,8 +45,10 @@ import argparse
 import json
 import os
 import pathlib
+import signal
 import subprocess
 import sys
+import time
 
 # -------------------------------------------------------------------
 # Thread-pinning environment (fairness contract, BENCH-04)
@@ -142,8 +144,9 @@ def step_python_runner(op: str | None, n: int, m: int, seed: int, env: dict,
 
 
 def _run_all_ops_python(n: int, m: int, seed: int, env: dict,
-                        pairwise_only: bool = False) -> None:
-    """Run all ops via python_runner, timing each op individually.
+                        pairwise_only: bool = False,
+                        ops: list[str] | None = None) -> None:
+    """Run ops via python_runner, timing each op individually.
 
     WR-04: the previous implementation passed --smoke, which sets mean_ns=0.0
     for every op. The non-smoke path invokes --op <name> per op so that real
@@ -154,10 +157,14 @@ def _run_all_ops_python(n: int, m: int, seed: int, env: dict,
     Phase 113 Plan 02: when pairwise_only=True (grid baseline), the elastic op is
     run with --pairwise-only so only the fast pairwise alignment is timed (the
     slow N-dependent Karcher mean is excluded from grid timing).
+
+    Phase 116 Plan 01: `ops` restricts which ops are run (default: ALL_OPS), so a
+    single-op re-run (e.g. `--op fpca`) does not re-time the other five ops.
     """
+    ops = ops if ops is not None else ALL_OPS
     py_out = _SCRIPT_DIR / "results" / "python.json"
     accumulated: list[dict] = []
-    for single_op in ALL_OPS:
+    for single_op in ops:
         cmd = [_PYTHON, str(_SCRIPT_DIR / "python_runner.py"),
                "--op", single_op,
                "--n", str(n), "--m", str(m), "--seed", str(seed)]
@@ -481,7 +488,26 @@ def write_timing_comparison(n: int, m: int) -> None:
 # -------------------------------------------------------------------
 
 
-def _write_cell_results(n: int, m: int, py_records: list, r_records: list) -> None:
+def _merge_cell_records(existing: list[dict], new: list[dict], ops: list[str]) -> list[dict]:
+    """
+    Merge freshly-run per-op records into an existing per-cell record list.
+
+    Drops any existing record whose op is in `ops` (it is being replaced by the
+    fresh run), plus `fpca_native_r` when "fpca" is in `ops` (fpca_native_r is
+    fpca's ecosystem-realistic companion record, re-run together), then appends
+    `new`. Used when a grid re-run covers only a strict subset of ALL_OPS
+    (e.g. `--op fpca`) so a prior full-grid cell file is not silently truncated
+    down to just the freshly-run op (Phase 116 Plan 01).
+    """
+    drop_ops = set(ops)
+    if "fpca" in drop_ops:
+        drop_ops.add("fpca_native_r")
+    kept = [rec for rec in existing if rec.get("op") not in drop_ops]
+    return kept + new
+
+
+def _write_cell_results(n: int, m: int, py_records: list, r_records: list,
+                        ops: list[str] | None = None) -> None:
     """
     Persist per-cell Python and R timing records for the assembler.
 
@@ -492,12 +518,31 @@ def _write_cell_results(n: int, m: int, py_records: list, r_records: list) -> No
 
     These files are consumed by assemble_comparison.py to build comparison.csv
     without re-running the benchmarks.
+
+    Phase 116 Plan 01: when `ops` is a STRICT SUBSET of ALL_OPS, merge into
+    whatever per-cell files already exist on disk (via _merge_cell_records)
+    instead of overwriting them — a `--op fpca` re-run must not erase the other
+    five ops' records from a prior full-grid run. When `ops` is None or the
+    full ALL_OPS set, behavior is unchanged (full overwrite).
     """
+    ops = ops if ops is not None else ALL_OPS
     results_dir = _SCRIPT_DIR / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     py_out = results_dir / f"python_n{n}_m{m}.json"
     r_out = results_dir / f"r_n{n}_m{m}.json"
+
+    if set(ops) < set(ALL_OPS):
+        existing_py: list[dict] = []
+        if py_out.exists():
+            with py_out.open() as f:
+                existing_py = json.load(f)
+        existing_r: list[dict] = []
+        if r_out.exists():
+            with r_out.open() as f:
+                existing_r = json.load(f)
+        py_records = _merge_cell_records(existing_py, py_records, ops)
+        r_records = _merge_cell_records(existing_r, r_records, ops)
 
     with py_out.open("w") as f:
         json.dump(py_records, f, indent=2)
@@ -509,9 +554,11 @@ def _write_cell_results(n: int, m: int, py_records: list, r_records: list) -> No
 
 
 def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict,
-                            pairwise_only: bool = False) -> list:
+                            pairwise_only: bool = False,
+                            ops: list[str] | None = None) -> list:
     """
-    Run R runner for ALL_OPS and also fpca_native_r; return merged records.
+    Run R runner for `ops` and (when "fpca" is in `ops`) also fpca_native_r;
+    return merged records.
 
     fpca_native_r is not in ALL_OPS (keeps smoke/default contract unchanged per
     Plan 01), so it must be invoked explicitly via --op fpca_native_r.
@@ -519,12 +566,17 @@ def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict,
     Phase 113 Plan 02: when pairwise_only=True (grid baseline), the elastic op is
     run with --pairwise-only so only the fast pairwise alignment is timed (the
     slow fdasrvf time_warping Karcher mean is excluded from grid timing).
+
+    Phase 116 Plan 01: `ops` restricts which ops are run (default: ALL_OPS).
+    fpca_native_r is invoked only when "fpca" is in `ops` — it is fpca's
+    ecosystem-realistic companion timing, not an independent op.
     """
+    ops = ops if ops is not None else ALL_OPS
     r_out = _SCRIPT_DIR / "results" / "r.json"
     accumulated: list[dict] = []
 
-    # All overlapping ops
-    for single_op in ALL_OPS:
+    # Requested overlapping ops
+    for single_op in ops:
         cmd = ["Rscript", str(_SCRIPT_DIR / "r_runner.R"),
                "--op", single_op,
                "--n", str(n), "--m", str(m), "--seed", str(seed)]
@@ -536,18 +588,20 @@ def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict,
                 records = json.load(f)
             accumulated.extend(records)
 
-    # Explicitly invoke fpca_native_r — ecosystem-realistic pca.fd timing
-    print(f"[3b] Running R fpca_native_r (n={n}, m={m})...")
-    _run(
-        ["Rscript", str(_SCRIPT_DIR / "r_runner.R"),
-         "--op", "fpca_native_r",
-         "--n", str(n), "--m", str(m), "--seed", str(seed)],
-        env=env,
-    )
-    if r_out.exists():
-        with r_out.open() as f:
-            native_records = json.load(f)
-        accumulated.extend(native_records)
+    # Explicitly invoke fpca_native_r — ecosystem-realistic pca.fd timing —
+    # only when fpca itself is being (re-)run this call.
+    if "fpca" in ops:
+        print(f"[3b] Running R fpca_native_r (n={n}, m={m})...")
+        _run(
+            ["Rscript", str(_SCRIPT_DIR / "r_runner.R"),
+             "--op", "fpca_native_r",
+             "--n", str(n), "--m", str(m), "--seed", str(seed)],
+            env=env,
+        )
+        if r_out.exists():
+            with r_out.open() as f:
+                native_records = json.load(f)
+            accumulated.extend(native_records)
 
     # Write merged list back to r.json
     r_out.parent.mkdir(parents=True, exist_ok=True)
@@ -557,99 +611,223 @@ def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict,
     return accumulated
 
 
-def run_grid(dry_run: bool = False, seed: int = 42) -> None:
+def run_grid(dry_run: bool = False, seed: int = 42,
+            cells: list[tuple[int, int]] | None = None,
+            ops: list[str] | None = None) -> None:
     """
-    Execute the full N×M baseline grid run (BASE-01).
+    Execute the N×M baseline grid run (BASE-01), or a caller-selected subset.
 
-    Iterates GRID_N × GRID_M strictly sequentially (never concurrent —
-    shared CSV filenames per Pitfall 2 in RESEARCH.md).  For each cell:
+    Iterates `cells` (default: the full GRID_N × GRID_M cross product, 6 cells)
+    strictly sequentially (never concurrent — shared CSV filenames per Pitfall 2
+    in RESEARCH.md).  For each cell:
 
       1. Generate CSV fixtures (seeded, bit-identical across ecosystems)
-      2. Run Python runner (all ops, per-op timing)
-      3. Run R runner (all ops + fpca_native_r explicitly)
+      2. Run Python runner (`ops`, per-op timing)
+      3. Run R runner (`ops` + fpca_native_r when "fpca" is in `ops`)
       4. Collect Rust criterion output (existing on disk; no new cargo bench)
       5. Run gate — ABORT the whole grid run on any failure (BENCH-05)
-      6. Persist per-cell result files (python_n{n}_m{m}.json, r_n{n}_m{m}.json)
+      6. Persist per-cell result files (python_n{n}_m{m}.json, r_n{n}_m{m}.json);
+         merges into any existing files when `ops` is a strict subset of
+         ALL_OPS (Phase 116 Plan 01 — see _write_cell_results).
 
     In --dry-run mode: steps 1–3 are skipped entirely (proves wiring without
     the heavy Python/R runs); gate and persist are also skipped; the loop
-    still iterates all 6 cells to verify the grid structure.
+    still iterates every requested cell to verify the grid structure.
 
     Note: N=300 cells on the Rust criterion side reuse whatever criterion
     output is on disk (typically N=100/N=500 cells); no new cargo bench is
     run for N=300.  See RESEARCH.md open-question 2.
+
+    Args:
+        dry_run: skip the heavy runner/gate/persist steps (wiring check only).
+        seed: RNG seed passed through to the CSV generator.
+        cells: explicit (n, m) cells to run (default: all 6 grid cells).
+        ops: which harness ops to run per cell (default: ALL_OPS).
     """
     env = _build_env()
+    cells = cells if cells is not None else [(n, m) for n in GRID_N for m in GRID_M]
+    ops = ops if ops is not None else ALL_OPS
     cells_run = 0
     failed_cell = None
 
-    print(f"[GRID] Starting baseline grid run: N={GRID_N} × M={GRID_M} "
-          f"({len(GRID_N) * len(GRID_M)} cells, dry_run={dry_run})")
+    print(f"[GRID] Starting grid run: {len(cells)} cell(s) {cells}, ops={ops}, "
+          f"dry_run={dry_run}")
 
-    for n in GRID_N:
-        for m in GRID_M:
-            print(f"\n[GRID] Cell n={n} m={m} ({'DRY RUN — skipping runners' if dry_run else 'running'})")
+    for n, m in cells:
+        print(f"\n[GRID] Cell n={n} m={m} ({'DRY RUN — skipping runners' if dry_run else 'running'})")
 
-            if dry_run:
-                # Prove the loop wiring without heavy runs
-                print(f"  [dry] would run: generate(n={n}, m={m}, seed={seed})")
-                print(f"  [dry] would run: python_runner (all ops, elastic pairwise-only, n={n}, m={m})")
-                print(f"  [dry] would run: r_runner (all ops + fpca_native_r, elastic pairwise-only, n={n}, m={m})")
-                print(f"  [dry] would run: collect_rust + gate")
-                print(f"  [dry] would write: python_n{n}_m{m}.json, r_n{n}_m{m}.json")
-                cells_run += 1
-                continue
-
-            # Step 1: Generate CSV fixtures for this cell
-            step_generate(n=n, m=m, seed=seed, env=env)
-
-            # Step 2: Python runner — all ops, per-op real timings.
-            # pairwise_only=True: elastic times only the fast pairwise alignment
-            # (Karcher mean excluded from grid timing — Phase 113 Plan 02).
-            _run_all_ops_python(n=n, m=m, seed=seed, env=env, pairwise_only=True)
-            py_path = _SCRIPT_DIR / "results" / "python.json"
-            with py_path.open() as f:
-                py_records = json.load(f)
-
-            # Step 3: R runner — all ops + fpca_native_r (elastic pairwise-only)
-            r_records = _run_r_with_native_fpca(n=n, m=m, seed=seed, env=env,
-                                                pairwise_only=True)
-            r_path = _SCRIPT_DIR / "results" / "r.json"
-
-            # Step 4: Collect Rust criterion output (existing on disk)
-            step_collect_rust(env=env)
-
-            # Step 5: Gate — ABORT on any failure (BENCH-05 measure-first)
-            print(f"[GRID] Running agreement gate for n={n} m={m}...")
-            gate_passed = step_run_gate(n=n, m=m, env=env,
-                                        py_path=py_path, r_path=r_path)
-            if not gate_passed:
-                # step_run_gate calls sys.exit(1) on failure; reaching here
-                # means it returned False rather than exiting (defensive).
-                failed_cell = (n, m)
-                print(
-                    f"\nGATE FAIL for cell n={n} m={m} — aborting grid run.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-
-            # Step 6: Persist per-cell result files for assembler.
-            # Re-load py_records from disk: step_run_gate patched python.json in
-            # place with the FPCA fdars-vs-python disclosure (fpca_disclosure),
-            # so the persisted per-cell file must reflect that patch, not the
-            # stale pre-gate in-memory records.
-            with py_path.open() as f:
-                py_records = json.load(f)
-            _write_cell_results(n=n, m=m, py_records=py_records, r_records=r_records)
+        if dry_run:
+            # Prove the loop wiring without heavy runs
+            print(f"  [dry] would run: generate(n={n}, m={m}, seed={seed})")
+            print(f"  [dry] would run: python_runner (ops={ops}, elastic pairwise-only, n={n}, m={m})")
+            print(f"  [dry] would run: r_runner (ops={ops} + fpca_native_r if fpca in ops, elastic pairwise-only, n={n}, m={m})")
+            print(f"  [dry] would run: collect_rust + gate")
+            print(f"  [dry] would write: python_n{n}_m{m}.json, r_n{n}_m{m}.json")
             cells_run += 1
-            print(f"[GRID] Cell n={n} m={m}: DONE (gate passed, results written)")
+            continue
+
+        # Step 1: Generate CSV fixtures for this cell
+        step_generate(n=n, m=m, seed=seed, env=env)
+
+        # Step 2: Python runner — requested ops, per-op real timings.
+        # pairwise_only=True: elastic times only the fast pairwise alignment
+        # (Karcher mean excluded from grid timing — Phase 113 Plan 02).
+        _run_all_ops_python(n=n, m=m, seed=seed, env=env, pairwise_only=True, ops=ops)
+        py_path = _SCRIPT_DIR / "results" / "python.json"
+        with py_path.open() as f:
+            py_records = json.load(f)
+
+        # Step 3: R runner — requested ops (+ fpca_native_r if fpca in ops),
+        # elastic pairwise-only.
+        r_records = _run_r_with_native_fpca(n=n, m=m, seed=seed, env=env,
+                                            pairwise_only=True, ops=ops)
+        r_path = _SCRIPT_DIR / "results" / "r.json"
+
+        # Step 4: Collect Rust criterion output (existing on disk)
+        step_collect_rust(env=env)
+
+        # Step 5: Gate — ABORT on any failure (BENCH-05 measure-first)
+        print(f"[GRID] Running agreement gate for n={n} m={m}...")
+        gate_passed = step_run_gate(n=n, m=m, env=env,
+                                    py_path=py_path, r_path=r_path)
+        if not gate_passed:
+            # step_run_gate calls sys.exit(1) on failure; reaching here
+            # means it returned False rather than exiting (defensive).
+            failed_cell = (n, m)
+            print(
+                f"\nGATE FAIL for cell n={n} m={m} — aborting grid run.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        # Step 6: Persist per-cell result files for assembler.
+        # Re-load py_records from disk: step_run_gate patched python.json in
+        # place with the FPCA fdars-vs-python disclosure (fpca_disclosure),
+        # so the persisted per-cell file must reflect that patch, not the
+        # stale pre-gate in-memory records.
+        with py_path.open() as f:
+            py_records = json.load(f)
+        _write_cell_results(n=n, m=m, py_records=py_records, r_records=r_records, ops=ops)
+        cells_run += 1
+        print(f"[GRID] Cell n={n} m={m}: DONE (gate passed, results written)")
 
     if dry_run:
         print(f"\n[GRID] Dry-run complete: verified loop structure for "
-              f"{cells_run}/{len(GRID_N) * len(GRID_M)} cells.")
+              f"{cells_run}/{len(cells)} cells.")
     else:
         print(f"\n[GRID] Grid run complete: {cells_run} cells processed, "
               f"gate passed for all cells.")
+
+
+# -------------------------------------------------------------------
+# Cell-spec parsing + timeout-bounded Rust bench invocation (Phase 116 Plan 01)
+# -------------------------------------------------------------------
+
+
+def _parse_cell(text: str) -> tuple[int, int]:
+    """
+    Parse a "NxM" cell spec (e.g. "500x200") into (n, m).
+
+    Raises:
+        ValueError: if `text` is not of the form "<int>x<int>", or if the
+            parsed (n, m) is not a member of the locked GRID_N × GRID_M grid.
+    """
+    parts = text.lower().split("x")
+    if len(parts) != 2:
+        raise ValueError(f"Malformed cell spec {text!r}: expected 'NxM' (e.g. '500x200')")
+    try:
+        n, m = int(parts[0]), int(parts[1])
+    except ValueError as exc:
+        raise ValueError(f"Malformed cell spec {text!r}: N and M must be integers") from exc
+    if n not in GRID_N or m not in GRID_M:
+        raise ValueError(
+            f"Cell ({n}, {m}) is not in the locked grid: N in {GRID_N}, M in {GRID_M}"
+        )
+    return (n, m)
+
+
+def _run_with_timeout(cmd: list[str], env: dict, timeout_s: int | None,
+                      cwd: str | None = None) -> tuple[str, float, int]:
+    """
+    Run a subprocess with an optional wall-clock timeout (T-116-02).
+
+    The child is started in its own session (`start_new_session=True`) so that
+    on timeout the WHOLE process group can be SIGKILLed via `os.killpg` — a
+    stuck `cargo bench` invocation may itself have spawned the actual bench
+    binary as a grandchild, and killing only the immediate `cargo` process
+    would leave that grandchild running and skewing every later timing.
+    List-form argv only (no shell=True) per T-112-02.
+
+    Returns:
+        (status, wall_s, returncode):
+          - status: "ok" (returncode == 0), "timeout" (killed after
+            timeout_s seconds), or "error" (non-zero exit, no timeout).
+          - wall_s: elapsed wall-clock seconds.
+          - returncode: the process's exit code, or -9 on timeout-kill.
+    """
+    start = time.monotonic()
+    proc = subprocess.Popen(cmd, env=env, cwd=cwd, start_new_session=True)
+    try:
+        returncode = proc.wait(timeout=timeout_s)
+        wall_s = time.monotonic() - start
+        status = "ok" if returncode == 0 else "error"
+        return status, wall_s, returncode
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()  # reap the child so it does not linger as a zombie
+        wall_s = time.monotonic() - start
+        return "timeout", wall_s, -9
+
+
+def run_rust_bench(bench: str, filter_regex: str, env: dict,
+                   timeout_s: int | None) -> tuple[str, float]:
+    """
+    Run a single criterion bench file, filtered to `filter_regex`, under an
+    optional wall-clock timeout (Phase 116 Plan 01 — thread-pinned single
+    criterion invocation for the tracer/grid-aligned crosslang benches).
+
+    Validates that `fdars-core/benches/<bench>.rs` exists before spawning
+    (exits 2 with a clear message otherwise — a typo'd bench name should fail
+    fast here, not surface as cargo's own opaque "no bench target" error deep
+    inside a subprocess).
+
+    The env is the thread-pinned `_build_env()`-shaped dict passed in by the
+    caller, plus `FDARS_CROSSLANG_DATA_DIR` (absolute `benchmarks/data`) and
+    `FDARS_CROSSLANG_REQUIRE_CSV=1` so the bench never silently falls back to
+    its synthetic-data path during a real harness run.
+
+    Prints `RUST_BENCH_STATUS=<status> wall_s=<seconds>` for the caller (and
+    for whichever process reads this script's stdout) to key off of.
+
+    Returns:
+        (status, wall_s) — see `_run_with_timeout`.
+    """
+    bench_path = _SCRIPT_DIR.parent / "fdars-core" / "benches" / f"{bench}.rs"
+    if not bench_path.exists():
+        print(f"ERROR: bench file not found: {bench_path}", file=sys.stderr)
+        sys.exit(2)
+
+    run_env = {
+        **env,
+        "FDARS_CROSSLANG_DATA_DIR": str((_SCRIPT_DIR / "data").resolve()),
+        "FDARS_CROSSLANG_REQUIRE_CSV": "1",
+    }
+    cmd = [
+        "cargo", "bench",
+        "-p", "fdars-core",
+        "--features", "linalg,parallel",
+        "--bench", bench,
+        "--",
+        filter_regex,
+    ]
+    status, wall_s, _returncode = _run_with_timeout(
+        cmd, env=run_env, timeout_s=timeout_s, cwd=str(_WORKSPACE_ROOT)
+    )
+    print(f"RUST_BENCH_STATUS={status} wall_s={wall_s:.2f}")
+    return status, wall_s
 
 
 # -------------------------------------------------------------------
@@ -678,18 +856,58 @@ def main() -> None:
     parser.add_argument("--n", type=int, default=60, help="Number of curves")
     parser.add_argument("--m", type=int, default=50, help="Number of eval points")
     parser.add_argument("--seed", type=int, default=42, help="RNG seed")
+    parser.add_argument(
+        "--cell", action="append", default=None, metavar="NxM",
+        help="Grid cell as 'NxM' (e.g. '500x200'); repeatable. Only valid with "
+             "--grid. Must be a member of GRID_N x GRID_M. Default: all 6 cells.",
+    )
+    parser.add_argument(
+        "--rust-bench", type=str, default=None,
+        help="Run a single Rust criterion bench file (fdars-core/benches/<name>.rs) "
+             "under an optional wall-clock timeout, thread-pinned, instead of the "
+             "Python/R grid. Requires --rust-filter.",
+    )
+    parser.add_argument(
+        "--rust-filter", type=str, default=None,
+        help="Criterion filter regex for --rust-bench (required with --rust-bench).",
+    )
+    parser.add_argument(
+        "--timeout-s", type=int, default=None,
+        help="Wall-clock timeout in seconds for --rust-bench (default: no limit).",
+    )
     args = parser.parse_args()
 
     # Build pinned-thread environment FIRST (Pitfall 1: set before any fork)
     env = _build_env()
 
+    # --rust-bench: single thread-pinned criterion invocation under a timeout
+    # (Phase 116 Plan 01). Exits 0 only when the bench completes successfully.
+    if args.rust_bench is not None:
+        if args.rust_filter is None:
+            print("ERROR: --rust-filter is required with --rust-bench.", file=sys.stderr)
+            sys.exit(2)
+        status, _wall_s = run_rust_bench(args.rust_bench, args.rust_filter, env, args.timeout_s)
+        sys.exit(0 if status == "ok" else 1)
+
+    if args.cell is not None and not args.grid:
+        print("ERROR: --cell is only valid with --grid.", file=sys.stderr)
+        sys.exit(2)
+
     if args.env_only:
         step_capture_env(env)
         return
 
-    # --grid: run the full N×M baseline grid (BASE-01)
+    # --grid: run the N×M baseline grid (BASE-01), or a --cell/--op subset of it
     if args.grid:
-        run_grid(dry_run=args.dry_run, seed=args.seed)
+        cells: list[tuple[int, int]] | None = None
+        if args.cell is not None:
+            try:
+                cells = [_parse_cell(c) for c in args.cell]
+            except ValueError as exc:
+                print(f"ERROR: {exc}", file=sys.stderr)
+                sys.exit(2)
+        grid_ops = ALL_OPS if args.op == "all" else [args.op]
+        run_grid(dry_run=args.dry_run, seed=args.seed, cells=cells, ops=grid_ops)
         if not args.dry_run:
             # Re-capture env.json after the grid run so it reflects this run
             step_capture_env(env)
