@@ -554,5 +554,270 @@ class TestRemediationRecord(unittest.TestCase):
             self.assertFalse(log_path.exists())
 
 
+# ---------------------------------------------------------------------------
+# TestCellFiles (_reset_cell_files)
+# ---------------------------------------------------------------------------
+
+
+class TestCellFiles(unittest.TestCase):
+    def test_deletes_when_present(self):
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td)
+            py_f = results_dir / "python_n100_m50.json"
+            r_f = results_dir / "r_n100_m50.json"
+            py_f.write_text("[]")
+            r_f.write_text("[]")
+            run_all._reset_cell_files(results_dir, 100, 50)
+            self.assertFalse(py_f.exists())
+            self.assertFalse(r_f.exists())
+
+    def test_noop_when_absent(self):
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td)
+            # Should not raise.
+            run_all._reset_cell_files(results_dir, 500, 200)
+
+    def test_only_touches_named_files(self):
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td)
+            untouched = results_dir / "python_n500_m50.json"
+            untouched.write_text("[]")
+            run_all._reset_cell_files(results_dir, 100, 50)
+            self.assertTrue(untouched.exists())
+
+
+# ---------------------------------------------------------------------------
+# TestRunWithTimeout (grandchild process-group kill)
+# ---------------------------------------------------------------------------
+
+
+class TestRunWithTimeout(unittest.TestCase):
+    def test_timeout_kills_grandchild_process_group(self):
+        with tempfile.TemporaryDirectory() as td:
+            pidfile = pathlib.Path(td) / "gc.pid"
+            child_code = textwrap.dedent(f"""
+                import subprocess, sys, time
+                gc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+                with open({str(pidfile)!r}, "w") as f:
+                    f.write(str(gc.pid))
+                time.sleep(60)
+            """)
+            env = dict(os.environ)
+            status, _wall_s, _rc = run_all._run_with_timeout(
+                [sys.executable, "-c", child_code], env=env, timeout_s=1,
+            )
+            self.assertEqual(status, "timeout")
+
+            deadline = time.monotonic() + 2.0
+            gc_pid = None
+            while time.monotonic() < deadline:
+                if pidfile.exists() and pidfile.read_text().strip():
+                    gc_pid = int(pidfile.read_text().strip())
+                    break
+                time.sleep(0.05)
+            self.assertIsNotNone(gc_pid, "grandchild never wrote its pid")
+
+            deadline2 = time.monotonic() + 2.0
+            gone = False
+            while time.monotonic() < deadline2:
+                try:
+                    os.kill(gc_pid, 0)
+                except ProcessLookupError:
+                    gone = True
+                    break
+                time.sleep(0.05)
+            self.assertTrue(gone, "grandchild process still alive after timeout kill")
+
+
+# ---------------------------------------------------------------------------
+# TestFootprint (_dir_bytes / record_footprint)
+# ---------------------------------------------------------------------------
+
+
+class TestFootprint(unittest.TestCase):
+    def test_dir_bytes_missing_path_is_zero(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertEqual(run_all._dir_bytes(pathlib.Path(td) / "nope"), 0)
+
+    def test_dir_bytes_sums_file_sizes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = pathlib.Path(td)
+            (root / "a.txt").write_bytes(b"x" * 10)
+            sub = root / "sub"
+            sub.mkdir()
+            (sub / "b.txt").write_bytes(b"y" * 25)
+            self.assertEqual(run_all._dir_bytes(root), 35)
+
+    def test_record_footprint_appends_when_log_exists(self):
+        with tempfile.TemporaryDirectory() as td:
+            log_path = pathlib.Path(td) / "rerun_log.json"
+            _write_log(log_path)
+            fake_target = pathlib.Path(td) / "target"
+            fake_target.mkdir()
+            (fake_target / "a.bin").write_bytes(b"z" * 5)
+            with mock.patch.object(run_all, "_WORKSPACE_ROOT", pathlib.Path(td)):
+                rc = run_all.record_footprint(log_path=log_path)
+            self.assertEqual(rc, 0)
+            log = json.loads(log_path.read_text())
+            fp_recs = [r for r in log["records"] if r["kind"] == "footprint"]
+            self.assertEqual(len(fp_recs), 1)
+            self.assertEqual(fp_recs[0]["target_bytes"], 5)
+
+    def test_record_footprint_no_log_still_returns_zero(self):
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(run_all, "_WORKSPACE_ROOT", pathlib.Path(td)):
+                rc = run_all.record_footprint(log_path=None)
+            self.assertEqual(rc, 0)
+
+
+# ---------------------------------------------------------------------------
+# TestGridCellHardening (run_grid: timeout/error recording, gate-fail)
+# ---------------------------------------------------------------------------
+
+
+class TestGridCellHardening(unittest.TestCase):
+    def test_cell_timeout_records_and_continues_exits_4(self):
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td) / "results"
+            results_dir.mkdir()
+            log_path = pathlib.Path(td) / "rerun_log.json"
+            _write_log(log_path)
+            with mock.patch.object(run_all, "step_generate", side_effect=run_all.CellTimeout("boom")):
+                with self.assertRaises(SystemExit) as cm:
+                    run_all.run_grid(dry_run=False, seed=1, cells=[(100, 50)],
+                                      ops=run_all.ALL_OPS, cell_timeout_s=5,
+                                      log_path=log_path, results_dir=results_dir)
+                self.assertEqual(cm.exception.code, 4)
+            log = json.loads(log_path.read_text())
+            cell_recs = [r for r in log["records"] if r["kind"] == "grid_cell"]
+            self.assertEqual(len(cell_recs), 1)
+            self.assertEqual(cell_recs[0]["status"], "timeout")
+            self.assertEqual(cell_recs[0]["n"], 100)
+            self.assertEqual(cell_recs[0]["m"], 50)
+            # No per-cell files were written for the failed cell.
+            self.assertFalse((results_dir / "python_n100_m50.json").exists())
+
+    def test_cell_error_records_and_continues_exits_4(self):
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td) / "results"
+            results_dir.mkdir()
+            log_path = pathlib.Path(td) / "rerun_log.json"
+            _write_log(log_path)
+            with mock.patch.object(run_all, "step_generate", side_effect=run_all.CellError("bad exit")):
+                with self.assertRaises(SystemExit) as cm:
+                    run_all.run_grid(dry_run=False, seed=1, cells=[(100, 50)],
+                                      ops=run_all.ALL_OPS, cell_timeout_s=5,
+                                      log_path=log_path, results_dir=results_dir)
+                self.assertEqual(cm.exception.code, 4)
+            log = json.loads(log_path.read_text())
+            cell_recs = [r for r in log["records"] if r["kind"] == "grid_cell"]
+            self.assertEqual(cell_recs[0]["status"], "error")
+
+    def test_gate_failure_records_gate_fail_then_reraises(self):
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td) / "results"
+            results_dir.mkdir()
+            (results_dir / "python.json").write_text("[]")
+            (results_dir / "r.json").write_text("[]")
+            log_path = pathlib.Path(td) / "rerun_log.json"
+            _write_log(log_path)
+
+            def _raise_gate_fail(**kwargs):
+                raise SystemExit(1)
+
+            with mock.patch.object(run_all, "step_generate"), \
+                 mock.patch.object(run_all, "_run_all_ops_python"), \
+                 mock.patch.object(run_all, "_run_r_with_native_fpca", return_value=[]), \
+                 mock.patch.object(run_all, "step_collect_rust"), \
+                 mock.patch.object(run_all, "step_run_gate", side_effect=_raise_gate_fail):
+                with self.assertRaises(SystemExit) as cm:
+                    run_all.run_grid(dry_run=False, seed=1, cells=[(100, 50)],
+                                      ops=run_all.ALL_OPS, log_path=log_path,
+                                      results_dir=results_dir)
+                self.assertEqual(cm.exception.code, 1)
+            log = json.loads(log_path.read_text())
+            cell_recs = [r for r in log["records"] if r["kind"] == "grid_cell"]
+            self.assertEqual(len(cell_recs), 1)
+            self.assertEqual(cell_recs[0]["status"], "gate-fail")
+
+    def test_no_log_path_means_no_records(self):
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td) / "results"
+            results_dir.mkdir()
+            with mock.patch.object(run_all, "step_generate", side_effect=run_all.CellTimeout("boom")):
+                with self.assertRaises(SystemExit):
+                    run_all.run_grid(dry_run=False, seed=1, cells=[(100, 50)],
+                                      ops=run_all.ALL_OPS, cell_timeout_s=5,
+                                      log_path=None, results_dir=results_dir)
+            # No rerun log was ever created (ad-hoc/tracer-style run stays log-free).
+            self.assertEqual(list(pathlib.Path(td).glob("*.json")), [])
+
+    def test_unfiltered_run_resets_cell_files_first(self):
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td) / "results"
+            results_dir.mkdir()
+            stale = results_dir / "python_n100_m50.json"
+            stale.write_text('[{"op": "stale"}]')
+            (results_dir / "r_n100_m50.json").write_text("[]")
+            with mock.patch.object(run_all, "step_generate", side_effect=run_all.CellTimeout("boom")):
+                with self.assertRaises(SystemExit):
+                    run_all.run_grid(dry_run=False, seed=1, cells=[(100, 50)],
+                                      ops=run_all.ALL_OPS, cell_timeout_s=5,
+                                      log_path=None, results_dir=results_dir)
+            self.assertFalse(stale.exists())
+
+    def test_dry_run_prints_cell_line_per_requested_cell(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            run_all.run_grid(dry_run=True, seed=1, cells=[(100, 50), (500, 200)], ops=run_all.ALL_OPS)
+        count = buf.getvalue().count("[GRID] Cell n=")
+        self.assertEqual(count, 2)
+
+
+# ---------------------------------------------------------------------------
+# TestRunFull (high-level sequencing, everything mocked)
+# ---------------------------------------------------------------------------
+
+
+class TestRunFull(unittest.TestCase):
+    def test_full_sequence_runs_all_steps_in_order(self):
+        calls: list[str] = []
+        with tempfile.TemporaryDirectory() as td:
+            log_path = pathlib.Path(td) / "rerun_log.json"
+
+            def fake_rerun_init(path=None):
+                calls.append("rerun_init")
+                _write_log(log_path)
+
+            with mock.patch.object(run_all, "rerun_init", side_effect=fake_rerun_init), \
+                 mock.patch.object(run_all, "generate_grid_data", side_effect=lambda seed: calls.append("generate")), \
+                 mock.patch.object(run_all, "prebuild", side_effect=lambda env, t, log_path=None: (calls.append("prebuild"), 0)[1]), \
+                 mock.patch.object(run_all, "_load_rerun_log", side_effect=lambda p: json.loads(log_path.read_text())), \
+                 mock.patch.object(run_all, "_chunk_is_pending", return_value=False), \
+                 mock.patch.object(run_all, "run_grid", side_effect=lambda **kw: calls.append("run_grid")), \
+                 mock.patch.object(run_all, "step_capture_env", side_effect=lambda env: calls.append("capture_env")), \
+                 mock.patch.object(run_all, "step_collect_rust", side_effect=lambda env: calls.append("collect_rust")), \
+                 mock.patch.object(run_all, "_run", side_effect=lambda cmd, env: calls.append("assemble")), \
+                 mock.patch.object(run_all, "record_footprint", side_effect=lambda log_path=None: (calls.append("footprint"), 0)[1]):
+                rc = run_all.run_full(timeout_s=540, cell_timeout_s=540, log_path=log_path)
+            self.assertEqual(rc, 0)
+            self.assertEqual(calls, [
+                "rerun_init", "generate", "prebuild", "run_grid",
+                "capture_env", "collect_rust", "assemble", "footprint",
+            ])
+
+    def test_prebuild_failure_short_circuits(self):
+        calls: list[str] = []
+        with tempfile.TemporaryDirectory() as td:
+            log_path = pathlib.Path(td) / "rerun_log.json"
+            _write_log(log_path)
+            with mock.patch.object(run_all, "generate_grid_data", side_effect=lambda seed: calls.append("generate")), \
+                 mock.patch.object(run_all, "prebuild", return_value=1), \
+                 mock.patch.object(run_all, "run_grid", side_effect=lambda **kw: calls.append("run_grid")):
+                rc = run_all.run_full(timeout_s=540, cell_timeout_s=540, log_path=log_path)
+            self.assertEqual(rc, 1)
+            self.assertNotIn("run_grid", calls)
+
+
 if __name__ == "__main__":
     unittest.main()
