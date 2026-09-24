@@ -111,13 +111,29 @@ The approach is **measure-first**: stand up an external benchmark harness and es
   3. The report includes reproduction instructions a reader can follow end-to-end to regenerate the numbers from scratch.
 
 **Plans**: 7 plans (6 waves)
+**Wave 1**
 
 - [ ] 116-01-PLAN.md — Tracer: FPCA end-to-end at N=500,M=200 (grid-aligned crosslang_grid bench → scikit-fda/R → gate → CSV → generated headline row) + freeze Phase 113 baseline/env + Phase 114/115 A/B evidence + results/ ignore carve-out
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 116-02-PLAN.md — crosslang_grid bench expanded to all six ops (Python/R-matched params, shared CSVs) + OP_MAP labels + functional_boxplot noise-settings bump
-- [ ] 116-03-PLAN.md — run_all.py full-run plumbing: 67-chunk resumable budgeted scheduler + run log, per-cell timeouts, prebuild, footprint, single `--full` command (+ tests)
 - [ ] 116-04-PLAN.md — render_report.py: 13 generated blocks (head-to-head, A/B, before/after incl. fdars-internal, not-rerun, N×M scaling vs theory, methodology) + --check/--check-prose/--noise-report/--ab-check (+ tests)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 116-03-PLAN.md — run_all.py full-run plumbing: 67-chunk resumable budgeted scheduler + run log, per-cell timeouts, prebuild, footprint, single `--full` command (+ tests)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 116-05-PLAN.md — Controlled thread-pinned A/B re-confirmation of the face_covariance headline (pre-OPT-02 vs HEAD worktrees, noise-gated, bounded bumps) [INLINE]
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 116-06-PLAN.md — Full 3-ecosystem re-run (fdars 67 chunks + 6-cell scikit-fda/R grid, gate before timing), headline noise remediation, commit after-data comparison.csv [INLINE, ~3-4.5 h]
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 116-07-PLAN.md — Publish documentation/PERFORMANCE.md + README speed story + benchmarks/README + multimethod patch; clean-clone --check
 
 ### Phase 117: Release Preparation & Verification
