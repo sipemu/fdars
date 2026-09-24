@@ -38,12 +38,18 @@ Usage:
     python run_all.py --grid                       # full N×M grid baseline run
     python run_all.py --grid --dry-run             # grid wiring check, no cargo bench
 
-    # Phase 116 Plan 03 — resumable fdars criterion re-run:
+    python run_all.py --grid --cell-timeout-s 540  # grid run, per-cell wall-clock deadline
+
+    # Phase 116 Plan 03 — resumable fdars criterion re-run + full reproduction:
     python run_all.py --list-rust-chunks           # print the 67-chunk manifest
     python run_all.py --rerun-init                 # initialize results/rerun_log.json
     python run_all.py --rust-next --budget-s 540   # run pending chunks within one call's budget
     python run_all.py --rust-status                # print per-status chunk counts
     python run_all.py --rust-requeue 12             # re-queue chunk 12 (last status must be error)
+    python run_all.py --generate-grid-data         # seed-42 CSVs for all six grid cells
+    python run_all.py --prebuild --timeout-s 540   # `cargo bench --no-run` under a timeout
+    python run_all.py --record-footprint           # target/ disk usage -> rerun_log.json
+    python run_all.py --full                       # the single end-to-end reproduction command
 
 All subprocess calls use list-form only (no shell=True) per T-112-02.
 """
@@ -299,13 +305,19 @@ def _run(cmd: list[str], env: dict, check: bool = True, **kwargs) -> subprocess.
 # -------------------------------------------------------------------
 
 
-def step_generate(n: int, m: int, seed: int, env: dict) -> None:
-    """Run the seeded CSV generator (all fixture types)."""
+def step_generate(n: int, m: int, seed: int, env: dict, deadline=None) -> None:
+    """Run the seeded CSV generator (all fixture types).
+
+    `deadline` is an optional `_Deadline` (Phase 116 Plan 03) shared across
+    every subprocess call within one grid cell; when provided, a timeout or
+    non-zero exit raises CellTimeout / CellError instead of the default
+    `check=True` behavior.
+    """
     print(f"[1] Generating CSV fixtures (n={n}, m={m}, seed={seed})...")
-    _run(
+    _run_checked(
         [_PYTHON, str(_SCRIPT_DIR / "generate_data.py"),
          "--n", str(n), "--m", str(m), "--seed", str(seed)],
-        env=env,
+        env=env, deadline=deadline,
     )
 
 
@@ -337,7 +349,8 @@ def step_python_runner(op: str | None, n: int, m: int, seed: int, env: dict,
 
 def _run_all_ops_python(n: int, m: int, seed: int, env: dict,
                         pairwise_only: bool = False,
-                        ops: list[str] | None = None) -> None:
+                        ops: list[str] | None = None,
+                        deadline=None) -> None:
     """Run ops via python_runner, timing each op individually.
 
     WR-04: the previous implementation passed --smoke, which sets mean_ns=0.0
@@ -352,6 +365,10 @@ def _run_all_ops_python(n: int, m: int, seed: int, env: dict,
 
     Phase 116 Plan 01: `ops` restricts which ops are run (default: ALL_OPS), so a
     single-op re-run (e.g. `--op fpca`) does not re-time the other five ops.
+
+    Phase 116 Plan 03: `deadline` is an optional shared `_Deadline` — when
+    provided, each per-op subprocess call is timed against the remaining
+    budget and raises CellTimeout / CellError instead of `check=True`.
     """
     ops = ops if ops is not None else ALL_OPS
     py_out = _SCRIPT_DIR / "results" / "python.json"
@@ -362,7 +379,7 @@ def _run_all_ops_python(n: int, m: int, seed: int, env: dict,
                "--n", str(n), "--m", str(m), "--seed", str(seed)]
         if pairwise_only and single_op == "elastic":
             cmd.append("--pairwise-only")
-        _run(cmd, env=env)
+        _run_checked(cmd, env=env, deadline=deadline)
         # python_runner.py writes a 1-element list; read it back and accumulate
         if py_out.exists():
             with py_out.open() as f:
@@ -747,7 +764,8 @@ def _write_cell_results(n: int, m: int, py_records: list, r_records: list,
 
 def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict,
                             pairwise_only: bool = False,
-                            ops: list[str] | None = None) -> list:
+                            ops: list[str] | None = None,
+                            deadline=None) -> list:
     """
     Run R runner for `ops` and (when "fpca" is in `ops`) also fpca_native_r;
     return merged records.
@@ -762,6 +780,10 @@ def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict,
     Phase 116 Plan 01: `ops` restricts which ops are run (default: ALL_OPS).
     fpca_native_r is invoked only when "fpca" is in `ops` — it is fpca's
     ecosystem-realistic companion timing, not an independent op.
+
+    Phase 116 Plan 03: `deadline` is an optional shared `_Deadline` — when
+    provided, each per-op subprocess call is timed against the remaining
+    budget and raises CellTimeout / CellError instead of `check=True`.
     """
     ops = ops if ops is not None else ALL_OPS
     r_out = _SCRIPT_DIR / "results" / "r.json"
@@ -774,7 +796,7 @@ def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict,
                "--n", str(n), "--m", str(m), "--seed", str(seed)]
         if pairwise_only and single_op == "elastic":
             cmd.append("--pairwise-only")
-        _run(cmd, env=env)
+        _run_checked(cmd, env=env, deadline=deadline)
         if r_out.exists():
             with r_out.open() as f:
                 records = json.load(f)
@@ -784,11 +806,11 @@ def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict,
     # only when fpca itself is being (re-)run this call.
     if "fpca" in ops:
         print(f"[3b] Running R fpca_native_r (n={n}, m={m})...")
-        _run(
+        _run_checked(
             ["Rscript", str(_SCRIPT_DIR / "r_runner.R"),
              "--op", "fpca_native_r",
              "--n", str(n), "--m", str(m), "--seed", str(seed)],
-            env=env,
+            env=env, deadline=deadline,
         )
         if r_out.exists():
             with r_out.open() as f:
@@ -805,7 +827,10 @@ def _run_r_with_native_fpca(n: int, m: int, seed: int, env: dict,
 
 def run_grid(dry_run: bool = False, seed: int = 42,
             cells: list[tuple[int, int]] | None = None,
-            ops: list[str] | None = None) -> None:
+            ops: list[str] | None = None,
+            cell_timeout_s: int | None = None,
+            log_path: "pathlib.Path | None" = None,
+            results_dir: "pathlib.Path | None" = None) -> None:
     """
     Execute the N×M baseline grid run (BASE-01), or a caller-selected subset.
 
@@ -830,20 +855,44 @@ def run_grid(dry_run: bool = False, seed: int = 42,
     output is on disk (typically N=100/N=500 cells); no new cargo bench is
     run for N=300.  See RESEARCH.md open-question 2.
 
+    Phase 116 Plan 03 cell hardening:
+      - When `cell_timeout_s` is set, a shared `_Deadline` covers the
+        generator + every Python/R runner subprocess call for that cell.
+        A CellTimeout/CellError raised mid-cell appends a `grid_cell` record
+        (status timeout/error) — no per-cell files are written for that
+        cell — and the loop CONTINUES with the next requested cell. The call
+        exits 4 at the end if any cell failed this way.
+      - An UNFILTERED cell run (`ops` covers all of ALL_OPS) calls
+        `_reset_cell_files` first, so a failed cell never leaves a stale
+        per-cell file behind. An op-filtered run keeps the existing merge
+        semantics (`_merge_cell_records`) unchanged.
+      - A gate failure still aborts via the existing `sys.exit(1)`
+        (fail-closed, D-11, gate.py unchanged) — a `gate-fail` record is
+        appended first so the report can distinguish it from a timeout.
+      - `log_path` is None for ad-hoc/tracer-style runs (no records
+        appended — see `_record_cell_status`); Plan 03's `--full` passes
+        `RERUN_LOG_PATH`.
+
     Args:
         dry_run: skip the heavy runner/gate/persist steps (wiring check only).
         seed: RNG seed passed through to the CSV generator.
         cells: explicit (n, m) cells to run (default: all 6 grid cells).
         ops: which harness ops to run per cell (default: ALL_OPS).
+        cell_timeout_s: optional shared per-cell wall-clock deadline.
+        log_path: rerun log path for grid_cell record-keeping, or None.
+        results_dir: override for the per-cell result-file directory
+            (default: benchmarks/results/); test-only injection point so
+            unit tests never touch the real committed per-cell files.
     """
     env = _build_env()
     cells = cells if cells is not None else [(n, m) for n in GRID_N for m in GRID_M]
     ops = ops if ops is not None else ALL_OPS
+    results_dir = results_dir if results_dir is not None else (_SCRIPT_DIR / "results")
     cells_run = 0
-    failed_cell = None
+    any_cell_failed = False
 
     print(f"[GRID] Starting grid run: {len(cells)} cell(s) {cells}, ops={ops}, "
-          f"dry_run={dry_run}")
+          f"dry_run={dry_run}, cell_timeout_s={cell_timeout_s}")
 
     for n, m in cells:
         print(f"\n[GRID] Cell n={n} m={m} ({'DRY RUN — skipping runners' if dry_run else 'running'})")
@@ -858,38 +907,64 @@ def run_grid(dry_run: bool = False, seed: int = 42,
             cells_run += 1
             continue
 
-        # Step 1: Generate CSV fixtures for this cell
-        step_generate(n=n, m=m, seed=seed, env=env)
+        if set(ops) >= set(ALL_OPS):
+            _reset_cell_files(results_dir, n, m)
 
-        # Step 2: Python runner — requested ops, per-op real timings.
-        # pairwise_only=True: elastic times only the fast pairwise alignment
-        # (Karcher mean excluded from grid timing — Phase 113 Plan 02).
-        _run_all_ops_python(n=n, m=m, seed=seed, env=env, pairwise_only=True, ops=ops)
-        py_path = _SCRIPT_DIR / "results" / "python.json"
-        with py_path.open() as f:
-            py_records = json.load(f)
+        deadline = _Deadline(cell_timeout_s) if cell_timeout_s is not None else None
 
-        # Step 3: R runner — requested ops (+ fpca_native_r if fpca in ops),
-        # elastic pairwise-only.
-        r_records = _run_r_with_native_fpca(n=n, m=m, seed=seed, env=env,
-                                            pairwise_only=True, ops=ops)
-        r_path = _SCRIPT_DIR / "results" / "r.json"
+        try:
+            # Step 1: Generate CSV fixtures for this cell
+            step_generate(n=n, m=m, seed=seed, env=env, deadline=deadline)
+
+            # Step 2: Python runner — requested ops, per-op real timings.
+            # pairwise_only=True: elastic times only the fast pairwise alignment
+            # (Karcher mean excluded from grid timing — Phase 113 Plan 02).
+            _run_all_ops_python(n=n, m=m, seed=seed, env=env, pairwise_only=True,
+                                ops=ops, deadline=deadline)
+            py_path = results_dir / "python.json"
+            with py_path.open() as f:
+                py_records = json.load(f)
+
+            # Step 3: R runner — requested ops (+ fpca_native_r if fpca in ops),
+            # elastic pairwise-only.
+            r_records = _run_r_with_native_fpca(n=n, m=m, seed=seed, env=env,
+                                                pairwise_only=True, ops=ops,
+                                                deadline=deadline)
+            r_path = results_dir / "r.json"
+        except CellTimeout as exc:
+            print(f"GRID_CELL_STATUS=timeout n={n} m={m}")
+            _record_cell_status(log_path, n, m, ops, "timeout",
+                                limit_s=cell_timeout_s, note=str(exc))
+            any_cell_failed = True
+            continue
+        except CellError as exc:
+            print(f"GRID_CELL_STATUS=error n={n} m={m}")
+            _record_cell_status(log_path, n, m, ops, "error",
+                                limit_s=cell_timeout_s, note=str(exc))
+            any_cell_failed = True
+            continue
 
         # Step 4: Collect Rust criterion output (existing on disk)
         step_collect_rust(env=env)
 
-        # Step 5: Gate — ABORT on any failure (BENCH-05 measure-first)
+        # Step 5: Gate — ABORT on any failure (BENCH-05 measure-first, D-11)
         print(f"[GRID] Running agreement gate for n={n} m={m}...")
-        gate_passed = step_run_gate(n=n, m=m, env=env,
-                                    py_path=py_path, r_path=r_path)
+        try:
+            gate_passed = step_run_gate(n=n, m=m, env=env,
+                                        py_path=py_path, r_path=r_path)
+        except SystemExit:
+            # step_run_gate calls sys.exit(1) on failure (fail-closed, D-11,
+            # gate.py unchanged) — record gate-fail, then re-raise so the
+            # abort still happens and no per-cell file is written.
+            _record_cell_status(log_path, n, m, ops, "gate-fail", limit_s=cell_timeout_s)
+            raise
         if not gate_passed:
-            # step_run_gate calls sys.exit(1) on failure; reaching here
-            # means it returned False rather than exiting (defensive).
-            failed_cell = (n, m)
+            # Defensive: step_run_gate always sys.exit(1)s on failure above.
             print(
                 f"\nGATE FAIL for cell n={n} m={m} — aborting grid run.",
                 file=sys.stderr,
             )
+            _record_cell_status(log_path, n, m, ops, "gate-fail", limit_s=cell_timeout_s)
             sys.exit(1)
 
         # Step 6: Persist per-cell result files for assembler.
@@ -900,6 +975,7 @@ def run_grid(dry_run: bool = False, seed: int = 42,
         with py_path.open() as f:
             py_records = json.load(f)
         _write_cell_results(n=n, m=m, py_records=py_records, r_records=r_records, ops=ops)
+        _record_cell_status(log_path, n, m, ops, "ok", limit_s=cell_timeout_s)
         cells_run += 1
         print(f"[GRID] Cell n={n} m={m}: DONE (gate passed, results written)")
 
@@ -907,8 +983,10 @@ def run_grid(dry_run: bool = False, seed: int = 42,
         print(f"\n[GRID] Dry-run complete: verified loop structure for "
               f"{cells_run}/{len(cells)} cells.")
     else:
-        print(f"\n[GRID] Grid run complete: {cells_run} cells processed, "
-              f"gate passed for all cells.")
+        print(f"\n[GRID] Grid run complete: {cells_run}/{len(cells)} cells processed.")
+
+    if any_cell_failed:
+        sys.exit(4)
 
 
 # -------------------------------------------------------------------
@@ -1381,6 +1459,229 @@ def list_rust_chunks() -> None:
 
 
 # -------------------------------------------------------------------
+# Grid-cell hardening, data generation, prebuild, footprint, --full
+# (Phase 116 Plan 03)
+# -------------------------------------------------------------------
+
+
+class CellTimeout(Exception):
+    """Raised when a grid-cell subprocess step exceeds its per-cell deadline."""
+
+
+class CellError(Exception):
+    """Raised when a grid-cell subprocess step exits non-zero (not a timeout)."""
+
+
+class _Deadline:
+    """Tracks a wall-clock deadline shared across multiple subprocess calls
+    within one grid cell (generator + every Python/R runner invocation)."""
+
+    def __init__(self, total_s: float | None, clock=time.monotonic):
+        self._clock = clock
+        self._end = None if total_s is None else clock() + total_s
+
+    def remaining(self) -> float | None:
+        if self._end is None:
+            return None
+        return max(0.0, self._end - self._clock())
+
+
+def _run_checked(cmd: list[str], env: dict, deadline: "_Deadline | None" = None,
+                 cwd: str | None = None) -> float:
+    """
+    Run `cmd`, honoring an optional shared per-cell `deadline`.
+
+    When `deadline` is None, behaves like the original `check=True` `_run`
+    call with no timeout (non-grid single-op path, unchanged). When a
+    deadline is provided, raises CellTimeout / CellError on timeout / non-zero
+    exit instead of `subprocess.CalledProcessError` (Phase 116 Plan 03).
+    """
+    if deadline is None:
+        _run(cmd, env=env, check=True, cwd=cwd)
+        return 0.0
+    remaining = deadline.remaining()
+    timeout_s = None if remaining is None else max(1, int(round(remaining)))
+    status, wall_s, returncode = _run_with_timeout(cmd, env=env, timeout_s=timeout_s, cwd=cwd)
+    if status == "timeout":
+        raise CellTimeout(f"{cmd[0]} timed out after {wall_s:.1f}s (cell deadline exhausted)")
+    if status == "error":
+        raise CellError(f"{cmd[0]} exited {returncode} after {wall_s:.1f}s")
+    return wall_s
+
+
+def _reset_cell_files(results_dir: pathlib.Path, n: int, m: int) -> None:
+    """
+    Delete stale per-cell result files before an unfiltered cell run.
+
+    Only ever touches python_n{n}_m{m}.json / r_n{n}_m{m}.json built from `n`,
+    `m` (validated GRID_N x GRID_M members by the caller) — no user-supplied
+    path fragments (T-116-08). No-op when the files are not present.
+    """
+    for name in (f"python_n{n}_m{m}.json", f"r_n{n}_m{m}.json"):
+        path = results_dir / name
+        if path.exists():
+            path.unlink()
+
+
+def _record_cell_status(log_path: pathlib.Path | None, n: int, m: int, ops: list[str],
+                        status: str, limit_s: float | None = None,
+                        wall_s: float = 0.0, note: str | None = None) -> None:
+    """
+    Append a `grid_cell` record — a no-op when no rerun log exists (ad-hoc
+    tracer-style runs stay log-free, per Phase 116 Plan 03).
+    """
+    if log_path is None:
+        return
+    log = _load_rerun_log(log_path)
+    if log is None:
+        return
+    record: dict = {
+        "kind": "grid_cell", "started_utc": _utc_now(), "wall_s": wall_s,
+        "status": status, "n": n, "m": m, "ops": list(ops), "limit_s": limit_s,
+    }
+    if note is not None:
+        record["note"] = note
+    _append_rerun_log(log_path, record)
+
+
+def generate_grid_data(seed: int = 42) -> None:
+    """Generate seeded CSV fixtures for all six grid cells (--generate-grid-data)."""
+    env = _build_env()
+    for n in GRID_N:
+        for m in GRID_M:
+            step_generate(n=n, m=m, seed=seed, env=env)
+
+
+def prebuild(env: dict, timeout_s: int | None,
+            log_path: pathlib.Path | None = None) -> int:
+    """
+    Run `cargo bench --no-run` under an optional timeout (--prebuild).
+
+    Appends a `prebuild` record when a rerun log exists. Cargo resumes an
+    interrupted build, so re-running after a timeout is valid. Returns 0 only
+    on status "ok".
+    """
+    cmd = ["cargo", "bench", "-p", "fdars-core", "--features", "linalg,parallel", "--no-run"]
+    status, wall_s, _rc = _run_with_timeout(cmd, env=env, timeout_s=timeout_s, cwd=str(_WORKSPACE_ROOT))
+    if log_path is not None:
+        log = _load_rerun_log(log_path)
+        if log is not None:
+            _append_rerun_log(log_path, {
+                "kind": "prebuild", "started_utc": _utc_now(), "wall_s": wall_s,
+                "status": status, "limit_s": timeout_s,
+            })
+    print(f"PREBUILD_STATUS={status} wall_s={wall_s:.2f}")
+    return 0 if status == "ok" else 1
+
+
+def _dir_bytes(path: pathlib.Path) -> int:
+    """Return the sum of file sizes under `path` (0 for a missing path)."""
+    if not path.exists():
+        return 0
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            fp = pathlib.Path(root) / name
+            try:
+                total += fp.lstat().st_size
+            except OSError:
+                pass
+    return total
+
+
+def record_footprint(log_path: pathlib.Path | None = None) -> int:
+    """Record target/, target/criterion/, target/release/ disk usage (--record-footprint)."""
+    target_dir = _WORKSPACE_ROOT / "target"
+    target_bytes = _dir_bytes(target_dir)
+    target_criterion_bytes = _dir_bytes(target_dir / "criterion")
+    target_release_bytes = _dir_bytes(target_dir / "release")
+
+    if log_path is not None:
+        log = _load_rerun_log(log_path)
+        if log is not None:
+            _append_rerun_log(log_path, {
+                "kind": "footprint", "started_utc": _utc_now(), "wall_s": 0.0,
+                "status": "ok",
+                "target_bytes": target_bytes,
+                "target_criterion_bytes": target_criterion_bytes,
+                "target_release_bytes": target_release_bytes,
+            })
+
+    def _gib(n: int) -> float:
+        return n / (1024 ** 3)
+
+    print(
+        f"Disk footprint: target/={_gib(target_bytes):.2f} GiB, "
+        f"target/criterion/={_gib(target_criterion_bytes):.2f} GiB, "
+        f"target/release/={_gib(target_release_bytes):.2f} GiB"
+    )
+    return 0
+
+
+def run_full(timeout_s: int = 540, cell_timeout_s: int = 540,
+            log_path: pathlib.Path = RERUN_LOG_PATH) -> int:
+    """
+    The single `--full` reproduction command (D-14).
+
+    Steps: rerun-init (skip if the log exists) -> generate-grid-data ->
+    prebuild -> loop run_rust_next until nothing is pending -> all six grid
+    cells with --cell-timeout-s -> capture env -> collect rust -> assemble
+    (gate-passed) -> record footprint -> print the next step.
+    """
+    env = _build_env()
+
+    if log_path.exists():
+        print(f"Rerun log {log_path} already exists — resuming.")
+    else:
+        rerun_init(log_path)
+
+    print("[FULL 1/8] Generating grid CSV fixtures (seed 42, all six cells)...")
+    generate_grid_data(seed=42)
+
+    print("[FULL 2/8] Prebuilding criterion benches (cargo bench --no-run)...")
+    rc = prebuild(env, timeout_s, log_path=log_path)
+    if rc != 0:
+        print("ERROR: prebuild did not complete; re-run --full to resume.", file=sys.stderr)
+        return rc
+
+    print("[FULL 3/8] Running fdars criterion chunks (thread-pinned, resumable)...")
+    while True:
+        log = _load_rerun_log(log_path)
+        pending = sum(1 for i in range(len(RUST_RERUN_CHUNKS)) if _chunk_is_pending(log, i))
+        if pending == 0:
+            break
+        rc = run_rust_next(timeout_s, env, log_path=log_path)
+        if rc != 0:
+            print("ERROR: a chunk failed; re-run --full to resume after fixing it.", file=sys.stderr)
+            return rc
+
+    print("[FULL 4/8] Running the 6-cell scikit-fda/R grid (gate before timing per cell)...")
+    run_grid(dry_run=False, seed=42, cells=None, ops=None,
+             cell_timeout_s=cell_timeout_s, log_path=log_path)
+
+    print("[FULL 5/8] Capturing environment metadata...")
+    step_capture_env(env)
+
+    print("[FULL 6/8] Collecting fdars criterion output...")
+    step_collect_rust(env)
+
+    print("[FULL 7/8] Assembling comparison.csv (gate-passed)...")
+    _run(
+        [_PYTHON, str(_SCRIPT_DIR / "assemble_comparison.py"), "--gate-passed"],
+        env=env,
+    )
+
+    print("[FULL 8/8] Recording disk footprint...")
+    record_footprint(log_path=log_path)
+
+    print(
+        "\nFull re-run complete. Next: "
+        "benchmarks/.venv/bin/python benchmarks/render_report.py"
+    )
+    return 0
+
+
+# -------------------------------------------------------------------
 # Main
 # -------------------------------------------------------------------
 
@@ -1452,10 +1753,43 @@ def main() -> None:
         help="Re-queue chunk IDX after a bench-code fix. Refuses unless the "
              "chunk's last final status is error.",
     )
+    parser.add_argument(
+        "--generate-grid-data", action="store_true",
+        help="Generate seed-42 CSV fixtures for all six grid cells.",
+    )
+    parser.add_argument(
+        "--prebuild", action="store_true",
+        help="Run `cargo bench --no-run` under --timeout-s (resumable; cargo "
+             "resumes an interrupted build).",
+    )
+    parser.add_argument(
+        "--cell-timeout-s", type=int, default=None,
+        help="Shared wall-clock deadline (seconds) for one grid cell's generator "
+             "+ every Python/R runner call. Default: no limit.",
+    )
+    parser.add_argument(
+        "--record-footprint", action="store_true",
+        help="Record target/, target/criterion/, target/release/ disk usage.",
+    )
+    parser.add_argument(
+        "--full", action="store_true",
+        help="The single end-to-end Phase 116 reproduction command: rerun-init, "
+             "generate-grid-data, prebuild, resumable rust-next loop, the 6-cell "
+             "grid, capture-env, collect-rust, assemble (gate-passed), footprint.",
+    )
     args = parser.parse_args()
 
     # Build pinned-thread environment FIRST (Pitfall 1: set before any fork)
     env = _build_env()
+
+    # --full: the single reproduction command (D-14). Checked first — it owns
+    # the whole run and does not compose with the other flags below.
+    if args.full:
+        full_timeout = 540 if args.timeout_s is None else (None if args.timeout_s == 0 else args.timeout_s)
+        full_cell_timeout = 540 if args.cell_timeout_s is None else (
+            None if args.cell_timeout_s == 0 else args.cell_timeout_s
+        )
+        sys.exit(run_full(timeout_s=full_timeout, cell_timeout_s=full_cell_timeout))
 
     if args.list_rust_chunks:
         list_rust_chunks()
@@ -1472,6 +1806,18 @@ def main() -> None:
 
     if args.rust_requeue is not None:
         sys.exit(rust_requeue(args.rust_requeue))
+
+    if args.generate_grid_data:
+        generate_grid_data(seed=args.seed)
+        return
+
+    if args.prebuild:
+        log_path = RERUN_LOG_PATH if RERUN_LOG_PATH.exists() else None
+        sys.exit(prebuild(env, args.timeout_s, log_path=log_path))
+
+    if args.record_footprint:
+        log_path = RERUN_LOG_PATH if RERUN_LOG_PATH.exists() else None
+        sys.exit(record_footprint(log_path=log_path))
 
     # --rust-bench: single thread-pinned criterion invocation under a timeout
     # (Phase 116 Plan 01). Exits 0 only when the bench completes successfully.
@@ -1507,7 +1853,9 @@ def main() -> None:
                 print(f"ERROR: {exc}", file=sys.stderr)
                 sys.exit(2)
         grid_ops = ALL_OPS if args.op == "all" else [args.op]
-        run_grid(dry_run=args.dry_run, seed=args.seed, cells=cells, ops=grid_ops)
+        grid_log_path = RERUN_LOG_PATH if RERUN_LOG_PATH.exists() else None
+        run_grid(dry_run=args.dry_run, seed=args.seed, cells=cells, ops=grid_ops,
+                 cell_timeout_s=args.cell_timeout_s, log_path=grid_log_path)
         if not args.dry_run:
             # Re-capture env.json after the grid run so it reflects this run
             step_capture_env(env)
