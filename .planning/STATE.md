@@ -4,18 +4,18 @@ milestone: v0.47.0
 milestone_name: "Performance: Cross-Language Benchmarks & Optimization Pass"
 current_phase: 116
 current_phase_name: Cross-Language Re-Run & Published Report
-current_plan: 2
+current_plan: 3
 status: executing
-stopped_at: Completed 116-01-PLAN.md
-last_updated: "2026-09-24T19:27:00.631Z"
+stopped_at: Completed 116-02-PLAN.md
+last_updated: "2026-09-24T19:37:32.812Z"
 last_activity: 2026-09-24
 last_activity_desc: Phase 116 execution started
-state_head: 6af0a7c229de712986a328c12ca8b31a172e9e24
+state_head: b73af348733e8d0377a904f4c997405113d71b8a
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 18
-  completed_plans: 12
+  completed_plans: 13
   percent: 17
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-19)
 ## Current Position
 
 Phase: 116 (Cross-Language Re-Run & Published Report) — EXECUTING
-Current Plan: 2
+Current Plan: 3
 Total Plans in Phase: 7
 Status: Ready to execute
 Last activity: 2026-09-24 — Phase 116 execution started
@@ -99,6 +99,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | Phase 115-svd-fpca-covariance-optimization P02 | 439 | 2 tasks | 8 files |
 | Phase 115-svd-fpca-covariance-optimization P03 | 10min | 1 tasks | 1 files |
 | Phase 116 P01 | 20min | 2 tasks | 16 files |
+| Phase 116 P02 | 15min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,7 @@ Decisions relevant to current work (v0.47.0):
 - [Phase 115]: OPT-03 consolidated proof: 114+115 pass proven numeric-identical, non-breaking (5 builds), deterministic (6 guardrail modules), pmat-clean
 - [Phase 116]: 116-01: crosslang bench group named crosslang_fpca (not fpca); render_report.py matches fdars rows by criterion source string, not op label
 - [Phase 116]: 116-01: gitignore switched results/ -> results/* + explicit negations; a bare directory pattern cannot be selectively re-included
+- [Phase 116]: 116-02: crosslang_grid.rs expanded to all six overlapping ops (basis_smoothing/depth/functional_boxplot/fpcr/elastic added alongside fpca); collect_rust.py OP_MAP labels them with shared op names (TDD RED/GREEN); functional_boxplot criterion settings raised (sample_size 50, measurement_time 20s) per D-10 noise finding
 
 ### Pending Todos
 
@@ -176,8 +178,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-24T19:27:00.599Z
-Stopped at: Completed 116-01-PLAN.md
+Last session: 2026-09-24T19:37:32.716Z
+Stopped at: Completed 116-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
