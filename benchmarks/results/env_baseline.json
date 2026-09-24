@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-09-23T08:10:19Z",
+  "cpu": {
+    "model": "13th Gen Intel(R) Core(TM) i9-13900H",
+    "cores_logical": 20
+  },
+  "rust": {
+    "version": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+    "features": "linalg,parallel"
+  },
+  "python": {
+    "version": "3.14.7",
+    "numpy_version": "2.5.3",
+    "numpy_blas": "\"name\": \"scipy-openblas\","
+  },
+  "scikit_fda": {
+    "version": "0.10.1"
+  },
+  "r": {
+    "version": "4.6.1",
+    "blas": "/usr/lib/libblas.so.3.12.0",
+    "lapack_version": "/usr/lib/liblapack.so.3.12.0"
+  },
+  "r_packages": {
+    "fda": "6.3.0",
+    "fda.usc": "2.2.0",
+    "roahd": "1.4.3",
+    "fdasrvf": "2.5.0",
+    "bench": "1.1.4",
+    "refund": "0.1.40",
+    "fdapace": "0.6.0",
+    "jsonlite": "2.0.0"
+  },
+  "thread_env": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "VECLIB_MAXIMUM_THREADS": "1"
+  },
+  "criterion_version": "0.5"
+}

@@ -1,0 +1,51 @@
+{
+  "entries": [
+    {
+      "id": "phase114_elastic_cross_banded_n500_m50",
+      "phase": "114-elastic-alignment-optimization",
+      "kind": "ab",
+      "label": "elastic-alignment dp_fill_grid banded-iteration refactor (OPT-01, within-noise verdict)",
+      "criterion_id": "audit_p3_elastic_cross_banded/n500_m50",
+      "before": "phase114_elastic_cross_banded_n500_m50/before.json",
+      "after": "phase114_elastic_cross_banded_n500_m50/after.json",
+      "sha_before": "8c0b1d7d",
+      "sha_after": "30d2c9a2",
+      "thread_config": "default rayon pool (not thread-pinned); identical configuration on both sides",
+      "bench_command": "cargo bench -p fdars-core --features linalg,parallel --bench audit_hotpaths -- \"audit_p3_elastic_cross_banded/n500_m50\"",
+      "source_evidence": ".planning/phases/114-elastic-alignment-optimization/114-baseline-criterion/audit_p3_elastic_cross_banded__n500_m50/BASELINE.md, .planning/phases/114-elastic-alignment-optimization/114-after-criterion/audit_p3_elastic_cross_banded__n500_m50/COMPARISON.md",
+      "verdict_source": ".planning/phases/114-elastic-alignment-optimization/114-after-criterion/audit_p3_elastic_cross_banded__n500_m50/COMPARISON.md"
+    },
+    {
+      "id": "phase115_face_covariance_n200_m30",
+      "phase": "115-svd-fpca-covariance-optimization",
+      "kind": "ab",
+      "label": "sym_cov_irreg upper-triangle + bit-copy mirror (OPT-02, ~3.45x speedup)",
+      "criterion_id": "perf_face_covariance/n200_m30",
+      "before": "phase115_face_covariance_n200_m30/before.json",
+      "after": "phase115_face_covariance_n200_m30/after.json",
+      "sha_before": "328215e7",
+      "sha_after": "c0e84bd8",
+      "thread_config": "default rayon pool (not thread-pinned); identical configuration on both sides",
+      "bench_command": "TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg,parallel --bench perf_hotpaths -- \"perf_face_covariance/n200_m30\"",
+      "source_evidence": ".planning/phases/115-svd-fpca-covariance-optimization/115-baseline-criterion/perf_face_covariance__n200_m30/BASELINE.md, .planning/phases/115-svd-fpca-covariance-optimization/115-after-criterion/perf_face_covariance__n200_m30/COMPARISON.md",
+      "verdict_source": ".planning/phases/115-svd-fpca-covariance-optimization/115-after-criterion/perf_face_covariance__n200_m30/COMPARISON.md"
+    },
+    {
+      "id": "phase115_svd_rebench",
+      "phase": "115-svd-fpca-covariance-optimization",
+      "kind": "rebench",
+      "label": "faer thin SVD re-benchmark (near-optimal verdict)",
+      "criterion_id": "audit_p6_svd_nalgebra",
+      "files": [
+        "phase115_svd_rebench/svd_n500_m50.json",
+        "phase115_svd_rebench/svd_n1000_m200.json",
+        "phase115_svd_rebench/svd_n500_m500.json"
+      ],
+      "sha": "74b9ab0d",
+      "thread_config": "default rayon pool (not thread-pinned); identical configuration across cells",
+      "bench_command": "TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg --bench audit_hotpaths -- \"audit_p6_svd_nalgebra/n{500,1000}_m{50,200,500}\" (one filtered invocation per cell: n500_m50, n1000_m200, n500_m500)",
+      "source_evidence": ".planning/phases/115-svd-fpca-covariance-optimization/115-svd-rebench/svd_n500_m50_estimates.json, svd_n1000_m200_estimates.json, svd_n500_m500_estimates.json",
+      "verdict_source": ".planning/phases/115-svd-fpca-covariance-optimization/115-svd-rebench/SVD-VERDICT.md"
+    }
+  ]
+}

@@ -4,8 +4,23 @@
 # Generated data fixtures (regenerated on each run)
 data/
 
-# Benchmark results (committed selectively after baseline run)
-results/
+# Benchmark results — mostly regenerated scratch, EXCEPT the reproducibility
+# evidence negated below (Phase 116 D-05, D-14): the frozen Phase 113 before-
+# baseline, the Phase 114/115 A/B + SVD-rebench criterion evidence, and the
+# committed after-run artifacts. The rule MUST stay `results/*` (not
+# `results/`) — git cannot re-include a file whose parent directory itself is
+# excluded, so the negations below only work against a `*`-globbed parent.
+results/*
+!results/comparison.csv
+!results/comparison_baseline.csv
+!results/env.json
+!results/env_baseline.json
+!results/hotspot_ranking.md
+!results/rust.json
+!results/python_n*_m*.json
+!results/r_n*_m*.json
+!results/rerun_log.json
+!results/ab/
 
 # fpca_dump Rust build artifacts
 fpca_dump/target/
