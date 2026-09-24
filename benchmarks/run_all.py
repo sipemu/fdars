@@ -38,6 +38,13 @@ Usage:
     python run_all.py --grid                       # full N×M grid baseline run
     python run_all.py --grid --dry-run             # grid wiring check, no cargo bench
 
+    # Phase 116 Plan 03 — resumable fdars criterion re-run:
+    python run_all.py --list-rust-chunks           # print the 67-chunk manifest
+    python run_all.py --rerun-init                 # initialize results/rerun_log.json
+    python run_all.py --rust-next --budget-s 540   # run pending chunks within one call's budget
+    python run_all.py --rust-status                # print per-status chunk counts
+    python run_all.py --rust-requeue 12             # re-queue chunk 12 (last status must be error)
+
 All subprocess calls use list-form only (no shell=True) per T-112-02.
 """
 
@@ -48,7 +55,9 @@ import pathlib
 import signal
 import subprocess
 import sys
+import tempfile
 import time
+from datetime import datetime, timezone
 
 # -------------------------------------------------------------------
 # Thread-pinning environment (fairness contract, BENCH-04)
@@ -86,6 +95,189 @@ BENCH_FILES = [
     "alignment_benchmarks",    # elastic_align_pair, karcher_mean
     "basis_benchmarks",        # smooth_basis, bspline_basis
 ]
+
+# -------------------------------------------------------------------
+# Phase 116 Plan 03 — resumable, budgeted fdars criterion re-run (D-09).
+# -------------------------------------------------------------------
+
+# Six baseline groups whose `benchmark_group("...")` literal no longer exists
+# in fdars-core/benches (renamed or removed since the Phase 113 baseline was
+# captured). They cannot be re-run; the report lists them as stale rows.
+ORPHAN_GROUPS = frozenset({
+    "face_covariance",         # renamed to perf_face_covariance / mface_covariance
+    "coclustering_co_cluster",  # superseded by coclustering_co_cluster_select
+    "fem_smooth",               # superseded by fem_smooth_gcv
+    "fpca_variants_fsvd",       # superseded by fpca_fsvd (fpca_variants_benchmarks.rs)
+    "frechet_anova",            # superseded by frechet_global_reg
+    "fts_long_run_covariance",  # superseded by fts_ftsm
+})
+
+# The 67-chunk re-run manifest (D-09 FULL re-run). Execution order = list
+# order. `baseline_mean_ns` is the Phase 113 committed criterion mean (ns),
+# informational for group-level chunks (sum of the group's baseline ids),
+# `None` for the six new crosslang_<op> groups (no Phase 113 baseline exists
+# for them), and the ordering/inference key for per-id chunks. Filters are
+# anchored regexes matched against the full criterion id `group/function[/param]`.
+RUST_RERUN_CHUNKS: list[dict] = [
+    # --- Tier P0: grid-aligned head-to-head (bench crosslang_grid), group-level,
+    # run first so the head-to-head report has numbers even if later tiers
+    # time out. ---
+    {"tier": "P0", "bench": "crosslang_grid", "group": "crosslang_fpca",
+     "filter": r"^crosslang_fpca/", "baseline_mean_ns": None},
+    {"tier": "P0", "bench": "crosslang_grid", "group": "crosslang_basis_smoothing",
+     "filter": r"^crosslang_basis_smoothing/", "baseline_mean_ns": None},
+    {"tier": "P0", "bench": "crosslang_grid", "group": "crosslang_depth",
+     "filter": r"^crosslang_depth/", "baseline_mean_ns": None},
+    {"tier": "P0", "bench": "crosslang_grid", "group": "crosslang_functional_boxplot",
+     "filter": r"^crosslang_functional_boxplot/", "baseline_mean_ns": None},
+    {"tier": "P0", "bench": "crosslang_grid", "group": "crosslang_fpcr",
+     "filter": r"^crosslang_fpcr/", "baseline_mean_ns": None},
+    {"tier": "P0", "bench": "crosslang_grid", "group": "crosslang_elastic",
+     "filter": r"^crosslang_elastic/", "baseline_mean_ns": None},
+
+    # --- Tier P1: optimization targets (Phase 114/115 anchors + SVD paths). ---
+    {"tier": "P1", "bench": "perf_hotpaths", "group": "perf_face_covariance",
+     "filter": r"^perf_face_covariance/", "baseline_mean_ns": 207488577.11420387},
+    {"tier": "P1", "bench": "audit_hotpaths", "group": "audit_p3_elastic_cross_banded",
+     "filter": r"^audit_p3_elastic_cross_banded/n100_m50$", "baseline_mean_ns": 324136666.3875},
+    {"tier": "P1", "bench": "audit_hotpaths", "group": "audit_p3_elastic_cross_banded",
+     "filter": r"^audit_p3_elastic_cross_banded/n100_m200$", "baseline_mean_ns": 6177604457.0},
+    {"tier": "P1", "bench": "audit_hotpaths", "group": "audit_p3_elastic_cross_banded",
+     "filter": r"^audit_p3_elastic_cross_banded/n500_m50$", "baseline_mean_ns": 7841426505.6},
+    {"tier": "P1", "bench": "audit_hotpaths", "group": "audit_p4_fpca",
+     "filter": r"^audit_p4_fpca/", "baseline_mean_ns": 61215967.34755423},
+    {"tier": "P1", "bench": "audit_hotpaths", "group": "audit_fpca",
+     "filter": r"^audit_fpca/", "baseline_mean_ns": 16390770.837457303},
+    {"tier": "P1", "bench": "audit_hotpaths", "group": "audit_p6_svd_nalgebra",
+     "filter": r"^audit_p6_svd_nalgebra/", "baseline_mean_ns": 453085512.05575854},
+    {"tier": "P1", "bench": "audit_hotpaths", "group": "audit_p6_svd_faer_seq",
+     "filter": r"^audit_p6_svd_faer_seq/", "baseline_mean_ns": 155945201.9209864},
+    {"tier": "P1", "bench": "audit_hotpaths", "group": "audit_p6_svd_conversion",
+     "filter": r"^audit_p6_svd_conversion/", "baseline_mean_ns": 31.840410426222668},
+
+    # --- Tier P2: legacy cross-language comparators (group-level). ---
+    {"tier": "P2", "bench": "depth_benchmarks", "group": "functional_boxplot",
+     "filter": r"^functional_boxplot/", "baseline_mean_ns": 65401577.5430609},
+    {"tier": "P2", "bench": "regression_benchmarks", "group": "fregre_lm",
+     "filter": r"^fregre_lm/", "baseline_mean_ns": 2408889.977191288},
+    {"tier": "P2", "bench": "alignment_benchmarks", "group": "elastic_align_pair",
+     "filter": r"^elastic_align_pair/", "baseline_mean_ns": 94410976.25283563},
+    {"tier": "P2", "bench": "audit_hotpaths", "group": "audit_depth",
+     "filter": r"^audit_depth/", "baseline_mean_ns": 468855.425524497},
+    {"tier": "P2", "bench": "audit_hotpaths", "group": "audit_streaming_depth",
+     "filter": r"^audit_streaming_depth/", "baseline_mean_ns": 525657.6310235932},
+    {"tier": "P2", "bench": "audit_hotpaths", "group": "audit_smooth",
+     "filter": r"^audit_smooth/", "baseline_mean_ns": 110417.04703894928},
+    {"tier": "P2", "bench": "alignment_benchmarks", "group": "karcher_mean",
+     "filter": r"^karcher_mean/", "baseline_mean_ns": 527996492.22},
+    {"tier": "P2", "bench": "audit_hotpaths", "group": "audit_karcher",
+     "filter": r"^audit_karcher/", "baseline_mean_ns": 162282532.0618295},
+    {"tier": "P2", "bench": "audit_hotpaths", "group": "audit_elastic",
+     "filter": r"^audit_elastic/", "baseline_mean_ns": 816797380.75},
+    {"tier": "P2", "bench": "audit_hotpaths", "group": "audit_p4_elastic_fpca",
+     "filter": r"^audit_p4_elastic_fpca/", "baseline_mean_ns": 2185260.145023933},
+
+    # --- Tier P3: remainder of the baseline suite. Per-id chunks, ascending
+    # baseline mean within each group. ---
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_elastic_cross",
+     "filter": r"^audit_p3_elastic_cross/n100_m50$", "baseline_mean_ns": 1565454445.875},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_elastic_cross",
+     "filter": r"^audit_p3_elastic_cross/n100_m200$", "baseline_mean_ns": 28852158307.3},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_elastic_cross",
+     "filter": r"^audit_p3_elastic_cross/n500_m50$", "baseline_mean_ns": 37964661211.7},
+
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_elastic_self",
+     "filter": r"^audit_p3_elastic_self/n100_m50$", "baseline_mean_ns": 1479459642.0},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_elastic_self",
+     "filter": r"^audit_p3_elastic_self/n100_m200$", "baseline_mean_ns": 16755681683.1},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_elastic_self",
+     "filter": r"^audit_p3_elastic_self/n500_m50$", "baseline_mean_ns": 26554376669.6},
+
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_elastic_self_banded",
+     "filter": r"^audit_p3_elastic_self_banded/n100_m50$", "baseline_mean_ns": 406670174.4333334},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_elastic_self_banded",
+     "filter": r"^audit_p3_elastic_self_banded/n100_m200$", "baseline_mean_ns": 3423428252.0},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_elastic_self_banded",
+     "filter": r"^audit_p3_elastic_self_banded/n500_m50$", "baseline_mean_ns": 4223192730.1},
+
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_karcher",
+     "filter": r"^audit_p3_karcher/n100_m50$", "baseline_mean_ns": 644766211.15},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_karcher",
+     "filter": r"^audit_p3_karcher/n500_m50$", "baseline_mean_ns": 3979197269.1},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_karcher",
+     "filter": r"^audit_p3_karcher/n100_m200$", "baseline_mean_ns": 6483448642.25},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_karcher",
+     "filter": r"^audit_p3_karcher/n500_m200$", "baseline_mean_ns": 28809597402.0},
+
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_karcher_banded",
+     "filter": r"^audit_p3_karcher_banded/n100_m50$", "baseline_mean_ns": 75448867.86900131},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_karcher_banded",
+     "filter": r"^audit_p3_karcher_banded/n500_m50$", "baseline_mean_ns": 421493296.34103173},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_karcher_banded",
+     "filter": r"^audit_p3_karcher_banded/n100_m200$", "baseline_mean_ns": 754891204.4673413},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p3_karcher_banded",
+     "filter": r"^audit_p3_karcher_banded/n500_m200$", "baseline_mean_ns": 4872578977.05},
+
+    {"tier": "P3", "bench": "alignment_benchmarks", "group": "elastic_self_distance_matrix",
+     "filter": r"^elastic_self_distance_matrix/n_band0\.1/10$", "baseline_mean_ns": 14834670.41},
+    {"tier": "P3", "bench": "alignment_benchmarks", "group": "elastic_self_distance_matrix",
+     "filter": r"^elastic_self_distance_matrix/n/10$", "baseline_mean_ns": 48865427.1},
+    {"tier": "P3", "bench": "alignment_benchmarks", "group": "elastic_self_distance_matrix",
+     "filter": r"^elastic_self_distance_matrix/n_band0\.1/30$", "baseline_mean_ns": 87870493.04},
+    {"tier": "P3", "bench": "alignment_benchmarks", "group": "elastic_self_distance_matrix",
+     "filter": r"^elastic_self_distance_matrix/n_band0\.1/50$", "baseline_mean_ns": 186781587.59},
+    {"tier": "P3", "bench": "alignment_benchmarks", "group": "elastic_self_distance_matrix",
+     "filter": r"^elastic_self_distance_matrix/n/30$", "baseline_mean_ns": 356063270.38},
+    {"tier": "P3", "bench": "alignment_benchmarks", "group": "elastic_self_distance_matrix",
+     "filter": r"^elastic_self_distance_matrix/n/50$", "baseline_mean_ns": 757224142.5},
+
+    # --- Group-level (remainder). ---
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_cv",
+     "filter": r"^audit_cv/", "baseline_mean_ns": 950779.1294042313},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p5_karcher_paybackN",
+     "filter": r"^audit_p5_karcher_paybackN/", "baseline_mean_ns": 720493960.0433267},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p5_karcher_threads",
+     "filter": r"^audit_p5_karcher_threads/", "baseline_mean_ns": 331243388.1997222},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p5_streaming_paybackN",
+     "filter": r"^audit_p5_streaming_paybackN/", "baseline_mean_ns": 887702.9204060981},
+    {"tier": "P3", "bench": "audit_hotpaths", "group": "audit_p5_streaming_threads",
+     "filter": r"^audit_p5_streaming_threads/", "baseline_mean_ns": 622756.1811937515},
+    {"tier": "P3", "bench": "boosting_regression_benchmarks", "group": "boosting_boost_fosr",
+     "filter": r"^boosting_boost_fosr/", "baseline_mean_ns": 55377631.722367585},
+    {"tier": "P3", "bench": "coclustering_benchmarks", "group": "coclustering_co_cluster_select",
+     "filter": r"^coclustering_co_cluster_select/", "baseline_mean_ns": 229331682.25},
+    {"tier": "P3", "bench": "density_fda_benchmarks", "group": "density_lqd_fpca",
+     "filter": r"^density_lqd_fpca/", "baseline_mean_ns": 3013224.49609375},
+    {"tier": "P3", "bench": "density_fda_benchmarks", "group": "density_wasserstein_barycenter",
+     "filter": r"^density_wasserstein_barycenter/", "baseline_mean_ns": 965152.9234933712},
+    {"tier": "P3", "bench": "fem_smoothing_benchmarks", "group": "fem_smooth_gcv",
+     "filter": r"^fem_smooth_gcv/", "baseline_mean_ns": 305012030.34375},
+    {"tier": "P3", "bench": "fpca_variants_benchmarks", "group": "fpca_der",
+     "filter": r"^fpca_der/", "baseline_mean_ns": 10272408.164794922},
+    {"tier": "P3", "bench": "fpca_variants_benchmarks", "group": "fpca_fsvd",
+     "filter": r"^fpca_fsvd/", "baseline_mean_ns": 1253884.69921875},
+    {"tier": "P3", "bench": "frechet_benchmarks", "group": "frechet_global_reg",
+     "filter": r"^frechet_global_reg/", "baseline_mean_ns": 260465.47412109375},
+    {"tier": "P3", "bench": "fts_benchmarks", "group": "fts_ftsm",
+     "filter": r"^fts_ftsm/", "baseline_mean_ns": 11648729.756103516},
+    {"tier": "P3", "bench": "inference_benchmarks", "group": "inference_t_perm_test",
+     "filter": r"^inference_t_perm_test/", "baseline_mean_ns": 5373165.424126053},
+    {"tier": "P3", "bench": "face_benchmarks", "group": "mface_covariance",
+     "filter": r"^mface_covariance/", "baseline_mean_ns": 1251420505.1875},
+    {"tier": "P3", "bench": "perf_hotpaths", "group": "perf_dpca",
+     "filter": r"^perf_dpca/", "baseline_mean_ns": 68211941.21308571},
+    {"tier": "P3", "bench": "perf_parallelism", "group": "perf_parallelism_co_cluster",
+     "filter": r"^perf_parallelism_co_cluster/", "baseline_mean_ns": 53947527.33652596},
+    {"tier": "P3", "bench": "perf_parallelism", "group": "perf_parallelism_frechet_anova",
+     "filter": r"^perf_parallelism_frechet_anova/", "baseline_mean_ns": 32948954.186678696},
+]
+
+RERUN_LOG_PATH = _SCRIPT_DIR / "results" / "rerun_log.json"
+
+# Final (terminal-for-this-call) rust_chunk statuses. A chunk with the most
+# recent status in this set is NOT re-scheduled by run_rust_next unless a
+# --rust-requeue record appears after it.
+_FINAL_CHUNK_STATUSES = frozenset({"ok", "timeout", "error", "skipped-inferred-timeout"})
 
 
 def _build_env() -> dict:
@@ -831,6 +1023,364 @@ def run_rust_bench(bench: str, filter_regex: str, env: dict,
 
 
 # -------------------------------------------------------------------
+# Rerun log — atomic read-modify-write persistence (Phase 116 Plan 03, T-116-11)
+# -------------------------------------------------------------------
+
+
+def _utc_now() -> str:
+    """Return the current UTC time in capture_env.py's env.json timestamp format."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _load_rerun_log(path: pathlib.Path) -> dict | None:
+    """
+    Load the rerun log at `path`.
+
+    Returns None when the file does not exist. Exits (SystemExit) with a
+    message naming the file when the file exists but is not valid JSON
+    (fail-closed, T-116-11) — a corrupted log must never be silently treated
+    as empty.
+    """
+    if not path.exists():
+        return None
+    try:
+        with path.open() as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        raise SystemExit(f"ERROR: malformed rerun log {path}: {exc}")
+
+
+def _append_rerun_log(path: pathlib.Path, record: dict) -> None:
+    """
+    Append `record` to the rerun log at `path` (read-modify-write).
+
+    Writes to a temp file in the same directory, then `os.replace` for an
+    atomic update (T-116-11) — a crash mid-write never leaves a truncated log.
+    Requires the log to already exist (run --rerun-init first).
+    """
+    log = _load_rerun_log(path)
+    if log is None:
+        raise SystemExit(
+            f"ERROR: rerun log {path} does not exist — run --rerun-init first."
+        )
+    log.setdefault("records", []).append(record)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".rerun_log_", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(log, f, indent=2)
+        os.replace(tmp_name, path)
+    except BaseException:
+        if os.path.exists(tmp_name):
+            os.remove(tmp_name)
+        raise
+
+
+def _records_for_chunk(log: dict, chunk_idx: int) -> list[dict]:
+    """Return all `rust_chunk` records for `chunk_idx`, in log order."""
+    return [
+        r for r in log.get("records", [])
+        if r.get("kind") == "rust_chunk" and r.get("chunk_idx") == chunk_idx
+    ]
+
+
+def _final_status(log: dict, chunk_idx: int) -> str | None:
+    """Return the LAST final status recorded for `chunk_idx`, or None."""
+    result = None
+    for r in _records_for_chunk(log, chunk_idx):
+        if r.get("status") in _FINAL_CHUNK_STATUSES:
+            result = r["status"]
+    return result
+
+
+def _chunk_is_pending(log: dict, chunk_idx: int) -> bool:
+    """
+    Return True when `chunk_idx` still needs to run.
+
+    No records at all -> pending. Most recent record status is a final
+    status (ok/timeout/error/skipped-inferred-timeout) -> not pending. Most
+    recent record status is non-final (interrupted/requeued) -> pending
+    (retried as the first chunk of the next call, per interrupted's contract).
+    """
+    recs = _records_for_chunk(log, chunk_idx)
+    if not recs:
+        return True
+    return recs[-1].get("status") not in _FINAL_CHUNK_STATUSES
+
+
+def rerun_init(log_path: pathlib.Path = RERUN_LOG_PATH,
+               criterion_dir: pathlib.Path | None = None) -> int:
+    """
+    Initialize the rerun log (Phase 116 Plan 03).
+
+    Refuses (exit 2) when the log already exists — re-initializing would
+    discard resumable state. Archives any stale `target/criterion` output by
+    renaming it to a UTC-timestamped sibling (T-116-09: rename, never delete),
+    so only fresh post-optimization measurements are collected.
+    """
+    if criterion_dir is None:
+        criterion_dir = _WORKSPACE_ROOT / "target" / "criterion"
+    if log_path.exists():
+        print(
+            f"ERROR: rerun log {log_path} already exists; refusing to re-init "
+            "(would discard resumable state). Delete it manually if a fresh "
+            "start is really intended.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    archive_path: pathlib.Path | None = None
+    if criterion_dir.exists():
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        archive_path = criterion_dir.parent / f"criterion.pre116-{ts}"
+        criterion_dir.rename(archive_path)
+        print(f"Archived stale criterion output: {criterion_dir} -> {archive_path}")
+
+    head_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True, text=True, check=True, cwd=str(_WORKSPACE_ROOT),
+    ).stdout.strip()
+
+    log = {
+        "meta": {
+            "started_utc": _utc_now(),
+            "head_sha": head_sha,
+            "features": "linalg,parallel",
+            "thread_env": dict(THREAD_ENV),
+            "criterion_archive": str(archive_path) if archive_path else None,
+            "chunk_budget_s": None,
+        },
+        "records": [],
+    }
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w") as f:
+        json.dump(log, f, indent=2)
+    print(f"Initialized rerun log: {log_path}")
+    return 0
+
+
+def inferred_timeout_reason(chunk: dict, log: dict) -> str | None:
+    """
+    Return a reason string when `chunk` should be skipped as an inferred
+    timeout, or None otherwise.
+
+    A per-id chunk is inferred-timeout when another chunk of the SAME
+    (bench, group) with baseline_mean_ns <= this chunk's has final status
+    timeout — a costlier sibling has no chance of finishing either.
+    Group-level chunks (no sibling sharing the same group, or
+    baseline_mean_ns is None) are never inferred.
+    """
+    if chunk.get("baseline_mean_ns") is None:
+        return None
+    bench, group = chunk["bench"], chunk["group"]
+    siblings = [
+        (idx, c) for idx, c in enumerate(RUST_RERUN_CHUNKS)
+        if c["bench"] == bench and c["group"] == group
+    ]
+    if len(siblings) <= 1:
+        return None
+    for idx, c in siblings:
+        if c is chunk or c.get("baseline_mean_ns") is None:
+            continue
+        if c["baseline_mean_ns"] <= chunk["baseline_mean_ns"] and _final_status(log, idx) == "timeout":
+            return (
+                f"cheaper sibling chunk {idx} ({group}, baseline "
+                f"{c['baseline_mean_ns'] / 1e9:.3f}s) already timed out"
+            )
+    return None
+
+
+def run_rust_next(budget_s: int, env: dict, runner=run_rust_bench,
+                  clock=time.monotonic, log_path: pathlib.Path = RERUN_LOG_PATH) -> int:
+    """
+    Run pending fdars criterion chunks within a bounded wall-clock budget.
+
+    Requires an initialized rerun log (exit 2 otherwise). Iterates
+    RUST_RERUN_CHUNKS in manifest order:
+      - An inferred-timeout candidate is recorded skipped-inferred-timeout
+        and consumes no budget.
+      - The FIRST chunk actually executed this call gets timeout = budget_s.
+      - Every later chunk starts only if remaining budget >= 60s, with
+        timeout = remaining.
+      - status ok -> record ok, continue.
+      - status error -> record error, print failure tail, return 3.
+      - timeout on the FIRST executed chunk -> final timeout record
+        (limit_s = budget_s).
+      - timeout on a LATER chunk -> interrupted record (non-final); the call
+        stops.
+    Prints RUST_CHUNKS_REMAINING=<pending count> and returns 0 (unless an
+    error status forced an early return 3).
+    """
+    log = _load_rerun_log(log_path)
+    if log is None:
+        print(
+            f"ERROR: rerun log {log_path} not found; run --rerun-init first.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    remaining_budget = float(budget_s)
+    first_chunk_executed = False
+
+    for idx, chunk in enumerate(RUST_RERUN_CHUNKS):
+        log = _load_rerun_log(log_path)
+        if not _chunk_is_pending(log, idx):
+            continue
+
+        reason = inferred_timeout_reason(chunk, log)
+        if reason is not None:
+            _append_rerun_log(log_path, {
+                "kind": "rust_chunk", "started_utc": _utc_now(), "wall_s": 0.0,
+                "status": "skipped-inferred-timeout", "chunk_idx": idx,
+                "tier": chunk["tier"], "bench": chunk["bench"], "group": chunk["group"],
+                "filter": chunk["filter"], "baseline_mean_ns": chunk["baseline_mean_ns"],
+                "limit_s": None, "note": reason,
+            })
+            continue
+
+        # Capture BEFORE flipping first_chunk_executed — this distinguishes
+        # "the chunk actually executed first this call" (final timeout) from
+        # a later chunk in the same call (interrupted, non-final).
+        is_first_chunk_this_call = not first_chunk_executed
+        if is_first_chunk_this_call:
+            this_timeout = int(budget_s)
+        else:
+            if remaining_budget < 60:
+                break
+            this_timeout = int(remaining_budget)
+
+        call_start = clock()
+        status, wall_s = runner(chunk["bench"], chunk["filter"], env, this_timeout)
+        elapsed = clock() - call_start
+        remaining_budget -= elapsed
+        first_chunk_executed = True
+
+        base_record = {
+            "kind": "rust_chunk", "started_utc": _utc_now(), "wall_s": wall_s,
+            "chunk_idx": idx, "tier": chunk["tier"], "bench": chunk["bench"],
+            "group": chunk["group"], "filter": chunk["filter"],
+            "baseline_mean_ns": chunk["baseline_mean_ns"],
+        }
+
+        if status == "ok":
+            _append_rerun_log(log_path, {**base_record, "status": "ok", "limit_s": this_timeout})
+            continue
+        if status == "error":
+            _append_rerun_log(log_path, {**base_record, "status": "error", "limit_s": this_timeout})
+            print(
+                f"ERROR: chunk {idx} ({chunk['group']} {chunk['filter']}) failed "
+                "(non-zero exit) — see cargo output above.",
+                file=sys.stderr,
+            )
+            return 3
+        # status == "timeout": the FIRST chunk executed this call gets a final
+        # timeout record (limit_s = budget_s) and the loop CONTINUES (an
+        # inferred-timeout skip for a costlier sibling costs no budget, and
+        # any further chunk still obeys the >=60s remaining-budget check). A
+        # LATER chunk timing out gets a non-final interrupted record and the
+        # call stops immediately — only that case is a hard stop.
+        if is_first_chunk_this_call:
+            _append_rerun_log(log_path, {**base_record, "status": "timeout", "limit_s": budget_s})
+            continue
+        _append_rerun_log(log_path, {**base_record, "status": "interrupted", "limit_s": this_timeout})
+        break
+
+    log = _load_rerun_log(log_path)
+    pending = sum(1 for i in range(len(RUST_RERUN_CHUNKS)) if _chunk_is_pending(log, i))
+    print(f"RUST_CHUNKS_REMAINING={pending}")
+    return 0
+
+
+def rust_status(log_path: pathlib.Path = RERUN_LOG_PATH) -> int:
+    """
+    Print per-status chunk counts plus the list of non-ok chunks.
+
+    Returns 0 only when nothing is pending, 1 otherwise.
+    """
+    log = _load_rerun_log(log_path)
+    if log is None:
+        print(
+            f"ERROR: rerun log {log_path} not found; run --rerun-init first.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    counts: dict[str, int] = {}
+    non_ok: list[tuple[int, str, str, str]] = []
+    for idx, chunk in enumerate(RUST_RERUN_CHUNKS):
+        if _chunk_is_pending(log, idx):
+            counts["pending"] = counts.get("pending", 0) + 1
+            non_ok.append((idx, chunk["group"], chunk["filter"], "pending"))
+            continue
+        status = _final_status(log, idx) or "unknown"
+        counts[status] = counts.get(status, 0) + 1
+        if status != "ok":
+            non_ok.append((idx, chunk["group"], chunk["filter"], status))
+
+    print("Chunk status counts:")
+    for status in sorted(counts):
+        print(f"  {status}: {counts[status]}")
+    if non_ok:
+        print("\nNon-ok chunks (idx, group, filter, status):")
+        for idx, group, filt, status in non_ok:
+            print(f"  [{idx}] {group} {filt} -> {status}")
+    return 0 if counts.get("pending", 0) == 0 else 1
+
+
+def rust_requeue(idx: int, log_path: pathlib.Path = RERUN_LOG_PATH) -> int:
+    """
+    Append a non-final `requeued` record for chunk `idx`.
+
+    Only valid when the chunk's last FINAL status is error (after a
+    bench-code fix). Refuses (exit 2) for timeout, ok, or
+    skipped-inferred-timeout — a genuine timeout must never be erased.
+    """
+    log = _load_rerun_log(log_path)
+    if log is None:
+        print(
+            f"ERROR: rerun log {log_path} not found; run --rerun-init first.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if idx < 0 or idx >= len(RUST_RERUN_CHUNKS):
+        print(
+            f"ERROR: chunk index {idx} out of range (0..{len(RUST_RERUN_CHUNKS) - 1}).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    status = _final_status(log, idx)
+    if status != "error":
+        print(
+            f"ERROR: chunk {idx}'s last final status is {status!r}, not 'error' — "
+            "refusing to requeue (a genuine timeout, ok, or inferred-skip must "
+            "never be erased).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    chunk = RUST_RERUN_CHUNKS[idx]
+    _append_rerun_log(log_path, {
+        "kind": "rust_chunk", "started_utc": _utc_now(), "wall_s": 0.0,
+        "status": "requeued", "chunk_idx": idx, "tier": chunk["tier"],
+        "bench": chunk["bench"], "group": chunk["group"], "filter": chunk["filter"],
+        "baseline_mean_ns": chunk["baseline_mean_ns"], "limit_s": None,
+        "note": "requeued after a bench-code fix (--rust-requeue)",
+    })
+    print(f"Chunk {idx} ({chunk['group']} {chunk['filter']}) requeued.")
+    return 0
+
+
+def list_rust_chunks() -> None:
+    """Print one line per manifest chunk: idx, tier, bench, filter, baseline_s."""
+    print("idx tier bench filter baseline_s")
+    for idx, chunk in enumerate(RUST_RERUN_CHUNKS):
+        baseline_ns = chunk["baseline_mean_ns"]
+        baseline_s = "-" if baseline_ns is None else f"{baseline_ns / 1e9:.3f}"
+        print(f"{idx} {chunk['tier']} {chunk['bench']} {chunk['filter']} {baseline_s}")
+
+
+# -------------------------------------------------------------------
 # Main
 # -------------------------------------------------------------------
 
@@ -875,18 +1425,68 @@ def main() -> None:
         "--timeout-s", type=int, default=None,
         help="Wall-clock timeout in seconds for --rust-bench (default: no limit).",
     )
+    parser.add_argument(
+        "--list-rust-chunks", action="store_true",
+        help="Print the 67-entry RUST_RERUN_CHUNKS manifest (idx tier bench filter baseline_s).",
+    )
+    parser.add_argument(
+        "--rerun-init", action="store_true",
+        help="Initialize results/rerun_log.json (archives stale target/criterion). "
+             "Refuses if the log already exists.",
+    )
+    parser.add_argument(
+        "--rust-next", action="store_true",
+        help="Run pending fdars criterion chunks within one call's --budget-s "
+             "wall-clock budget (resumable). Requires --rerun-init first.",
+    )
+    parser.add_argument(
+        "--budget-s", type=int, default=540,
+        help="Wall-clock budget in seconds for one --rust-next call (default: 540).",
+    )
+    parser.add_argument(
+        "--rust-status", action="store_true",
+        help="Print per-status chunk counts and the list of non-ok chunks.",
+    )
+    parser.add_argument(
+        "--rust-requeue", type=int, default=None, metavar="IDX",
+        help="Re-queue chunk IDX after a bench-code fix. Refuses unless the "
+             "chunk's last final status is error.",
+    )
     args = parser.parse_args()
 
     # Build pinned-thread environment FIRST (Pitfall 1: set before any fork)
     env = _build_env()
 
+    if args.list_rust_chunks:
+        list_rust_chunks()
+        return
+
+    if args.rerun_init:
+        sys.exit(rerun_init())
+
+    if args.rust_next:
+        sys.exit(run_rust_next(args.budget_s, env))
+
+    if args.rust_status:
+        sys.exit(rust_status(RERUN_LOG_PATH))
+
+    if args.rust_requeue is not None:
+        sys.exit(rust_requeue(args.rust_requeue))
+
     # --rust-bench: single thread-pinned criterion invocation under a timeout
     # (Phase 116 Plan 01). Exits 0 only when the bench completes successfully.
+    # Appends a `remediation` record when a rerun log exists (Plan 03).
     if args.rust_bench is not None:
         if args.rust_filter is None:
             print("ERROR: --rust-filter is required with --rust-bench.", file=sys.stderr)
             sys.exit(2)
-        status, _wall_s = run_rust_bench(args.rust_bench, args.rust_filter, env, args.timeout_s)
+        status, wall_s = run_rust_bench(args.rust_bench, args.rust_filter, env, args.timeout_s)
+        if RERUN_LOG_PATH.exists():
+            _append_rerun_log(RERUN_LOG_PATH, {
+                "kind": "remediation", "started_utc": _utc_now(), "wall_s": wall_s,
+                "status": status, "bench": args.rust_bench, "filter": args.rust_filter,
+                "limit_s": args.timeout_s,
+            })
         sys.exit(0 if status == "ok" else 1)
 
     if args.cell is not None and not args.grid:
