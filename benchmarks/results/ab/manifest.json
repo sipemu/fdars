@@ -46,6 +46,42 @@
       "bench_command": "TMPDIR=/home/simonm/.cache/fdars-bench-tmp cargo bench -p fdars-core --features linalg --bench audit_hotpaths -- \"audit_p6_svd_nalgebra/n{500,1000}_m{50,200,500}\" (one filtered invocation per cell: n500_m50, n1000_m200, n500_m500)",
       "source_evidence": ".planning/phases/115-svd-fpca-covariance-optimization/115-svd-rebench/svd_n500_m50_estimates.json, svd_n1000_m200_estimates.json, svd_n500_m500_estimates.json",
       "verdict_source": ".planning/phases/115-svd-fpca-covariance-optimization/115-svd-rebench/SVD-VERDICT.md"
+    },
+    {
+      "id": "phase116_face_covariance_n200_m30",
+      "phase": "116-cross-language-re-run-published-report",
+      "kind": "ab",
+      "label": "Controlled thread-pinned re-measurement of OPT-02 (sym_cov_irreg): pre-OPT-02 parent vs HEAD",
+      "criterion_id": "perf_face_covariance/n200_m30",
+      "before": "phase116_face_covariance_n200_m30/before.json",
+      "after": "phase116_face_covariance_n200_m30/after.json",
+      "sha_before": "7cde79b24ea259318f358e4d57957bb2435f8995",
+      "sha_after": "e98b862dd3b39a2843fe1f33889e876aebc46921",
+      "thread_config": "pinned: all six *_NUM_THREADS=1 (identical both sides)",
+      "bench_command": "env OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 RAYON_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 CARGO_TARGET_DIR=target/ab116/target-<side> CRITERION_HOME=target/ab116/criterion-<side> timeout --kill-after=10 570 cargo bench --locked --manifest-path target/ab116/<side>/fdars-core/Cargo.toml --features linalg,parallel --bench perf_hotpaths -- '^perf_face_covariance/n200_m30$'",
+      "settings": {
+        "sample_size": 15,
+        "measurement_time_s": 30,
+        "warm_up_s": 3
+      },
+      "rounds": [
+        {
+          "round": 0,
+          "settings": {
+            "sample_size": 15,
+            "measurement_time_s": 30,
+            "warm_up_s": 3
+          },
+          "before": "phase116_face_covariance_n200_m30/before_r0.json",
+          "after": "phase116_face_covariance_n200_m30/after_r0.json"
+        }
+      ],
+      "cargo_lock": "main-checkout Cargo.lock copied, --locked",
+      "machine_quiet_check": {
+        "before_load1": 1.78,
+        "after_load1": 1.42
+      },
+      "source_evidence": "Phase 116 controlled re-measurement (116-05)"
     }
   ]
 }
