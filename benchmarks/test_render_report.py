@@ -302,7 +302,7 @@ class TestTheory(unittest.TestCase):
 class TestAbStats(unittest.TestCase):
     def test_speedup_and_significance(self):
         before = _make_estimate(1_000_000.0, 900_000.0, 1_100_000.0, 100_000.0)
-        after = _make_estimate(500_000.0, 480_000.0, 520_000.0, 10_000.0)
+        after = _make_estimate(500_000.0, 495_000.0, 505_000.0, 10_000.0)
         stats = r.ab_entry_stats(before, after)
         self.assertAlmostEqual(stats["speedup"], 2.0)
         self.assertAlmostEqual(stats["delta_pct"], -50.0)

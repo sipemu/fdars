@@ -21,15 +21,24 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import pathlib
+import re
 import sys
 
+import numpy as np
 import pandas as pd
 
 # Same-directory module import, late (after stdlib + third-party imports),
 # matching the benchmarks/test_rank_hotspots.py idiom.
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from rank_hotspots import _df_to_rows, _ms  # noqa: E402  (module in same directory)
+from rank_hotspots import (  # noqa: E402  (module in same directory)
+    _df_to_rows,
+    _ms,
+    apply_noise_gate,
+    _RSD_THRESHOLD,
+    _CI_THRESHOLD,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -50,8 +59,105 @@ HEADLINE_CELL = (500, 200)
 _PARITY_BAND_PCT = 10.0
 
 # Generated blocks this script knows how to render. main() fails closed (exit
-# 2) on any --blocks name not in this tuple.
-BLOCKS = ("headline",)
+# 2) on any --blocks name not in this tuple. Populated at the bottom of Task 2
+# from REQUIRED_INPUTS' key order (the plan's fixed document order).
+BLOCKS: tuple[str, ...] = ("headline",)
+
+# Multi-thread scaling benches — excluded from every single-threaded table
+# (D-12: fairness-first head-to-head is single-threaded only; these groups
+# would otherwise leak a thread-count-dependent number into a before/after
+# or scaling comparison that is supposed to hold thread count fixed).
+_THREAD_SCALING_GROUPS = frozenset({
+    "audit_p5_karcher_threads",
+    "audit_p5_streaming_threads",
+    "perf_parallelism_co_cluster",
+    "perf_parallelism_frechet_anova",
+})
+
+# Source-grounded theoretical complexity per crosslang op (D-13). Each entry's
+# `source` was read directly from the fdars-core implementation (see the
+# 116-04-PLAN.md <read_first> list) — not guessed. n_exp/m_exp are None where
+# the true asymptotic behavior is regime-dependent (the `expr` explains why).
+THEORETICAL_COMPLEXITY: dict[str, dict] = {
+    "fpca": {
+        "expr": "O(N*M*min(N,M)) thin SVD of the weighted, centered N x M data matrix",
+        "n_exp": 1.0,
+        "m_exp": 1.0,
+        "source": "fdars-core/src/regression.rs::fdata_to_pc",
+    },
+    "basis_smoothing": {
+        "expr": (
+            "O(N*M*K) per-curve basis projection (K=nbasis=10 fixed) plus a "
+            "one-time O(M^2*K) hat-matrix build independent of N; "
+            "regime-dependent (N>>M: linear in N and M; M>>N: quadratic in M, "
+            "independent of N)"
+        ),
+        "n_exp": None,
+        "m_exp": None,
+        "source": "fdars-core/src/smooth_basis.rs::smooth_basis",
+    },
+    "depth": {
+        "expr": (
+            "O(N*M*log N) rank-based Modified Band Depth (sorted-reference "
+            "presort, then an O(log N) rank query per curve/evaluation point)"
+        ),
+        "n_exp": 1.0,
+        "m_exp": 1.0,
+        "source": "fdars-core/src/streaming_depth/mbd.rs::depth_batch",
+    },
+    "functional_boxplot": {
+        "expr": (
+            "dominated by the underlying depth computation, O(N*M*log N), "
+            "plus an additive O(N*M) central-region/fence pass"
+        ),
+        "n_exp": 1.0,
+        "m_exp": 1.0,
+        "source": "fdars-core/src/depth/dispatch.rs::functional_boxplot",
+    },
+    "fpcr": {
+        "expr": (
+            "O(N*M*min(N,M)) FPCA (fdata_to_pc) followed by an O(N*ncomp^2) "
+            "OLS solve on a fixed 5-component design (ncomp constant, so the "
+            "FPCA term dominates)"
+        ),
+        "n_exp": 1.0,
+        "m_exp": 1.0,
+        "source": "fdars-core/src/scalar_on_function/fregre_lm.rs::fregre_lm",
+    },
+    "elastic": {
+        "expr": (
+            "O(M^2) dynamic-programming grid fill per pair (coprime "
+            "neighbourhood), independent of N -- the crosslang_elastic bench "
+            "always times a fixed 2-curve pair"
+        ),
+        "n_exp": 0.0,
+        "m_exp": 2.0,
+        "source": "fdars-core/src/alignment/pairwise.rs::elastic_align_pair",
+    },
+}
+
+# The headline A/B criterion id (D-06) — a phase116_ manifest entry wins over
+# a phase115_ one for the same criterion_id.
+_HEADLINE_AB_CRITERION_ID = "perf_face_covariance/n200_m30"
+
+# `benchmark_group("<name>")` literal scanner (defined_groups, coverage checks).
+_GROUP_LITERAL_RE = re.compile(r'benchmark_group\("([^"]+)"\)')
+
+# Per-group criterion settings scanner. Accepts both `Duration::from_secs(n)`
+# and `std::time::Duration::from_secs(n)` (both forms appear in fdars-core's
+# bench files). A group's "block" is the text from its benchmark_group(...)
+# call up to (not including) the next one, so settings calls that appear
+# right after opening the group are captured.
+_GROUP_BLOCK_RE = re.compile(
+    r'benchmark_group\("([^"]+)"\)(.*?)(?=benchmark_group\(|\Z)', re.DOTALL
+)
+_SAMPLE_SIZE_RE = re.compile(r"sample_size\((\d+)\)")
+_MEASUREMENT_TIME_RE = re.compile(
+    r"measurement_time\((?:std::time::)?Duration::from_secs\((\d+)\)\)"
+)
+_WARM_UP_RE = re.compile(
+    r"warm_up_time\((?:std::time::)?Duration::from_secs\((\d+)\)\)"
+)
 
 _HEADLINE_HEADER = (
     "| Op | N | M | fdars (ms) | scikit-fda (ms) | R (ms) | fdars vs scikit-fda | fdars vs R |"
@@ -127,9 +233,48 @@ def splice_generated(text: str, name: str, content: str) -> str:
 
 
 def load_rows(path: str | pathlib.Path) -> list[dict]:
-    """Load a comparison-schema CSV into a list of row dicts (NaN -> None)."""
-    df = pd.read_csv(path)
-    return _df_to_rows(df)
+    """
+    Load a comparison-schema CSV into a list of row dicts (NaN -> None).
+
+    Uses `keep_default_na=False, na_values=[""]` because pandas' default NA
+    sniffing parses the literal string "NA" (python/r's noise_gate value) as
+    NaN, which `rank_hotspots.apply_noise_gate` would then treat as an
+    unknown/unparseable noise_gate and conservatively exclude — silently
+    breaking the NA-means-cross-language-row convention. Only truly empty
+    fields become NaN (-> None after `_df_to_rows`).
+    """
+    df = pd.read_csv(path, keep_default_na=False, na_values=[""])
+    rows = _df_to_rows(df)
+    # pandas re-casts `.where(..., None)` back to NaN on float64 columns
+    # (dtype-preserving `.where`, observed on pandas >= 3.0) — normalize any
+    # remaining NaN to a real `None` so every downstream consumer sees one
+    # consistent "missing" sentinel rather than two (None vs float("nan")).
+    for row in rows:
+        for key, value in row.items():
+            if isinstance(value, float) and value != value:
+                row[key] = None
+    return rows
+
+
+def _safe_float(value) -> float | None:
+    """Best-effort float conversion; None/NaN/unparsable -> None."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    if f != f:  # NaN
+        return None
+    return f
+
+
+def _to_int(value) -> int | None:
+    f = _safe_float(value)
+    return None if f is None else int(f)
+
+
+def _num_eq(a, b) -> bool:
+    fa, fb = _safe_float(a), _safe_float(b)
+    return fa is not None and fb is not None and fa == fb
 
 
 def _cell_matches(row: dict, n: int, m: int) -> bool:
@@ -174,6 +319,458 @@ def select_cell(rows: list[dict], op: str, n: int, m: int) -> dict:
         None,
     )
     return {"fdars": fdars_row, "python": python_row, "r": r_row}
+
+
+# ---------------------------------------------------------------------------
+# Noise gate + significance (D-08: shared with rank_hotspots, never drifts)
+# ---------------------------------------------------------------------------
+
+
+def noise_status(row: dict) -> str:
+    """
+    Classify one row's noise status via `rank_hotspots.apply_noise_gate`
+    (same thresholds, same function — the report and hotspot_ranking.md can
+    never disagree on what counts as noisy).
+
+    Returns "NA" for cross-language (python/r) rows, "PASS" for a rust row
+    that clears the gate, "FAIL-NOISY" otherwise (including NaN/unparsable
+    rsd_pct or ci_width_pct).
+    """
+    passed, _excluded = apply_noise_gate([row])
+    if not passed:
+        return "FAIL-NOISY"
+    return "NA" if row.get("noise_gate") == "NA" else "PASS"
+
+
+def ci_of(row: dict | None) -> tuple[float, float] | None:
+    """Return (ci_lower_ns, ci_upper_ns) as floats, or None if unavailable."""
+    if row is None:
+        return None
+    lo = _safe_float(row.get("ci_lower_ns"))
+    hi = _safe_float(row.get("ci_upper_ns"))
+    if lo is None or hi is None:
+        return None
+    return (lo, hi)
+
+
+def is_significant(ci_a: tuple[float, float] | None, ci_b: tuple[float, float] | None) -> bool | None:
+    """
+    True iff the two CIs are strictly non-overlapping (D-08's "significant?"
+    test). Touching CIs (upper == lower) are NOT significant. None if either
+    CI is missing.
+    """
+    if ci_a is None or ci_b is None:
+        return None
+    lo_a, hi_a = ci_a
+    lo_b, hi_b = ci_b
+    return hi_a < lo_b or hi_b < lo_a
+
+
+# ---------------------------------------------------------------------------
+# Before/after pairing (D-05)
+# ---------------------------------------------------------------------------
+
+
+def criterion_id(source) -> str | None:
+    """Strip the `criterion:` prefix from a source string."""
+    if not source:
+        return source
+    source = str(source)
+    return source[len("criterion:"):] if source.startswith("criterion:") else source
+
+
+def group_of(source) -> str | None:
+    """Return the first path segment of a criterion id (the bench group)."""
+    cid = criterion_id(source)
+    if not cid:
+        return cid
+    return cid.split("/")[0]
+
+
+def row_key(row: dict):
+    """
+    Pairing key: rust rows pair by `("rust", source)` (the exact criterion
+    id — a group's cells are distinct benches, not interchangeable); python/r
+    rows pair by `(op, library, n, m)` (no per-run source string to match on).
+    """
+    if row.get("library") == "rust":
+        return ("rust", row.get("source"))
+    return (row.get("op"), row.get("library"), _safe_float(row.get("n")), _safe_float(row.get("m")))
+
+
+def pair_before_after(baseline: list[dict], after: list[dict]) -> list[dict]:
+    """
+    Pair every baseline/after row by `row_key`, producing one dict per key
+    with fields: key, op, library, n, m, source, before_ns, after_ns,
+    before_ci, after_ci, delta_pct, speedup, significant, before_noise,
+    after_noise, status.
+
+    status is one of:
+      - "paired"          — present on both sides, means differ
+      - "stale-identical" — present on both sides, bit-identical mean_ns
+      - "missing-after"   — only in baseline (candidate for classify_missing)
+      - "new-after"       — only in after (e.g. the new crosslang_* benches)
+    """
+    before_map = {row_key(r): r for r in baseline}
+    after_map = {row_key(r): r for r in after}
+    keys = sorted(set(before_map) | set(after_map), key=lambda k: tuple(str(v) for v in k))
+
+    pairs: list[dict] = []
+    for key in keys:
+        before_row = before_map.get(key)
+        after_row = after_map.get(key)
+        ref_row = before_row if before_row is not None else after_row
+
+        before_ns = _safe_float(before_row.get("mean_ns")) if before_row else None
+        after_ns = _safe_float(after_row.get("mean_ns")) if after_row else None
+
+        if before_row is not None and after_row is not None:
+            status = "stale-identical" if before_ns == after_ns else "paired"
+        elif before_row is not None:
+            status = "missing-after"
+        else:
+            status = "new-after"
+
+        delta_pct = None
+        speedup = None
+        if before_ns is not None and after_ns is not None and before_ns != 0:
+            delta_pct = (after_ns - before_ns) / before_ns * 100.0
+            if after_ns != 0:
+                speedup = before_ns / after_ns
+
+        before_ci = ci_of(before_row)
+        after_ci = ci_of(after_row)
+
+        pairs.append({
+            "key": key,
+            "op": ref_row.get("op"),
+            "library": ref_row.get("library"),
+            "n": ref_row.get("n"),
+            "m": ref_row.get("m"),
+            "source": ref_row.get("source"),
+            "before_ns": before_ns,
+            "after_ns": after_ns,
+            "before_ci": before_ci,
+            "after_ci": after_ci,
+            "delta_pct": delta_pct,
+            "speedup": speedup,
+            "significant": is_significant(before_ci, after_ci),
+            "before_noise": noise_status(before_row) if before_row else None,
+            "after_noise": noise_status(after_row) if after_row else None,
+            "status": status,
+        })
+    return pairs
+
+
+# ---------------------------------------------------------------------------
+# Missing-row classification (D-15 disclosure: why a baseline row has no
+# after-run counterpart)
+# ---------------------------------------------------------------------------
+
+
+def defined_groups(bench_dir) -> set[str]:
+    """Return every `benchmark_group("...")` literal under `bench_dir/*.rs`."""
+    groups: set[str] = set()
+    for path in sorted(pathlib.Path(bench_dir).glob("*.rs")):
+        text = path.read_text(encoding="utf-8")
+        groups.update(_GROUP_LITERAL_RE.findall(text))
+    return groups
+
+
+def classify_missing(pair: dict, defined: set[str], rerun_log: dict | None) -> dict:
+    """
+    Classify why a "missing-after" pair has no after-run counterpart.
+
+    Rust rows: "orphan" if the group no longer exists in any bench file;
+    otherwise inspect the rerun_log's rust_chunk records whose filter
+    `re.search`-matches this row's criterion id — the LAST such record wins
+    (most recent status): timeout -> "timeout", skipped-inferred-timeout ->
+    "inferred-timeout", error -> "error", ok -> "id-not-produced" (the chunk
+    ran but this specific id was not among its output). No match -> "not-run".
+
+    Python/r rows: "timeout" if a grid_cell record for the same (n, m) has
+    status timeout; otherwise "not-run".
+    """
+    records = (rerun_log or {}).get("records", []) if rerun_log else []
+
+    if pair.get("library") == "rust":
+        source = pair.get("source")
+        cid = criterion_id(source)
+        group = group_of(source)
+        if group not in defined:
+            return {
+                "status": "orphan",
+                "detail": f"group {group!r} no longer defined in any fdars-core bench file",
+            }
+        matches = [
+            rec for rec in records
+            if rec.get("kind") == "rust_chunk"
+            and rec.get("filter")
+            and cid
+            and re.search(rec["filter"], cid)
+        ]
+        if matches:
+            last = matches[-1]
+            status = last.get("status")
+            if status == "timeout":
+                limit = last.get("limit_s")
+                detail = (
+                    f"timeout at {limit} s (single-threaded)" if limit is not None
+                    else "timeout (single-threaded)"
+                )
+                return {"status": "timeout", "detail": detail}
+            if status == "skipped-inferred-timeout":
+                return {
+                    "status": "inferred-timeout",
+                    "detail": f"cheaper sibling in the same group (filter {last.get('filter')!r}) timed out",
+                }
+            if status == "error":
+                return {"status": "error", "detail": "chunk errored"}
+            if status == "ok":
+                return {
+                    "status": "id-not-produced",
+                    "detail": "chunk completed ok but this id was not produced",
+                }
+        return {"status": "not-run", "detail": "no matching rerun-log chunk found"}
+
+    n, m = pair.get("n"), pair.get("m")
+    for rec in records:
+        if (
+            rec.get("kind") == "grid_cell"
+            and _num_eq(rec.get("n"), n)
+            and _num_eq(rec.get("m"), m)
+            and rec.get("status") == "timeout"
+        ):
+            return {"status": "timeout", "detail": f"grid cell n={n}, m={m} timed out"}
+    return {"status": "not-run", "detail": "no matching grid_cell timeout found"}
+
+
+# ---------------------------------------------------------------------------
+# N x M scaling exponents (D-13)
+# ---------------------------------------------------------------------------
+
+
+def fit_scaling_exponent(xs, ys) -> float | None:
+    """
+    Log-log slope of ys vs xs via `numpy.polyfit(log(xs), log(ys), 1)[0]`.
+
+    Guards: fewer than 2 distinct positive x values, or any non-positive y
+    among the positive-x points, returns None (cannot fit a power law).
+    """
+    pos_pairs = [
+        (x, y) for x, y in zip(xs, ys)
+        if x is not None and y is not None and x > 0
+    ]
+    if len({x for x, _ in pos_pairs}) < 2:
+        return None
+    if any(y <= 0 for _, y in pos_pairs):
+        return None
+    xs_arr = np.array([x for x, _ in pos_pairs], dtype=float)
+    ys_arr = np.array([y for _, y in pos_pairs], dtype=float)
+    slope = np.polyfit(np.log(xs_arr), np.log(ys_arr), 1)[0]
+    return float(slope)
+
+
+def scaling_grid(rows: list[dict], op: str, library: str) -> dict[tuple[int, int], tuple]:
+    """
+    Build a {(n, m): (mean_ns, noise_status)} grid for one op/library.
+
+    fdars ("rust") cells come ONLY from the grid-aligned
+    `criterion:crosslang_<op>/n<N>_m<M>` sources (never the legacy
+    non-grid-aligned criterion ids). Python/r cells are selected by
+    (library, op) with (n, m) read from the row's own columns.
+    """
+    grid: dict[tuple[int, int], tuple] = {}
+    if library == "rust":
+        prefix = f"criterion:crosslang_{op}/"
+        candidates = [r for r in rows if str(r.get("source") or "").startswith(prefix)]
+    else:
+        candidates = [r for r in rows if r.get("library") == library and r.get("op") == op]
+
+    for row in candidates:
+        n, m = _to_int(row.get("n")), _to_int(row.get("m"))
+        if n is None or m is None:
+            continue
+        grid[(n, m)] = (_safe_float(row.get("mean_ns")), noise_status(row))
+    return grid
+
+
+def scaling_exponents(grid: dict[tuple[int, int], tuple]) -> dict[str, float | None]:
+    """
+    Fit log-log exponents from a `scaling_grid` result: one N-slope per M
+    value (`"N@M=<m>"`) and one M-slope per N value (`"M@N=<n>"`).
+    """
+    result: dict[str, float | None] = {}
+    for m in GRID_M:
+        xs = [n for n in GRID_N if (n, m) in grid]
+        ys = [grid[(n, m)][0] for n in xs]
+        result[f"N@M={m}"] = fit_scaling_exponent(xs, ys)
+    for n in GRID_N:
+        xs = [m for m in GRID_M if (n, m) in grid]
+        ys = [grid[(n, m)][0] for m in xs]
+        result[f"M@N={n}"] = fit_scaling_exponent(xs, ys)
+    return result
+
+
+def drift_stats(pairs: list[dict], library: str) -> tuple[float | None, float | None]:
+    """Median and max absolute delta_pct for one library's paired rows."""
+    deltas = sorted(
+        abs(p["delta_pct"]) for p in pairs
+        if p.get("library") == library and p.get("delta_pct") is not None
+    )
+    if not deltas:
+        return (None, None)
+    n = len(deltas)
+    median = deltas[n // 2] if n % 2 else (deltas[n // 2 - 1] + deltas[n // 2]) / 2.0
+    return (median, deltas[-1])
+
+
+# ---------------------------------------------------------------------------
+# A/B evidence (D-06)
+# ---------------------------------------------------------------------------
+
+
+def load_estimates(ab_dir, rel_path: str) -> dict:
+    """
+    Load a criterion estimates.json under `ab_dir`, given a manifest-supplied
+    relative path.
+
+    Rejects (ValueError) any path that is absolute, or that resolves outside
+    `ab_dir` (T-116-14) — a manifest is committed data, but this still guards
+    against a future manifest entry accidentally or maliciously escaping the
+    ab/ directory.
+    """
+    rel = pathlib.Path(rel_path)
+    if rel.is_absolute():
+        raise ValueError(f"load_estimates: absolute path not allowed: {rel_path!r}")
+    ab_dir_resolved = pathlib.Path(ab_dir).resolve()
+    full = (ab_dir_resolved / rel).resolve()
+    try:
+        full.relative_to(ab_dir_resolved)
+    except ValueError:
+        raise ValueError(f"load_estimates: path escapes ab directory: {rel_path!r}") from None
+    with open(full, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _estimate_stats(est: dict) -> dict:
+    """Derive mean/CI/rsd/ci-width/noise-gate from one criterion estimate."""
+    mean = est["mean"]["point_estimate"]
+    ci = est["mean"]["confidence_interval"]
+    lo, hi = ci["lower_bound"], ci["upper_bound"]
+    std_dev = (est.get("std_dev") or {}).get("point_estimate")
+    rsd_pct = (std_dev / mean * 100.0) if (std_dev is not None and mean) else None
+    ci_width_pct = ((hi - lo) / mean * 100.0) if mean else None
+    gate = (
+        "PASS"
+        if (rsd_pct is not None and ci_width_pct is not None
+            and rsd_pct < _RSD_THRESHOLD and ci_width_pct < _CI_THRESHOLD)
+        else "FAIL-NOISY"
+    )
+    return {
+        "mean_ns": mean, "ci": (lo, hi),
+        "rsd_pct": rsd_pct, "ci_width_pct": ci_width_pct, "noise_gate": gate,
+    }
+
+
+def ab_entry_stats(before_est: dict, after_est: dict) -> dict:
+    """
+    Compute speedup/delta/significance/noise for one before/after A/B pair.
+
+    `headline_eligible` requires BOTH sides to pass the noise gate AND the
+    CIs to be strictly disjoint (D-06/D-08: never headline a noisy or
+    non-significant result).
+    """
+    before = _estimate_stats(before_est)
+    after = _estimate_stats(after_est)
+    delta_pct = (
+        (after["mean_ns"] - before["mean_ns"]) / before["mean_ns"] * 100.0
+        if before["mean_ns"] else None
+    )
+    speedup = before["mean_ns"] / after["mean_ns"] if after["mean_ns"] else None
+    significant = is_significant(before["ci"], after["ci"])
+    headline_eligible = bool(
+        before["noise_gate"] == "PASS" and after["noise_gate"] == "PASS" and significant is True
+    )
+    return {
+        "before": before,
+        "after": after,
+        "delta_pct": delta_pct,
+        "speedup": speedup,
+        "significant": significant,
+        "headline_eligible": headline_eligible,
+    }
+
+
+def select_headline_ab(manifest: dict) -> dict | None:
+    """
+    Select the headline A/B manifest entry for `_HEADLINE_AB_CRITERION_ID`.
+
+    A `phase116_`-prefixed id wins over a `phase115_`-prefixed one (a Phase
+    116 re-measurement supersedes the Phase 115 evidence); returns None when
+    no `kind == "ab"` entry matches the headline criterion id at all.
+    """
+    candidates = [
+        e for e in manifest.get("entries", [])
+        if e.get("kind") == "ab" and e.get("criterion_id") == _HEADLINE_AB_CRITERION_ID
+    ]
+    if not candidates:
+        return None
+    for e in candidates:
+        if str(e.get("id", "")).startswith("phase116_"):
+            return e
+    for e in candidates:
+        if str(e.get("id", "")).startswith("phase115_"):
+            return e
+    return candidates[0]
+
+
+# ---------------------------------------------------------------------------
+# Criterion settings parsing (D-15)
+# ---------------------------------------------------------------------------
+
+
+def parse_criterion_settings(text: str) -> dict[str, dict]:
+    """
+    Parse `{group: {sample_size, measurement_time_s, warm_up_s}}` from Rust
+    criterion bench source text. Accepts both `Duration::from_secs(n)` and
+    `std::time::Duration::from_secs(n)`. A group with no explicit setting for
+    a given knob maps that key to None.
+    """
+    result: dict[str, dict] = {}
+    for match in _GROUP_BLOCK_RE.finditer(text):
+        group = match.group(1)
+        block = match.group(2)
+        sample_size_m = _SAMPLE_SIZE_RE.search(block)
+        measurement_m = _MEASUREMENT_TIME_RE.search(block)
+        warm_up_m = _WARM_UP_RE.search(block)
+        result[group] = {
+            "sample_size": int(sample_size_m.group(1)) if sample_size_m else None,
+            "measurement_time_s": int(measurement_m.group(1)) if measurement_m else None,
+            "warm_up_s": int(warm_up_m.group(1)) if warm_up_m else None,
+        }
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Markdown cell escaping (T-116-13)
+# ---------------------------------------------------------------------------
+
+
+def _md_cell(value) -> str:
+    """
+    Render one markdown table cell value safely: None/NaN -> em dash;
+    pipes escaped; CR/LF collapsed to spaces (a free-text `notes` field must
+    never be able to break a table row or inject an extra row).
+    """
+    if value is None:
+        return _EM_DASH
+    if isinstance(value, float) and value != value:  # NaN
+        return _EM_DASH
+    text = str(value)
+    text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    text = text.replace("|", "\\|")
+    return text
 
 
 # ---------------------------------------------------------------------------
