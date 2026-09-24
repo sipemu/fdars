@@ -345,8 +345,20 @@ fn bench_norm_lp_irreg(c: &mut Criterion) {
     group.finish();
 }
 
+/// Phase 116 D-10: the Phase 113 baseline measured this group at RSD 24-33%
+/// and CI-width 9-13% under criterion defaults (100 samples / 5s measurement
+/// window) — too noisy to headline in the cross-language report. Raising
+/// `sample_size` to 50 and `measurement_time` to 20s (`warm_up_time` 5s)
+/// gives criterion a longer window to average more iterations per sample,
+/// which lowers per-sample dispersion without changing the N values, the
+/// data generator, or the timed call. The group is re-measured
+/// thread-pinned in Phase 116; if it still fails the 5% noise gate it is
+/// flagged in the report, never headlined.
 fn bench_functional_boxplot(c: &mut Criterion) {
     let mut group = c.benchmark_group("functional_boxplot");
+    group.sample_size(50);
+    group.measurement_time(std::time::Duration::from_secs(20));
+    group.warm_up_time(std::time::Duration::from_secs(5));
     let t = 200;
     for &n in &[50, 200, 500, 1000, 2300] {
         let data = generate_centered_data(n, t);
