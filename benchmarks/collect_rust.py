@@ -23,6 +23,14 @@ Group-to-op mapping (RESEARCH.md Table 3 — criterion groups for overlapping op
   fregre_lm                                -> fpcr
   elastic_align_pair, karcher_mean, audit_karcher,
     audit_p3_karcher, audit_p4_elastic_fpca -> elastic
+
+Phase 116 grid-aligned cross-language groups (fdars-core/benches/crosslang_grid.rs):
+  crosslang_fpca                -> fpca
+  crosslang_basis_smoothing     -> basis_smoothing
+  crosslang_depth               -> depth
+  crosslang_functional_boxplot  -> functional_boxplot
+  crosslang_fpcr                -> fpcr
+  crosslang_elastic             -> elastic
 """
 
 import argparse
@@ -73,6 +81,13 @@ OP_MAP: dict[str, str] = {
     "audit_elastic": "elastic",
     "audit_p5_karcher_paybackN": "elastic",
     "audit_p5_karcher_threads": "elastic",
+    # Phase 116 grid-aligned cross-language groups (crosslang_grid.rs)
+    "crosslang_fpca": "fpca",
+    "crosslang_basis_smoothing": "basis_smoothing",
+    "crosslang_depth": "depth",
+    "crosslang_functional_boxplot": "functional_boxplot",
+    "crosslang_fpcr": "fpcr",
+    "crosslang_elastic": "elastic",
 }
 
 
