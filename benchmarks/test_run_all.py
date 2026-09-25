@@ -54,6 +54,7 @@ _REPO_ROOT = _BENCHMARKS_DIR.parent
 sys.path.insert(0, str(_BENCHMARKS_DIR))
 
 import run_all  # noqa: E402  (module in same directory)
+import gate  # noqa: E402  (module in same directory)
 
 
 # ---------------------------------------------------------------------------
@@ -817,6 +818,148 @@ class TestRunFull(unittest.TestCase):
                 rc = run_all.run_full(timeout_s=540, cell_timeout_s=540, log_path=log_path)
             self.assertEqual(rc, 1)
             self.assertNotIn("run_grid", calls)
+
+
+# ---------------------------------------------------------------------------
+# TestStepRunGate (CR-01 fix, WR-04: step_run_gate direct unit coverage)
+# ---------------------------------------------------------------------------
+
+
+def _rec(op: str, library: str) -> dict:
+    """Minimal gate-shaped record: op label, library, and a fingerprint that
+    fingerprint_to_array() can parse without error (a single-component,
+    single-dimension "loadings" row)."""
+    return {
+        "op": op,
+        "library": library,
+        "n": 100,
+        "m": 50,
+        "mean_ns": 1.0,
+        "result_fingerprint": {"loadings": [[0.1, 0.2, 0.3]]},
+    }
+
+
+class TestStepRunGate(unittest.TestCase):
+    """Direct coverage of step_run_gate — the single function implementing
+    the BENCH-05 measure-first invariant. Regression-tests CR-01: a
+    requested op with no counterpart record must fail closed, not silently
+    report an unconditional pass."""
+
+    def _write_records(self, results_dir: pathlib.Path, py_ops: list[str],
+                        r_ops: list[str]) -> tuple[pathlib.Path, pathlib.Path]:
+        py_path = results_dir / "python.json"
+        r_path = results_dir / "r.json"
+        py_path.write_text(json.dumps([_rec(op, "python") for op in py_ops]))
+        r_path.write_text(json.dumps([_rec(op, "r") for op in r_ops]))
+        return py_path, r_path
+
+    def test_all_ops_present_and_agreeing_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td)
+            py_path, r_path = self._write_records(
+                results_dir, run_all.ALL_OPS, run_all.ALL_OPS)
+            with mock.patch.object(run_all, "step_fdars_loadings",
+                                    return_value=[[0.1, 0.2, 0.3]]), \
+                 mock.patch.object(gate, "check_fpca_agreement",
+                                    return_value=(True, 1.0, [])), \
+                 mock.patch.object(gate, "run_gate", return_value=True):
+                passed = run_all.step_run_gate(
+                    n=100, m=50, env={}, py_path=py_path, r_path=r_path,
+                    ops=run_all.ALL_OPS)
+            self.assertTrue(passed)
+
+    def test_fpca_disagreement_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td)
+            py_path, r_path = self._write_records(
+                results_dir, run_all.ALL_OPS, run_all.ALL_OPS)
+
+            def _fake_check(fdars, other, threshold=0.99, label=""):
+                # fdars-vs-r is the hard gate; fail it, agree on fdars-vs-python.
+                if label == "fdars-vs-r":
+                    return (False, 0.5, [])
+                return (True, 1.0, [])
+
+            with mock.patch.object(run_all, "step_fdars_loadings",
+                                    return_value=[[0.1, 0.2, 0.3]]), \
+                 mock.patch.object(gate, "check_fpca_agreement",
+                                    side_effect=_fake_check), \
+                 mock.patch.object(gate, "run_gate", return_value=True):
+                with self.assertRaises(SystemExit) as cm:
+                    run_all.step_run_gate(
+                        n=100, m=50, env={}, py_path=py_path, r_path=r_path,
+                        ops=run_all.ALL_OPS)
+                self.assertEqual(cm.exception.code, 1)
+
+    def test_ops_subset_missing_counterpart_record_fails_closed(self):
+        """CR-01 regression: `--grid --op fpca` writes a python "fpca" record
+        but the r.json record is missing (e.g. the R runner crashed for that
+        op only). Before the fix, `fpca_passed` stayed True (never set to
+        False) and the gate silently reported an overall pass. It must now
+        fail closed."""
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td)
+            py_path, r_path = self._write_records(
+                results_dir, py_ops=["fpca"], r_ops=[])
+            with mock.patch.object(run_all, "step_fdars_loadings",
+                                    return_value=[[0.1, 0.2, 0.3]]), \
+                 mock.patch.object(gate, "check_fpca_agreement") as m_check, \
+                 mock.patch.object(gate, "run_gate", return_value=True):
+                with self.assertRaises(SystemExit) as cm:
+                    run_all.step_run_gate(
+                        n=100, m=50, env={}, py_path=py_path, r_path=r_path,
+                        ops=["fpca"])
+                self.assertEqual(cm.exception.code, 1)
+                # The hard-gate comparison itself must never have run — there
+                # was nothing to compare fdars against.
+                m_check.assert_not_called()
+
+    def test_ops_subset_missing_non_fpca_counterpart_fails_closed(self):
+        """CR-01 regression, step-6b path: `--grid --op depth` writes a
+        python "depth" record but r.json is missing it. Before the fix this
+        op was simply never added to gate_records, so run_gate() never saw
+        it and gate_all_passed could still be True."""
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td)
+            py_path, r_path = self._write_records(
+                results_dir, py_ops=["depth"], r_ops=[])
+            with mock.patch.object(gate, "run_gate") as m_run_gate:
+                with self.assertRaises(SystemExit) as cm:
+                    run_all.step_run_gate(
+                        n=100, m=50, env={}, py_path=py_path, r_path=r_path,
+                        ops=["depth"])
+                self.assertEqual(cm.exception.code, 1)
+                # run_gate() must never see a manufactured pass here since
+                # the op was never actually gated — gate_records was empty.
+                m_run_gate.assert_not_called()
+
+    def test_ops_subset_present_on_both_sides_passes(self):
+        """A requested op with records on both sides and agreement still
+        passes cleanly (the fix must not over-trigger for the healthy case)."""
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td)
+            py_path, r_path = self._write_records(
+                results_dir, py_ops=["depth"], r_ops=["depth"])
+            with mock.patch.object(gate, "run_gate", return_value=True):
+                passed = run_all.step_run_gate(
+                    n=100, m=50, env={}, py_path=py_path, r_path=r_path,
+                    ops=["depth"])
+            self.assertTrue(passed)
+
+    def test_ops_none_infers_requested_from_present_records(self):
+        """Legacy callers that omit `ops` (e.g. pre-existing direct calls)
+        keep working: requested-ness is inferred from the union of ops
+        present in either record set, so a single-op-only python.json/r.json
+        pair (both sides agreeing) still passes without requiring the other
+        five ops to be present."""
+        with tempfile.TemporaryDirectory() as td:
+            results_dir = pathlib.Path(td)
+            py_path, r_path = self._write_records(
+                results_dir, py_ops=["depth"], r_ops=["depth"])
+            with mock.patch.object(gate, "run_gate", return_value=True):
+                passed = run_all.step_run_gate(
+                    n=100, m=50, env={}, py_path=py_path, r_path=r_path)
+            self.assertTrue(passed)
 
 
 if __name__ == "__main__":
