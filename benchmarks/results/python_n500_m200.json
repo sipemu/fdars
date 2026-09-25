@@ -4,7 +4,7 @@
     "library": "python",
     "n": 500,
     "m": 200,
-    "mean_ns": 13951674.259733409,
+    "mean_ns": 12357190.698385239,
     "result_fingerprint": {
       "loadings": [
         [
@@ -1029,7 +1029,7 @@
     "library": "python",
     "n": 500,
     "m": 200,
-    "mean_ns": 4311290.278565139,
+    "mean_ns": 4199099.540710449,
     "result_fingerprint": {
       "smoothed_values": [
         [
@@ -102040,7 +102040,7 @@
     "library": "python",
     "n": 500,
     "m": 200,
-    "mean_ns": 15630429.83878404,
+    "mean_ns": 15590635.018888861,
     "result_fingerprint": {
       "depths": [
         0.2538072728371316,
@@ -102551,7 +102551,7 @@
     "library": "python",
     "n": 500,
     "m": 200,
-    "mean_ns": 16598923.578858376,
+    "mean_ns": 16615513.800643383,
     "result_fingerprint": {
       "depths": [
         0.2538072728371316,
@@ -103062,7 +103062,7 @@
     "library": "python",
     "n": 500,
     "m": 200,
-    "mean_ns": 12406669.321935624,
+    "mean_ns": 12635715.680662543,
     "result_fingerprint": {
       "fitted_values": [
         -0.0939806483319553,
@@ -103573,7 +103573,7 @@
     "library": "python",
     "n": 500,
     "m": 200,
-    "mean_ns": 33741462.405305356,
+    "mean_ns": 33542208.489961922,
     "elastic_timing_scope": "pairwise_only",
     "result_fingerprint": {
       "warping_values": [

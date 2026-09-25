@@ -4,7 +4,7 @@
     "library": "r",
     "n": 100,
     "m": 200,
-    "mean_ns": 5254469.986539334,
+    "mean_ns": 5188684.09562856,
     "result_fingerprint": {
       "loadings": [
         [
@@ -1025,7 +1025,7 @@
     "library": "r",
     "n": 100,
     "m": 200,
-    "mean_ns": 1730430.0563409925,
+    "mean_ns": 1706928.1311705709,
     "result_fingerprint": {
       "smoothed_values": [
         [
@@ -21236,7 +21236,7 @@
     "library": "r",
     "n": 100,
     "m": 200,
-    "mean_ns": 2854715.1014208794,
+    "mean_ns": 2747753.9842948318,
     "result_fingerprint": {
       "depths": [
         0.2336646464646465,
@@ -21347,7 +21347,7 @@
     "library": "r",
     "n": 100,
     "m": 200,
-    "mean_ns": 6696196.040138602,
+    "mean_ns": 6682647.974230349,
     "result_fingerprint": {
       "depths": [
         0.23366464646464646,
@@ -21458,7 +21458,7 @@
     "library": "r",
     "n": 100,
     "m": 200,
-    "mean_ns": 86074492.5448671,
+    "mean_ns": 85633466.54409543,
     "result_fingerprint": {
       "fitted_values": [
         -0.2534097703234228,
@@ -21569,7 +21569,7 @@
     "library": "r",
     "n": 100,
     "m": 200,
-    "mean_ns": 32596925.972029567,
+    "mean_ns": 32529458.98566395,
     "elastic_timing_scope": "pairwise_only",
     "result_fingerprint": {
       "warping_values": [
@@ -21983,6 +21983,6 @@
     "library": "r",
     "n": 100,
     "m": 200,
-    "mean_ns": 7565605.512354523
+    "mean_ns": 7460006.978362799
   }
 ]

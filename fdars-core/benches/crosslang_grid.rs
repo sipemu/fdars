@@ -417,10 +417,14 @@ fn bench_crosslang_functional_boxplot(c: &mut Criterion) {
 /// the seeded response) timings, matching the Python/R runners' FPCA-scores
 /// -> OLS approach (`FPCA(n_components=5)` + `numpy.linalg.lstsq` /
 /// `fda.usc::fregre.pc`).
+///
+/// Noise remediation (Phase 116 D-10), round 1: the headline cell
+/// `n500_m200` failed the 5% noise gate at 30 samples / 10 s (RSD 11.79%,
+/// CI-width 8.11%), so the group is raised to 60 samples / 20 s.
 fn bench_crosslang_fpcr(c: &mut Criterion) {
     let mut group = c.benchmark_group("crosslang_fpcr");
-    group.sample_size(30);
-    group.measurement_time(Duration::from_secs(10));
+    group.sample_size(60);
+    group.measurement_time(Duration::from_secs(20));
     group.warm_up_time(Duration::from_secs(3));
 
     for &(n, m) in GRID_CELLS.iter() {
