@@ -62,3 +62,7 @@ covr/
 
 # Harness agent worktrees / local Claude config — never track
 .claude/
+
+# pmat local caches inside the crate directory — never tracked, never packaged
+fdars-core/.pmat/
+fdars-core/.pmat-metrics/
