@@ -15,7 +15,7 @@ covered_files:
   - fdars-core/src/irreg_fdata/smoothing.rs
   - fdars-core/tests/equivalence_phase115.rs
 re_verification: null
-covered_digest: "v1:sha256:4330cce9224ba87b927a2f65370549810a929b4216bd5acb232e8d51a79626f9"
+covered_digest: "v1:sha256:226eb864c2fe28695bbbddc66bdb84597f248d6bfcb775a88be79fb6929380cd"
 behavior_unverified: 0
 overrides_applied: 0
 ---
@@ -135,3 +135,7 @@ _Verifier: Claude (gsd-verifier)_
 ## Re-fingerprint 2026-09-25
 
 Covered-file digest recomputed by the v0.47.0 autonomous orchestrator before the milestone audit. Cause of staleness: only .planning/REQUIREMENTS.md changed (later phases marked their requirements complete) — false-stale. No verified truth was invalidated.
+
+## Re-fingerprint 2026-09-25 (post-Phase-117)
+
+Covered-file digest recomputed before the milestone audit. Changed covered files: only .planning/REQUIREMENTS.md changed (milestone requirements marked complete) — false-stale. No verified truth was invalidated.

@@ -24,7 +24,7 @@ covered_files:
   - benchmarks/test_gate.py
   - benchmarks/verify_inputs.py
   - fdars-core/benches/depth_benchmarks.rs
-covered_digest: "v1:sha256:0ebe059f2e2da487f35e9225449d11fd50c4061e616a8911c9ed9589b119792c"
+covered_digest: "v1:sha256:9531f21b6c18e9f7ad007c0fba86eb0c3b81d0be7d725a65d7ccd34fe11258d6"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
@@ -151,3 +151,7 @@ _Verifier: Claude (gsd-verifier)_
 ## Re-fingerprint 2026-09-25
 
 Covered-file digest recomputed by the v0.47.0 autonomous orchestrator before the milestone audit. Cause of staleness: harness files evolved by design in Phases 113/116 (gate recalibration, crosslang ops, scheduler); full benchmarks pytest suite green (209). No verified truth was invalidated.
+
+## Re-fingerprint 2026-09-25 (post-Phase-117)
+
+Covered-file digest recomputed before the milestone audit. Changed covered files: only .planning/REQUIREMENTS.md changed (milestone requirements marked complete) — false-stale. No verified truth was invalidated.

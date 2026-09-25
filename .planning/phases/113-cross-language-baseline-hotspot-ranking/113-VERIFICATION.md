@@ -22,7 +22,7 @@ covered_files:
   - benchmarks/test_assemble_comparison.py
   - benchmarks/test_gate.py
   - benchmarks/test_rank_hotspots.py
-covered_digest: "v1:sha256:834d4c3ac3b9ee29a2e5d2705aa7628ac3dc22ad2ca51a1d07b198bdec9a957b"
+covered_digest: "v1:sha256:02af6dee4ee08fc5d15202d9571af3c4bc6071561e20811d5e386d458d43d01b"
 re_verification:
   reason: "Post-verification code-review fix pass (CR-01 rsd_pct from true std_dev.point_estimate not mean.standard_error; WR-01/02/03 dead-param/NaN-guard/op-nm-match) changed benchmarks/ source and regenerated comparison.csv + hotspot_ranking.md; digest recomputed. Re-reviewed clean (113-REVIEW.md status: clean), 60 tests pass, no regressions. The fix STRENGTHENS honesty (corrected RSD moved 3 functional_boxplot cells to FAIL-NOISY) WITHOUT changing the operator-approved conclusions: elastic alignment remains rank #1, secondary targets (covariance/FPCA) unchanged, fairness controls intact — so the operator's fair/honest sign-off still holds. The 3/3 must-haves remain satisfied."
   digest_updated: "2026-09-23"
@@ -127,3 +127,7 @@ _Verifier: Claude (gsd-verifier)_
 ## Re-fingerprint 2026-09-25
 
 Covered-file digest recomputed by the v0.47.0 autonomous orchestrator before the milestone audit. Cause of staleness: comparison.csv/env.json intentionally overwritten by the Phase 116 after-run (Phase 113 baseline preserved byte-identical in benchmarks/results/comparison_baseline.csv); run_all.py extended by 116. No verified truth was invalidated.
+
+## Re-fingerprint 2026-09-25 (post-Phase-117)
+
+Covered-file digest recomputed before the milestone audit. Changed covered files: only .planning/REQUIREMENTS.md changed (milestone requirements marked complete) — false-stale. No verified truth was invalidated.

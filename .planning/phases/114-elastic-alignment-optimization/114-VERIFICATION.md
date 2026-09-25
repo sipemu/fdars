@@ -11,7 +11,7 @@ covered_files:
   - .planning/phases/114-elastic-alignment-optimization/114-02-SUMMARY.md
   - fdars-core/src/alignment/mod.rs
   - fdars-core/tests/equivalence_phase114.rs
-covered_digest: "v1:sha256:1db5fbdd80161f35b6f7e05bde215e3157789f933c120868b0b8bd04a91e7081"
+covered_digest: "v1:sha256:116f18934d3f1b804fdb83196d9612befa60955ea323147906b654b49eb7c628"
 re_verification:
   reason: "Post-verification code-review applied WR-01: a behavior-neutral debug_assert precondition (nrows>=1 && ncols>=1) on the pub(super) dp_grid_solve_banded (guards the new ncols-1 in the banded arm; unreachable today, defensive). No numeric change — golden fixture still 2/2 green, clippy + fmt clean. Digest recomputed. 3/3 must-haves still hold."
   digest_updated: "2026-09-23"
@@ -115,3 +115,7 @@ _Verifier: Claude (gsd-verifier)_
 ## Re-fingerprint 2026-09-25
 
 Covered-file digest recomputed by the v0.47.0 autonomous orchestrator before the milestone audit. Cause of staleness: alignment/mod.rs gained the Phase 114 code-review WR-01 debug_assert precondition (2684ab2b) after verification — debug-only, no release-behavior change. No verified truth was invalidated.
+
+## Re-fingerprint 2026-09-25 (post-Phase-117)
+
+Covered-file digest recomputed before the milestone audit. Changed covered files: REQUIREMENTS.md (later phase completions) and fdars-core/src/alignment/mod.rs (Phase 117-02 user-approved dp_fill_grid pmat refactor — re-proven bit-identical by this phase's equivalence_phase114 goldens, debug + release, and equivalence_phase47). No verified truth was invalidated.
