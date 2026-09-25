@@ -1205,7 +1205,31 @@ def _emit_before_after_table(pairs: list[dict], inputs: dict, title: str | None)
 
 def emit_before_after_crosslang_fdars(inputs: dict) -> str:
     pairs = [p for p in _paired_rust_rows(inputs["baseline"], inputs["after"]) if p.get("op") in CROSSLANG_OPS]
-    return _emit_before_after_table(pairs, inputs, title=None)
+    # WR-03 fix (Phase 116 REVIEW): rows here share an `op` label with the
+    # head-to-head Python/R comparison elsewhere in this report (via
+    # collect_rust.py's OP_MAP), but most of them are NOT the grid-aligned
+    # comparator bench itself — e.g. audit_p3_elastic_cross/audit_karcher/
+    # karcher_mean-family rows measure self/cross distance matrices and
+    # Karcher-mean payback studies, which have no scikit-fda/R equivalent at
+    # all. Without an explicit title (unlike emit_before_after_internal's
+    # disclosed "no scikit-fda/R comparator" title), a reader could
+    # reasonably interpret every row below as itself validated against
+    # Python/R, when this table is actually a Rust-only before/after
+    # regression check (same criterion id, two different runs).
+    return _emit_before_after_table(
+        pairs, inputs,
+        title=(
+            "fdars-only before/after for ops that ALSO have a scikit-fda/R "
+            "comparator elsewhere in this report (see “fdars vs "
+            "Python/R” above) — rows below compare the SAME rust "
+            "criterion id across two runs; they are not themselves validated "
+            "against Python/R at this cell. Several rows (the "
+            "audit_p3_elastic_*/audit_karcher/karcher_mean self- and "
+            "cross-distance-matrix and payback sweeps) measure a different "
+            "sub-operation than the grid-aligned comparator bench and have no "
+            "direct Python/R equivalent."
+        ),
+    )
 
 
 def emit_before_after_internal(inputs: dict) -> str:
