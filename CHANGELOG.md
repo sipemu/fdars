@@ -11,6 +11,58 @@ signatures and dependencies, with one intentional exception: the v0.40.0 soft-DT
 barycenter correction changes convergence behavior intentionally (see [0.40.0]
 Changed below).
 
+## [0.47.0] - 2026-09-25
+
+**Performance — Cross-Language Benchmarks & Optimization Pass.** Strictly
+non-breaking and numeric-identical; no public API, signature or visibility
+change; no new crate dependency.
+
+A measure-first milestone: an external harness timed `fdars-core` against
+scikit-fda and the R FDA ecosystem on identical seeded inputs (single-threaded,
+gated on numeric agreement before any timing was trusted), the ranked hot
+paths were optimized or confirmed already near-optimal, and every source
+change is proven numeric-identical by golden-value fixtures plus the full
+existing test suite. Single-threaded, `fdars-core` is faster than
+scikit-fda 0.10.1 and R on all six overlapping operations (FPCA, basis
+smoothing, depth, functional boxplot, FPCR, elastic alignment) at N=500,
+M=200 — see
+[documentation/PERFORMANCE.md](documentation/PERFORMANCE.md).
+
+### Changed (internal only)
+
+- **face_covariance covariance surface — upper-triangle computation (OPT-02).**
+  A new crate-internal helper `sym_cov_irreg` computes only the upper triangle
+  of the symmetric kernel-smoothed covariance surface and bit-copies the
+  mirror, sharing a single kernel-weight table (halving the Gaussian-kernel
+  evaluations). Output is numeric-identical, locked by the
+  `tests/equivalence_phase115.rs` golden fixture in debug and release;
+  measured **1.19× faster** single-threaded in a thread-pinned,
+  noise-gate-clean controlled A/B (n=200, m=30) — see
+  [documentation/PERFORMANCE.md](documentation/PERFORMANCE.md).
+- **Elastic alignment and SVD/FPCA — already near-optimal, no speedup
+  claimed.** The elastic banded-DP fill (`dp_fill_grid`) now iterates its
+  diagonal corridor directly instead of skip-scanning the grid (OPT-01);
+  output is bit-identical (golden fixture `tests/equivalence_phase114.rs`)
+  and the measured difference is within noise. The faer thin SVD already on
+  the `linalg` path was re-benchmarked and left unchanged.
+
+### Added (tooling & docs)
+
+- **`crosslang_grid` criterion bench** (`benches/crosslang_grid.rs`, six
+  grid-aligned groups) plus a `functional_boxplot` group in
+  `benches/depth_benchmarks.rs` — dev-only, no library API change; reads the
+  harness CSVs when present, otherwise falls back to a deterministic seeded
+  synthetic dataset, so it compiles and runs from the published crate.
+  Golden-value fixtures `tests/equivalence_phase114.rs` /
+  `tests/equivalence_phase115.rs`.
+- **`documentation/PERFORMANCE.md`** — the published head-to-head report
+  (before/after tables, N×M scaling, methodology, reproduction instructions)
+  and a README "Performance" speed story.
+- **External cross-language harness** in the workspace-root `benchmarks/`
+  directory (seeded data generator, scikit-fda + R runners, numeric-agreement
+  gate, report generator) — explicitly NOT a Cargo workspace member and NOT
+  part of the published crate; no crate dependency added.
+
 ## [0.46.0] - 2026-09-14
 
 **Quality Hardening — pmat Complexity Pass & CI Guardrail.** Strictly non-breaking and
