@@ -40,6 +40,12 @@ M=200 — see
   and the measured difference is within noise. The faer thin SVD already on
   the `linalg` path was re-benchmarked and left unchanged.
 
+- **dp_fill_grid decomposed (pmat guardrail).** The banded and unbanded DP fill arms of
+  the elastic-alignment dynamic program now share one private corridor-bounds helper
+  (`dp_band_cols`), bringing the function back under the pmat cognitive-complexity bar so the
+  v0.46.0 CI quality-gate guardrail stays green. Visitation order unchanged; output
+  bit-identical (golden fixture `tests/equivalence_phase114.rs`, debug + release).
+
 ### Added (tooling & docs)
 
 - **`crosslang_grid` criterion bench** (`benches/crosslang_grid.rs`, six

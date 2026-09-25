@@ -527,17 +527,34 @@ where
     })
 }
 
+/// Column range visited in DP row `tr`.
+///
+/// * `band = None` — the full row `0..ncols`.
+/// * `band = Some(r)` — the diagonal corridor `|tr − tc| ≤ r`, i.e.
+///   `tr.saturating_sub(r) ..= (tr + r).min(ncols - 1)` expressed as a
+///   half-open range. When the lower bound exceeds the upper bound the range is
+///   empty, exactly like the inclusive form, so the same cells are visited.
+///   Requires `ncols >= 1` (debug-asserted by [`dp_grid_solve_banded`]).
+#[inline]
+fn dp_band_cols(tr: usize, ncols: usize, band: Option<usize>) -> std::ops::Range<usize> {
+    match band {
+        None => 0..ncols,
+        Some(r) => tr.saturating_sub(r)..(tr + r).min(ncols - 1) + 1,
+    }
+}
+
 /// Fill the DP cost grid and parent pointers.
 ///
 /// Visits cells in row-major order, skipping the origin (pre-initialised to 0),
-/// then relaxes via the coprime neighbourhood.
+/// then relaxes via the coprime neighbourhood. The per-row column range comes
+/// from [`dp_band_cols`]:
 ///
 /// * `band = None` — full O(nrows·ncols) scan.
 /// * `band = Some(r)` — iterates only the diagonal corridor `|tr − tc| ≤ r`,
-///   turning the fill into O(min(nrows, ncols)·r).  The corridor bounds are
-///   computed per row, so exactly the same set of cells is relaxed in the same
-///   row-major order as the previous skip-based implementation — output is
-///   bit-identical.
+///   turning the fill into O(min(nrows, ncols)·r).
+///
+/// Exactly the same set of cells is relaxed in the same row-major order as the
+/// previous per-arm implementation — output is bit-identical.
 fn dp_fill_grid<F>(
     e: &mut [f64],
     parent: &mut [u32],
@@ -548,28 +565,12 @@ fn dp_fill_grid<F>(
 ) where
     F: Fn(usize, usize, usize, usize) -> f64,
 {
-    match band {
-        None => {
-            for tr in 0..nrows {
-                for tc in 0..ncols {
-                    if tr == 0 && tc == 0 {
-                        continue;
-                    }
-                    dp_relax_cell(e, parent, ncols, tr, tc, edge_cost);
-                }
+    for tr in 0..nrows {
+        for tc in dp_band_cols(tr, ncols, band) {
+            if tr == 0 && tc == 0 {
+                continue;
             }
-        }
-        Some(r) => {
-            for tr in 0..nrows {
-                let tc_lo = tr.saturating_sub(r);
-                let tc_hi = (tr + r).min(ncols - 1);
-                for tc in tc_lo..=tc_hi {
-                    if tr == 0 && tc == 0 {
-                        continue;
-                    }
-                    dp_relax_cell(e, parent, ncols, tr, tc, edge_cost);
-                }
-            }
+            dp_relax_cell(e, parent, ncols, tr, tc, edge_cost);
         }
     }
 }
