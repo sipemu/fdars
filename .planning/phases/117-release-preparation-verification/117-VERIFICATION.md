@@ -22,7 +22,7 @@ covered_files:
   - fdars-core/CHANGELOG.md
   - fdars-core/Cargo.toml
   - fdars-core/src/alignment/mod.rs
-covered_digest: "v1:sha256:6d61459ca75c28797cf27dc30a97b72ba87ac0bf1289e173d951744d2455075b"
+covered_digest: "v1:sha256:59d27a1efe82eac9772fa47ba9b7003129baf4dfb10ea808199d6e895146f758"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification: null
@@ -114,3 +114,7 @@ None. All three ROADMAP success criteria and all cross-plan must-haves are verif
 
 _Verified: 2026-09-25T21:05:48Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Re-fingerprint 2026-09-25 (post-Phase-117)
+
+Covered-file digest recomputed before the milestone audit. Changed covered files: only .planning/REQUIREMENTS.md rewritten by phase.complete in the same commit — false-stale. No verified truth was invalidated.

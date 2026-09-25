@@ -28,7 +28,7 @@ covered_files:
   - "fdars-core/Cargo.toml"
   - "fdars-core/benches/crosslang_grid.rs"
   - "fdars-core/benches/depth_benchmarks.rs"
-covered_digest: "v1:sha256:32c61a1f12e01f9a7fb21ceb57804b830abdc1eef41019debd3bdb7155aefa2b"
+covered_digest: "v1:sha256:057fcba1c7c54f921e153734aca7ec2fc5c7f7ce9dba575754a479c9e7d32152"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification: null
@@ -149,3 +149,7 @@ No gaps. All ROADMAP success criteria are met with direct evidence (not SUMMARY 
 
 _Verified: 2026-09-25T12:00:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Re-fingerprint 2026-09-25 (post-Phase-117)
+
+Covered-file digest recomputed before the milestone audit. Changed covered files: REQUIREMENTS.md (milestone completion), README.md (Phase 117-01 install-snippet bump to 0.47; README Performance section unchanged, `render_report.py --check` still exit 0 per 117 gate 14) and fdars-core/Cargo.toml (Phase 117 version bump 0.46.0 -> 0.47.0). No verified truth was invalidated.
