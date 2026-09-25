@@ -715,10 +715,12 @@ start of individual `--rust-next` scheduler calls ranged from 2.8 to 15.0 on
 this 20-logical-core machine, not uniformly quiet throughout. All
 measurements remain single-threaded, and every headline cell reported in
 this document passes the 5% noise gate regardless — but this is disclosed
-because background CPU contention can only ever inflate fdars' own wall-clock
-time (competing for cache and scheduler slots), never scikit-fda's or R's
-(measured in separate processes at different times). Any bias this
-introduces therefore runs against fdars, not in its favor.
+because background CPU contention inflates the wall-clock time of whatever
+is being measured at that moment. The scikit-fda and R grid ran afterwards,
+in separate processes, at a lower load (1-minute load average roughly
+2.5–3), so the heavier contention window overlapped the fdars measurements.
+Any bias this introduces therefore most likely runs against fdars, not in
+its favor.
 
 ### Numeric agreement gate
 
@@ -913,8 +915,9 @@ for a fresh reproduction run.
 - **Background desktop load was present during part of the fdars re-run**
   (1-minute load average 2.8–15.0 at scheduler-call starts, despite a
   passing quiet-machine check before the run started) — see
-  [Environment](#environment) for the full disclosure. This can only bias
-  fdars' own numbers upward (slower), never in fdars' favor.
+  [Environment](#environment) for the full disclosure. The heavier load
+  overlapped the fdars measurements, so any bias most likely runs against
+  fdars (slower), not in its favor.
 - **Timeouts and orphans are disclosed, not hidden.** 7 heavy
   single-threaded elastic/Karcher chunks did not complete inside the 540s
   bound (4 direct timeouts, 3 inferred from a cheaper sibling in the same
