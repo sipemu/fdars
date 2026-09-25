@@ -110,7 +110,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
   2. A published perf report exists with head-to-head before/after tables, N×M scaling analysis, and full methodology disclosure (likely a README speed story).
   3. The report includes reproduction instructions a reader can follow end-to-end to regenerate the numbers from scratch.
 
-**Plans**: 6/7 plans executed (6 waves)
+**Plans**: 7/7 plans executed (6 waves)
 **Wave 1**
 
 - [x] 116-01-PLAN.md — Tracer: FPCA end-to-end at N=500,M=200 (grid-aligned crosslang_grid bench → scikit-fda/R → gate → CSV → generated headline row) + freeze Phase 113 baseline/env + Phase 114/115 A/B evidence + results/ ignore carve-out
@@ -134,7 +134,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 116-07-PLAN.md — Publish documentation/PERFORMANCE.md + README speed story + benchmarks/README + multimethod patch; clean-clone --check
+- [x] 116-07-PLAN.md — Publish documentation/PERFORMANCE.md + README speed story + benchmarks/README + multimethod patch; clean-clone --check
 
 ### Phase 117: Release Preparation & Verification
 
@@ -157,7 +157,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 | 113. Cross-Language Baseline & Hotspot Ranking | 3/3 | Complete    | 2026-09-23 |
 | 114. Elastic Alignment Optimization | 2/2 | Complete    | 2026-09-23 |
 | 115. SVD/FPCA & Covariance Optimization | 3/3 | Complete    | 2026-09-23 |
-| 116. Cross-Language Re-Run & Published Report | 6/7 | In Progress|  |
+| 116. Cross-Language Re-Run & Published Report | 7/7 | In Progress|  |
 | 117. Release Preparation & Verification | 0/TBD | Not started | - |
 
 ## Coverage

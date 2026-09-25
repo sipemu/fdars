@@ -4,18 +4,18 @@ milestone: v0.47.0
 milestone_name: "Performance: Cross-Language Benchmarks & Optimization Pass"
 current_phase: 116
 current_phase_name: Cross-Language Re-Run & Published Report
-current_plan: 5
+current_plan: 7
 status: executing
-stopped_at: Completed 116-03-PLAN.md
-last_updated: "2026-09-24T20:27:45.451Z"
+stopped_at: Completed 116-07-PLAN.md
+last_updated: "2026-09-25T00:32:13.344Z"
 last_activity: 2026-09-24
 last_activity_desc: Phase 116 execution started
-state_head: 89ecb6a834474173d57332694582a1baec0c92c7
+state_head: f05c0f4263718043fb370a641c914c73cc6bfe14
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 18
-  completed_plans: 15
+  completed_plans: 18
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-19)
 ## Current Position
 
 Phase: 116 (Cross-Language Re-Run & Published Report) — EXECUTING
-Current Plan: 5
+Current Plan: 7
 Total Plans in Phase: 7
 Status: Ready to execute
 Last activity: 2026-09-24 — Phase 116 execution started
@@ -102,6 +102,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | Phase 116 P02 | 15min | 2 tasks | 4 files |
 | Phase 116 P04 | 10min | 2 tasks | 2 files |
 | Phase 116 P03 | 28min | 2 tasks | 2 files |
+| Phase 116 P07 | 55min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -146,6 +147,7 @@ Decisions relevant to current work (v0.47.0):
 - [Phase 116]: 116-02: crosslang_grid.rs expanded to all six overlapping ops (basis_smoothing/depth/functional_boxplot/fpcr/elastic added alongside fpca); collect_rust.py OP_MAP labels them with shared op names (TDD RED/GREEN); functional_boxplot criterion settings raised (sample_size 50, measurement_time 20s) per D-10 noise finding
 - [Phase 116]: 116-04: render_report.py's analysis core + all 13 emitters implemented and fully unit-tested (67 tests); THEORETICAL_COMPLEXITY grounded in actual fdars-core source (depth/functional_boxplot are O(N*M*log N) via StreamingMbd's sorted-reference rank query, not naive O(N^2*M); elastic is O(M^2), N-independent); before-after tables exclude new crosslang_* rows and _THREAD_SCALING_GROUPS; real ab-check shows Phase 115 face_covariance before-cell is FAIL-NOISY under the strict gate (RSD ~5.98%), so headline_eligible is honestly False until a cleaner phase116_ A/B entry lands
 - [Phase 116]: 116-03: 67-chunk resumable scheduler + grid-cell hardening + --full reproduction command implemented; a first-executed chunk's timeout is final (loop continues, inferred-timeout skips cost no budget) while a later chunk's timeout is non-final interrupted (call stops); rerun_log.json not yet created (116-06 does the real re-run)
+- [Phase 116]: Phase 116: headlined face_covariance at the pinned, noise-clean 1.19x (phase116_face_covariance_n200_m30), not the larger but unpinned/noisy 3.45x Phase 115 figure; before/after-vs-Phase-113-baseline tables are documented as a traceability record, not an optimization measurement, since the baseline mixed live re-runs with unpinned mixed-vintage criterion output.
 
 ### Pending Todos
 
@@ -182,8 +184,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-24T20:27:45.420Z
-Stopped at: Completed 116-03-PLAN.md
+Last session: 2026-09-25T00:32:13.313Z
+Stopped at: Completed 116-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
