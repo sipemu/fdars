@@ -32,7 +32,7 @@ Requirements for this milestone. Each maps to exactly one roadmap phase (phases 
 
 ### Release (REL)
 
-- [ ] **REL-01**: Bump 0.46.0 → 0.47.0, write the CHANGELOG (root + crate), and land all whole-crate gates green — `cargo fmt --check`, `clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, `--features serde` build, 28 examples + doctests, `cargo package`, **plus** the pmat quality-gate. The `git tag v0.47.0` → crates.io publish is the deferred operator step.
+- [x] **REL-01**: Bump 0.46.0 → 0.47.0, write the CHANGELOG (root + crate), and land all whole-crate gates green — `cargo fmt --check`, `clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, `--features serde` build, 28 examples + doctests, `cargo package`, **plus** the pmat quality-gate. The `git tag v0.47.0` → crates.io publish is the deferred operator step.
 
 ## Future Requirements
 
@@ -72,7 +72,7 @@ Which phases cover which requirements. Filled during roadmap creation.
 | OPT-02 | Phase 115 | Complete |
 | OPT-03 | Phase 115 | Complete |
 | RPT-01 | Phase 116 | Complete |
-| REL-01 | Phase 117 | Pending |
+| REL-01 | Phase 117 | Complete |
 
 **Coverage:**
 

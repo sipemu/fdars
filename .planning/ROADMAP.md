@@ -26,7 +26,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 - [x] **Phase 114: Elastic Alignment Optimization** - Optimize the anchor O(N²·M²) hot path in `src/alignment/`, numeric-identical, with before/after criterion evidence (completed 2026-09-23)
 - [x] **Phase 115: SVD/FPCA & Covariance Optimization** - Optimize the next-ranked hot paths + the consolidated build-variant / numeric-identity / pmat proof (completed 2026-09-23)
 - [x] **Phase 116: Cross-Language Re-Run & Published Report** - Re-run the full harness post-optimization; publish the before/after perf report + reproduction instructions (completed 2026-09-25)
-- [ ] **Phase 117: Release Preparation & Verification** - Bump 0.46.0 → 0.47.0, CHANGELOG, all whole-crate gates + pmat green (terminal)
+- [x] **Phase 117: Release Preparation & Verification** - Bump 0.46.0 → 0.47.0, CHANGELOG, all whole-crate gates + pmat green (terminal) (completed 2026-09-25)
 
 ## Phase Details
 
@@ -173,7 +173,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 | 114. Elastic Alignment Optimization | 2/2 | Complete    | 2026-09-23 |
 | 115. SVD/FPCA & Covariance Optimization | 3/3 | Complete    | 2026-09-23 |
 | 116. Cross-Language Re-Run & Published Report | 7/7 | Complete    | 2026-09-25 |
-| 117. Release Preparation & Verification | 4/4 | In Progress|  |
+| 117. Release Preparation & Verification | 4/4 | Complete    | 2026-09-25 |
 
 ## Coverage
 
