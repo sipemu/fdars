@@ -556,6 +556,63 @@ class TestRemediationRecord(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# TestMatchRustRec (WR-01 fix: exact n/m match must not substitute wrong size)
+# ---------------------------------------------------------------------------
+
+
+class TestMatchRustRec(unittest.TestCase):
+    def test_exact_match_parsed_from_bench_id(self):
+        records = [
+            {"op": "fpca", "bench": "n100_m50"},
+            {"op": "fpca", "bench": "n500_m200"},
+        ]
+        rec = run_all._match_rust_rec(records, "fpca", 500, 200)
+        self.assertEqual(rec["bench"], "n500_m200")
+
+    def test_no_exact_size_match_returns_empty_dict_not_wrong_size(self):
+        """WR-01 regression: a functional_boxplot-style hardcoded N sweep
+        (unrelated to the caller's n/m) must never be silently substituted
+        for the requested cell."""
+        records = [
+            {"op": "functional_boxplot", "bench": "N/50"},
+            {"op": "functional_boxplot", "bench": "N/1000"},
+        ]
+        rec = run_all._match_rust_rec(records, "functional_boxplot", 500, 200)
+        self.assertEqual(rec, {})
+
+    def test_prefixed_bench_id_parses(self):
+        records = [{"op": "elastic", "bench": "vert_fpca_n100_m50"}]
+        rec = run_all._match_rust_rec(records, "elastic", 100, 50)
+        self.assertEqual(rec["bench"], "vert_fpca_n100_m50")
+
+    def test_wrong_op_never_matches(self):
+        records = [{"op": "depth", "bench": "n100_m50"}]
+        rec = run_all._match_rust_rec(records, "fpca", 100, 50)
+        self.assertEqual(rec, {})
+
+    def test_empty_records_returns_empty_dict(self):
+        self.assertEqual(run_all._match_rust_rec([], "fpca", 100, 50), {})
+
+
+class TestParseBenchNM(unittest.TestCase):
+    def test_clean_n_m_pair(self):
+        self.assertEqual(run_all._parse_bench_n_m("n100_m50"), (100, 50))
+
+    def test_prefixed_n_m_pair(self):
+        self.assertEqual(run_all._parse_bench_n_m("vert_fpca_n100_m50"), (100, 50))
+
+    def test_slash_separated_sweep_param_parses_neither(self):
+        # functional_boxplot's hardcoded "N/50" BenchmarkId: the digit is not
+        # directly adjacent to the "n", so this correctly parses to
+        # (None, None) rather than fabricating an (n, m) pair.
+        self.assertEqual(run_all._parse_bench_n_m("N/50"), (None, None))
+
+    def test_slash_separated_m_only_parses_neither(self):
+        # elastic_align_pair's "m/100" sweep: same reasoning as above.
+        self.assertEqual(run_all._parse_bench_n_m("m/100"), (None, None))
+
+
+# ---------------------------------------------------------------------------
 # TestCellFiles (_reset_cell_files)
 # ---------------------------------------------------------------------------
 

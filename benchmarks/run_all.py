@@ -58,6 +58,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import signal
 import subprocess
 import sys
@@ -631,24 +632,49 @@ def step_run_gate(n: int, m: int, env: dict,
     return True
 
 
+def _parse_bench_n_m(bench: str) -> tuple[int | None, int | None]:
+    """
+    Best-effort parse of n/m out of a criterion bench ID string.
+
+    WR-01 fix (Phase 116 REVIEW): collect_rust.py's record schema is
+    timing-only — it never attaches structured `n`/`m` fields (see
+    `collect_rust.py::collect`), so `r.get("n")`/`r.get("m")` on a rust.json
+    record are always None. This mirrors the bench-ID regex already used by
+    `assemble_comparison.py::_build_rust_rows` for the committed comparison.csv
+    pipeline, so a bench ID like "n100_m50" or "vert_fpca_n100_m50" parses to
+    (100, 50); bench IDs that don't encode both dimensions (e.g.
+    functional_boxplot's "N/50", elastic_align_pair's "m/100") parse to
+    (None, None) and simply never satisfy an exact match below.
+    """
+    bench_lower = bench.lower()
+    m_n = re.search(r"[_/]?n(\d+)", bench_lower)
+    m_m = re.search(r"[_/]?m(\d+)", bench_lower)
+    return (int(m_n.group(1)) if m_n else None,
+            int(m_m.group(1)) if m_m else None)
+
+
 def _match_rust_rec(rust_records: list, op: str, n: int, m: int) -> dict:
     """
     Return the best-matching Rust record for (op, n, m), or {} if none.
 
-    Prefers an exact n/m match (parsed from the record's bench field) so that
-    write_timing_comparison does not associate Python/R timings for one grid cell
-    with Rust timings from a different cell when multiple sizes exist on disk.
-    Falls back to op-only match for single-size runs.
+    WR-01 fix (Phase 116 REVIEW): requires an exact n/m match (parsed from the
+    record's bench field via `_parse_bench_n_m`) so that write_timing_comparison
+    never associates Python/R timings for one grid cell with Rust timings from
+    a different cell. Previously this fell back to "first record whose op
+    matches, regardless of size" whenever no record carried explicit n/m
+    fields (which was every record, since collect_rust.py never sets them) —
+    e.g. a `functional_boxplot` op request at n=500 could silently be matched
+    against the hardcoded N=50 sweep point. Returning {} here (no rust timing
+    for this exact cell) is the fail-safe outcome: the caller already treats a
+    missing rust record as "N/A" rather than fabricating a number.
     """
-    # Prefer exact n/m match (parsed from bench field, e.g. "n100_m50")
-    exact = [
-        r for r in rust_records
-        if r.get("op") == op and r.get("n") == n and r.get("m") == m
-    ]
-    if exact:
-        return exact[0]
-    # Fall back to op-only match (single-size runs or n/m not parsed)
-    return next((r for r in rust_records if r.get("op") == op), {})
+    for r in rust_records:
+        if r.get("op") != op:
+            continue
+        parsed_n, parsed_m = _parse_bench_n_m(r.get("bench", ""))
+        if parsed_n == n and parsed_m == m:
+            return r
+    return {}
 
 
 def write_timing_comparison(n: int, m: int) -> None:
