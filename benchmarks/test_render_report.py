@@ -249,6 +249,26 @@ class TestMissingClassification(unittest.TestCase):
 
     def test_grid_cell_timeout_for_python(self):
         pair = self._pair(source=None, library="python", op="fpca", n=500.0, m=50.0)
+        rerun_log = {"records": [{"kind": "grid_cell", "n": 500, "m": 50, "status": "timeout",
+                                   "ops": ["fpca"]}]}
+        result = r.classify_missing(pair, defined=set(), rerun_log=rerun_log)
+        self.assertEqual(result["status"], "timeout")
+
+    def test_grid_cell_timeout_wrong_op_not_matched(self):
+        """WR-02 regression: a grid_cell timeout record for one op subset
+        must not be attributed to a missing row for a DIFFERENT op at the
+        same (n, m) that the timed-out call never even attempted."""
+        pair = self._pair(source=None, library="python", op="depth", n=500.0, m=50.0)
+        rerun_log = {"records": [{"kind": "grid_cell", "n": 500, "m": 50, "status": "timeout",
+                                   "ops": ["elastic"]}]}
+        result = r.classify_missing(pair, defined=set(), rerun_log=rerun_log)
+        self.assertEqual(result["status"], "not-run")
+
+    def test_grid_cell_timeout_missing_ops_field_matches_any_op(self):
+        """Backward compatibility: an older/minimal grid_cell record with no
+        "ops" field (schema predates Phase 116 Plan 01's ops-subset support)
+        is treated as covering any op, so it still classifies as timeout."""
+        pair = self._pair(source=None, library="python", op="fpca", n=500.0, m=50.0)
         rerun_log = {"records": [{"kind": "grid_cell", "n": 500, "m": 50, "status": "timeout"}]}
         result = r.classify_missing(pair, defined=set(), rerun_log=rerun_log)
         self.assertEqual(result["status"], "timeout")

@@ -546,12 +546,24 @@ def classify_missing(pair: dict, defined: set[str], rerun_log: dict | None) -> d
         return {"status": "not-run", "detail": "no matching rerun-log chunk found"}
 
     n, m = pair.get("n"), pair.get("m")
+    op = pair.get("op")
     for rec in records:
         if (
             rec.get("kind") == "grid_cell"
             and _num_eq(rec.get("n"), n)
             and _num_eq(rec.get("m"), m)
             and rec.get("status") == "timeout"
+            # WR-02 fix (Phase 116 REVIEW): a grid_cell record's "timeout"
+            # only covers the ops it actually attempted (`_record_cell_status`
+            # writes the requested `ops` list onto every record). Without this
+            # check, a missing row for an op that was never even requested at
+            # this (n, m) — e.g. two separate `--grid --op <subset>` calls,
+            # one "ok" for fpca and a later "timeout" for elastic — would be
+            # mislabeled "timeout" for an unrelated op like "depth" that
+            # neither call ever attempted. A record with no "ops" key at all
+            # predates the ops-subset schema and is treated as covering every
+            # op (backward compatible with pre-Phase-116-Plan-01 logs).
+            and (op is None or "ops" not in rec or op in (rec.get("ops") or []))
         ):
             return {"status": "timeout", "detail": f"grid cell n={n}, m={m} timed out"}
     return {"status": "not-run", "detail": "no matching grid_cell timeout found"}
