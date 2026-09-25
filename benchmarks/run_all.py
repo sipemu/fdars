@@ -495,7 +495,8 @@ def step_capture_env(env: dict) -> None:
 
 
 def step_run_gate(n: int, m: int, env: dict,
-                  py_path: pathlib.Path, r_path: pathlib.Path) -> bool:
+                  py_path: pathlib.Path, r_path: pathlib.Path,
+                  ops: list[str] | None = None) -> bool:
     """
     Run the full-op numeric-agreement gate BEFORE recording any timing.
 
@@ -505,6 +506,16 @@ def step_run_gate(n: int, m: int, env: dict,
 
     Returns True if all ops pass. Aborts (sys.exit 1) on gate failure so
     no timing comparison is written (BENCH-05 measure-first invariant).
+
+    CR-01 fix (Phase 116 REVIEW): `ops` names the ops this call actually
+    requested (e.g. from `--grid --op <op>` or the single-op CLI path). A
+    requested op with no record in python.json/r.json is a fail-closed
+    condition — it must NOT be treated the same as an op that was never
+    requested at all. When `ops` is omitted (legacy direct callers, e.g.
+    pre-existing tests), it is inferred as the union of ops actually present
+    in either record set, which preserves prior behavior for full-op calls
+    while still catching a one-sided-missing record for any op that IS
+    present on one side.
     """
     import numpy as np
     sys.path.insert(0, str(_SCRIPT_DIR))
@@ -515,13 +526,26 @@ def step_run_gate(n: int, m: int, env: dict,
     with r_path.open() as f:
         r_records = json.load(f)
 
+    if ops is not None:
+        ops_requested = set(ops)
+    else:
+        ops_requested = {r["op"] for r in py_records} | {r["op"] for r in r_records}
+
     # Step 6a: For FPCA, compare fdars vs Python and fdars vs R
     print("[6a] Agreement gate: fdars FPCA vs Python + R...")
     py_fpca = next((r for r in py_records if r["op"] == "fpca"), None)
     r_fpca = next((r for r in r_records if r["op"] == "fpca"), None)
 
     fpca_passed = True
-    if py_fpca and r_fpca:
+    if "fpca" in ops_requested and not (py_fpca and r_fpca):
+        print(
+            "GATE FAIL: fpca requested but python or r record missing "
+            f"(python={'present' if py_fpca else 'MISSING'}, "
+            f"r={'present' if r_fpca else 'MISSING'})",
+            file=sys.stderr,
+        )
+        fpca_passed = False
+    elif py_fpca and r_fpca:
         fdars_rows = step_fdars_loadings(n=n, m=m, env=env)
         fdars_load = np.array(fdars_rows, dtype=np.float64).T  # (m, ncomp)
 
@@ -572,9 +596,19 @@ def step_run_gate(n: int, m: int, env: dict,
     # disclosed). A Python-vs-R FPCA check here would re-introduce the trapezoidal-
     # vs-Simpson's quadrature divergence we agreed to DISCLOSE, not hard-gate
     # (user-approved 2026-09-23) — so it is intentionally excluded.
+    all_passed_py_r = True
     for op in ["basis_smoothing", "depth", "functional_boxplot", "fpcr", "elastic"]:
         py_rec = py_by_op.get(op)
         r_rec = r_by_op.get(op)
+        if op in ops_requested and not (py_rec and r_rec):
+            print(
+                f"GATE FAIL: {op} requested but python or r record missing "
+                f"(python={'present' if py_rec else 'MISSING'}, "
+                f"r={'present' if r_rec else 'MISSING'})",
+                file=sys.stderr,
+            )
+            all_passed_py_r = False
+            continue
         if py_rec and r_rec:
             # Python acts as reference (library=rust) for the gate comparison
             ref_rec = dict(py_rec)
@@ -582,7 +616,7 @@ def step_run_gate(n: int, m: int, env: dict,
             gate_records.append(ref_rec)
             gate_records.append(r_rec)
 
-    all_passed_py_r = run_gate(gate_records)
+    all_passed_py_r = all_passed_py_r and run_gate(gate_records)
 
     gate_all_passed = fpca_passed and all_passed_py_r
 
@@ -951,7 +985,7 @@ def run_grid(dry_run: bool = False, seed: int = 42,
         print(f"[GRID] Running agreement gate for n={n} m={m}...")
         try:
             gate_passed = step_run_gate(n=n, m=m, env=env,
-                                        py_path=py_path, r_path=r_path)
+                                        py_path=py_path, r_path=r_path, ops=ops)
         except SystemExit:
             # step_run_gate calls sys.exit(1) on failure (fail-closed, D-11,
             # gate.py unchanged) — record gate-fail, then re-raise so the
@@ -1896,7 +1930,8 @@ def main() -> None:
         )
         sys.exit(1)
 
-    step_run_gate(n=args.n, m=args.m, env=env, py_path=py_path, r_path=r_path)
+    step_run_gate(n=args.n, m=args.m, env=env, py_path=py_path, r_path=r_path,
+                  ops=ALL_OPS if op is None else [op])
 
     # Step 8: Write timing comparison (ONLY after gate passes)
     write_timing_comparison(n=args.n, m=args.m)
