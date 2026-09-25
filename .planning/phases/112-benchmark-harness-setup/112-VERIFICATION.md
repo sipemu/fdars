@@ -24,7 +24,7 @@ covered_files:
   - benchmarks/test_gate.py
   - benchmarks/verify_inputs.py
   - fdars-core/benches/depth_benchmarks.rs
-covered_digest: "v1:sha256:15d263776c5d5db4a4b2975872faf0302ee62b7b91a5e217bb2608814f9d1e6e"
+covered_digest: "v1:sha256:0ebe059f2e2da487f35e9225449d11fd50c4061e616a8911c9ed9589b119792c"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
@@ -147,3 +147,7 @@ Both blocking-human gates (Plan 01 Task 4 and Plan 03 Task 4) were explicitly ap
 
 _Verified: 2026-09-22_
 _Verifier: Claude (gsd-verifier)_
+
+## Re-fingerprint 2026-09-25
+
+Covered-file digest recomputed by the v0.47.0 autonomous orchestrator before the milestone audit. Cause of staleness: harness files evolved by design in Phases 113/116 (gate recalibration, crosslang ops, scheduler); full benchmarks pytest suite green (209). No verified truth was invalidated.

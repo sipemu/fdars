@@ -11,7 +11,7 @@ covered_files:
   - .planning/phases/114-elastic-alignment-optimization/114-02-SUMMARY.md
   - fdars-core/src/alignment/mod.rs
   - fdars-core/tests/equivalence_phase114.rs
-covered_digest: "v1:sha256:de79dd127b2e4152db5a9ea457816d8f3024cf4bfa34089f4ea25a0443c26bd1"
+covered_digest: "v1:sha256:1db5fbdd80161f35b6f7e05bde215e3157789f933c120868b0b8bd04a91e7081"
 re_verification:
   reason: "Post-verification code-review applied WR-01: a behavior-neutral debug_assert precondition (nrows>=1 && ncols>=1) on the pub(super) dp_grid_solve_banded (guards the new ncols-1 in the banded arm; unreachable today, defensive). No numeric change — golden fixture still 2/2 green, clippy + fmt clean. Digest recomputed. 3/3 must-haves still hold."
   digest_updated: "2026-09-23"
@@ -111,3 +111,7 @@ The within-noise speedup result is not a failure — it is the honest finding of
 
 _Verified: 2026-09-23T12:30:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Re-fingerprint 2026-09-25
+
+Covered-file digest recomputed by the v0.47.0 autonomous orchestrator before the milestone audit. Cause of staleness: alignment/mod.rs gained the Phase 114 code-review WR-01 debug_assert precondition (2684ab2b) after verification — debug-only, no release-behavior change. No verified truth was invalidated.
