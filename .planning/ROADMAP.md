@@ -147,10 +147,10 @@ The approach is **measure-first**: stand up an external benchmark harness and es
   2. All whole-crate gates are green — `cargo fmt --check`, `clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, `--features serde` build, 28 examples + doctests, `cargo package` — plus the pmat quality-gate.
   3. No tag or publish is performed inside the phase; the `git tag v0.47.0` → crates.io publish is documented as the deferred operator step.
 
-**Plans**: 4 plans (4 waves)
+**Plans**: 1/4 plans executed (4 waves)
 **Wave 1**
 
-- [ ] 117-01-PLAN.md — Tracer: 0.46.0 → 0.47.0 bump + root/crate CHANGELOG `[0.47.0]` (pinned 1.19× only) + install-snippet version bumps + keep pmat caches out of the crate package
+- [x] 117-01-PLAN.md — Tracer: 0.46.0 → 0.47.0 bump + root/crate CHANGELOG `[0.47.0]` (pinned 1.19× only) + install-snippet version bumps + keep pmat caches out of the crate package
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -173,7 +173,7 @@ The approach is **measure-first**: stand up an external benchmark harness and es
 | 114. Elastic Alignment Optimization | 2/2 | Complete    | 2026-09-23 |
 | 115. SVD/FPCA & Covariance Optimization | 3/3 | Complete    | 2026-09-23 |
 | 116. Cross-Language Re-Run & Published Report | 7/7 | Complete    | 2026-09-25 |
-| 117. Release Preparation & Verification | 0/4 | Planned | - |
+| 117. Release Preparation & Verification | 1/4 | In Progress|  |
 
 ## Coverage
 

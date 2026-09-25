@@ -4,19 +4,19 @@ milestone: v0.47.0
 milestone_name: "Performance: Cross-Language Benchmarks & Optimization Pass"
 current_phase: 117
 current_phase_name: Release Preparation & Verification
-current_plan: Not started
+current_plan: 2
 status: executing
-stopped_at: Phase 116 complete, ready to plan Phase 117
-last_updated: "2026-09-25T20:47:45.446Z"
+stopped_at: Completed 117-01-PLAN.md
+last_updated: "2026-09-25T20:52:35.742Z"
 last_activity: 2026-09-25
-last_activity_desc: Phase 116 complete, transitioned to Phase 117
-state_head: 86977d04ca28d349b015ca1a32caab0341ec9ad4
+last_activity_desc: Phase 117 execution started
+state_head: 59cdaa1bf073d0a07d10b04cf679ce01bfc48613
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 4
   total_plans: 22
-  completed_plans: 18
-  percent: 82
+  completed_plans: 19
+  percent: 67
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-09-25)
 
 ## Current Position
 
-Phase: 117 (Release Preparation & Verification) — READY TO EXECUTE
-Current Plan: Not started
+Phase: 117 (Release Preparation & Verification) — EXECUTING
+Current Plan: 2
 Total Plans in Phase: 4
 Status: Ready to execute
-Last activity: 2026-09-25 — Phase 116 complete, transitioned to Phase 117
+Last activity: 2026-09-25 — Phase 117 execution started
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -103,6 +103,7 @@ Six phases (112–117), 12 requirements — a **performance** milestone (NOT a f
 | Phase 116 P04 | 10min | 2 tasks | 2 files |
 | Phase 116 P03 | 28min | 2 tasks | 2 files |
 | Phase 116 P07 | 55min | 2 tasks | 4 files |
+| Phase 117 P01 | 4min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -149,6 +150,7 @@ Decisions relevant to current work (v0.47.0):
 - [Phase 116]: 116-04: render_report.py's analysis core + all 13 emitters implemented and fully unit-tested (67 tests); THEORETICAL_COMPLEXITY grounded in actual fdars-core source (depth/functional_boxplot are O(N*M*log N) via StreamingMbd's sorted-reference rank query, not naive O(N^2*M); elastic is O(M^2), N-independent); before-after tables exclude new crosslang_* rows and _THREAD_SCALING_GROUPS; real ab-check shows Phase 115 face_covariance before-cell is FAIL-NOISY under the strict gate (RSD ~5.98%), so headline_eligible is honestly False until a cleaner phase116_ A/B entry lands
 - [Phase 116]: 116-03: 67-chunk resumable scheduler + grid-cell hardening + --full reproduction command implemented; a first-executed chunk's timeout is final (loop continues, inferred-timeout skips cost no budget) while a later chunk's timeout is non-final interrupted (call stops); rerun_log.json not yet created (116-06 does the real re-run)
 - [Phase 116]: Phase 116: headlined face_covariance at the pinned, noise-clean 1.19x (phase116_face_covariance_n200_m30), not the larger but unpinned/noisy 3.45x Phase 115 figure; before/after-vs-Phase-113-baseline tables are documented as a traceability record, not an optimization measurement, since the baseline mixed live re-runs with unpinned mixed-vintage criterion output.
+- [Phase 117]: REL-01 metadata: fdars-core bumped 0.46.0 -> 0.47.0; root+crate CHANGELOG [0.47.0] entries cite only the pinned 1.19x face_covariance figure (never the unpinned 3.45x); README/docs install snippets refreshed to 0.47; fdars-core/.pmat*/ caches gitignored to keep them out of the crate tarball.
 
 ### Pending Todos
 
@@ -185,8 +187,8 @@ Items acknowledged and deferred, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-25T00:32:13.313Z
-Stopped at: Phase 116 complete, ready to plan Phase 117
+Last session: 2026-09-25T20:52:35.703Z
+Stopped at: Completed 117-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
