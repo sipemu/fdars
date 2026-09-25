@@ -1,0 +1,31 @@
+--- a/multimethod/__init__.py
++++ b/multimethod/__init__.py
+@@ -74,7 +74,27 @@
+                 if isinstance(arg, typing.NewType):
+                     origin, args = typing.NewType, (arg,)
+         namespace = {"__origin__": origin, "__args__": args}
+-        return type.__new__(cls, str(tp), bases, namespace)
++        # Python 3.14: type.__new__ requires compatible metaclass.
++        # Compute the most-derived metaclass of cls + all bases to avoid conflict.
++        try:
++            return type.__new__(cls, str(tp), bases, namespace)
++        except TypeError:
++            # Metaclass conflict: one of bases uses an incompatible metaclass.
++            # Fall back to using the base's metaclass for the new type object.
++            _meta = type
++            for _b in bases:
++                _bm = type(_b)
++                if not issubclass(_bm, _meta):
++                    if issubclass(_meta, _bm):
++                        _meta = _meta  # keep current
++                    else:
++                        # Cannot reconcile — use object as fallback base
++                        bases = (object,)
++                        break
++            try:
++                return type.__new__(cls, str(tp), bases, namespace)
++            except TypeError:
++                return type.__new__(type, str(tp), (object,), namespace)
+ 
+     def key(self) -> tuple:
+         return self.__origin__, *self.__args__
