@@ -743,6 +743,39 @@ The implementation milestone that cleared the entire **differentiable-core** sec
 - Notable: the terminal release phase (100) was verified by the orchestrator directly — every gate run inline in the editing session — as a deliberate context-conservation choice at the milestone tail.
 
 
+## Milestone: v0.47.0 — Performance: Cross-Language Benchmarks & Optimization Pass
+
+**Shipped:** 2026-09-30
+**Phases:** 6 (112–117) | **Plans:** 22
+
+### What Was Built
+An external, reproducible `benchmarks/` harness timing `fdars-core` head-to-head against scikit-fda 0.10.1 and the R FDA ecosystem across six overlapping ops on seeded bit-identical inputs (all `*_NUM_THREADS=1`, fail-closed numeric-agreement gate before any timing); an evidence-ranked hotspot list; numeric-identical optimizations (face_covariance `sym_cov_irreg`; elastic alignment and SVD honestly found near-optimal); a published, generated, `--check`-verifiable `documentation/PERFORMANCE.md` + README speed story with full methodology, disclosures and end-to-end reproduction; and a 0.47.0 release-ready crate (16/16 gates).
+
+### What Worked
+- **Honesty clause as a design constraint.** Stating up front that "near-optimal, no speedup" is a valid outcome let 114/115 report within-noise results instead of forcing risky reassociations — and let 116 publish non-wins plainly.
+- **Controlled pinned A/B before headlining.** Re-measuring the headline win with both sides thread-pinned, `--locked`, sequential, on a quiet machine exposed that the unpinned 3.45× was really **1.19×** single-threaded — caught before it shipped in a README/CHANGELOG.
+- **Resumable, budgeted scheduler for long runs.** The ~3 h re-run was chopped into ≤540 s foreground calls with a persisted run log; interruptions and timeouts were recorded, never lost or silently dropped.
+- **Planner surfacing real conflicts as decisions.** The 117 planner found a live pmat violation and a dirty-package risk (pmat caches) at plan time and routed the src change through an explicit user decision.
+
+### What Was Inefficient
+- **Machine contention.** Other workloads on the box (duckdb, tsc, R tests, desktop indexers) blocked the quiet-machine gate for ~40 min and recurred mid-run; the report had to disclose background load.
+- **Verification fingerprints go stale on every later phase** (REQUIREMENTS.md completions, harness evolution, version bump) — required two manual re-fingerprint passes across 112–117 before the audit.
+- **A Phase 114 complexity regression slipped through** because the Phase 115 proof checked "no new violations" instead of "0 violations" — surfaced only at release time.
+
+### Patterns Established
+- Headline perf claims require a **thread-pinned, lock-pinned, noise-gated A/B** (`render_report.py --ab-check`); unpinned or noise-failing numbers are shown but never headlined.
+- Long cargo/bench work runs **inline** in the orchestrator via a resumable chunk scheduler (`--rust-next --budget-s 540`), never in subagents.
+- Release gates check `cargo package --list` for stray tool caches and run the new bench from the **extracted tarball** (hermetic fallback).
+
+### Key Lessons
+- Gate on **absolute** state (pmat = 0 violations), not deltas ("no new violations") — deltas let regressions accumulate silently.
+- A published number must be reproducible under the report's own methodology; re-measure headline figures under that methodology before publishing.
+- Check machine load before *and during* timing runs; disclose contention rather than hide it.
+
+### Cost Observations
+- Model mix: opus (orchestrator + planners), sonnet (executors/verifiers/reviewers/fixer/pattern-mapper/integration), haiku (plan-checkers).
+- Autonomous run with two user decisions (quiet machine; pmat refactor) plus grey-area and audit approvals; phases 116-05/06 and 117-02..04 executed inline.
+
 ## Milestone: v0.46.0 — Quality Hardening (pmat Complexity Pass & CI Guardrail)
 
 **Shipped:** 2026-09-15
@@ -810,13 +843,16 @@ Replaced the fixed-step MM/soft-DBA descent in `soft_dtw_barycenter` with a hand
 | Milestone | Phases | Plans | Key Change |
 |-----------|--------|-------|------------|
 | v0.14.0 | 9 | 21 | First GSD milestone: tracer-first phases, audit-only scope, milestone-audit gate before archive |
+| v0.47.0 | 6 | 22 | External cross-language harness + resumable inline bench scheduler; pinned A/B required before any headline perf claim |
 
 ### Cumulative Quality
 
 | Milestone | Deliverables | Requirements | Zero-src-edit |
 |-----------|--------------|--------------|---------------|
 | v0.14.0 | AUDIT-REPORT.md + BACKLOG.md | 13/13 satisfied | yes (audit-only) |
+| v0.47.0 | benchmarks/ harness + PERFORMANCE.md + 0.47.0 release | 12/12 satisfied | no (numeric-identical optimizations + 1 pmat refactor) |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. Milestone-level audit catches cross-artifact defects that phase verification misses. *(v0.14.0 — revisit as more milestones ship.)*
+2. Gate on absolute state, not deltas — "no new violations" let a pmat regression ride from Phase 114 to release time. *(v0.47.0)*
