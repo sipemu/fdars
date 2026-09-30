@@ -21,10 +21,10 @@ current_phase: 117
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-25)
+See: .planning/PROJECT.md (updated 2026-09-30)
 
 **Core value:** A comprehensive, *fast* Rust functional-data-analysis library — this milestone produces evidence for the "fast" half (head-to-head vs scikit-fda + R) and improves the worst bottlenecks, behavior-preservingly.
-**Current focus:** Phase 117 — Release Preparation & Verification
+**Current focus:** Planning next milestone (v0.47.0 shipped 2026-09-30; operator tag/publish pending)
 
 ## Current Position
 

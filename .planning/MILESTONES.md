@@ -2,18 +2,19 @@
 
 ## v0.47.0 Performance — Cross-Language Benchmarks & Optimization Pass (Shipped: 2026-09-30)
 
-**Phases completed:** 6 phases, 22 plans, 36 tasks
+**Phases completed:** 6 phases (112–117), 22 plans, 36 tasks
+**Milestone audit:** tech_debt (accepted) — 12/12 requirements satisfied, integration 6/6 wired, 0 blockers (`.planning/milestones/v0.47.0-MILESTONE-AUDIT.md`)
+**Known verification overrides:** 0 newly acknowledged, 3 carried forward from a prior close (see STATE.md Deferred Items)
+
+**Delivered:** The first published cross-language performance evidence for `fdars-core` — a reproducible external harness, an evidence-ranked hotspot list, numeric-identical optimizations, and `documentation/PERFORMANCE.md` + a README speed story — with the crate release-ready at 0.47.0.
 
 **Key accomplishments:**
 
-- FPCA tracer harness: seeded CSV generator -> scikit-fda + direct-SVD R + criterion Rust runners -> sign-aligned agreement gate (all corr > 0.99) -> timing, with thread-pinned env and full metadata in env.json
-- Expanded Python (scikit-fda 0.10.1) and R (fda/roahd/fda.usc/fdasrvf) runners from FPCA-only tracer to all six overlapping ops, and added the missing `bench_functional_boxplot` criterion group to `fdars-core/benches/depth_benchmarks.rs`.
-- Agreement gate recalibrated to Pearson correlation for depth/FPCR (MBD normalization invariance), native R pca.fd timing branch added, and two missing criterion groups populated — all prerequisites for the Wave-2 baseline run.
-- 69 PASS (all rust), 78 FAIL-NOISY (rust), 78 NA (python/r/r_native_pca_fd). NOTE: python/r NA rows counted in excluded because apply_noise_gate treats them as passed, but rank_rows separates them; total noise-excluded = 68 rust FAIL-NOISY rows (from comparison.csv).
-- single nested loop `for tr in 0..nrows { for tc in 0..ncols { if dp_skip_cell(tr, tc, band) { continue; } ... } }` — scanned all m^2 cells and `continue`-skipped ~79% via `dp_skip_cell`.
-- All OPT-03 gates green: 215 release tests pass, 6 determinism-guardrail modules pass, 5 build variants compile, zero new pmat violations, fmt+clippy clean — the entire 114+115 optimization pass is proven numeric-identical and non-breaking.
-- 67-chunk resumable scheduler (rerun_init/run_rust_next/rust_status/rust_requeue) plus grid-cell timeout/error hardening and the single `run_all.py --full` reproduction command, all TDD RED→GREEN with 56 new tests.
-- fdars-core bumped 0.46.0 -> 0.47.0 with honest paired CHANGELOG [0.47.0] entries (pinned 1.19x face_covariance figure only), README/docs install snippets refreshed to 0.47, and pmat's local caches gitignored out of the crate package.
+- **External benchmark harness (Phase 112):** `benchmarks/` (not a Cargo member) times fdars vs scikit-fda 0.10.1 vs R (`fda`/`fda.usc`/`roahd`/`fdasrvf`) on seeded bit-identical CSVs across six ops, all `*_NUM_THREADS=1`, env captured, fail-closed agreement gate before any timing.
+- **Baseline + hotspot ranking (Phase 113):** gate recalibrated (FPCA subspace hard-gated vs R; Pearson for depth/boxplot; FPCR disclosed), committed `comparison.csv` + leverage-ranked `hotspot_ranking.md` confirming elastic alignment as the anchor.
+- **Optimization pass (Phases 114–115):** elastic-alignment banded corridor iteration (numeric-identical; honest within-noise verdict — already near-optimal), `face_covariance` upper-triangle `sym_cov_irreg`, SVD documented near-optimal; OPT-03 proof across release tests, determinism guardrail, 5 build variants, pmat.
+- **Published perf report (Phase 116):** full thread-pinned re-run (resumable 67-chunk scheduler), controlled pinned A/B re-measuring face_covariance at **1.19×** (Phase 115's unpinned 3.45× superseded), generated `documentation/PERFORMANCE.md` + README speed story (single-threaded, fdars faster than scikit-fda and R on all six ops at N=500,M=200) with methodology, disclosures and reproduction.
+- **Release readiness (Phase 117):** 0.46.0 → 0.47.0, paired CHANGELOGs, 16/16 gates (incl. clean non-dirty `cargo package` + hermetic tarball bench run, pmat 0 after a user-approved numeric-identical `dp_fill_grid` decomposition). Tag/publish deferred to operator.
 
 ---
 
