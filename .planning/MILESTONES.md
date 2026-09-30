@@ -1,5 +1,22 @@
 # Milestones
 
+## v0.47.0 Performance — Cross-Language Benchmarks & Optimization Pass (Shipped: 2026-09-30)
+
+**Phases completed:** 6 phases, 22 plans, 36 tasks
+
+**Key accomplishments:**
+
+- FPCA tracer harness: seeded CSV generator -> scikit-fda + direct-SVD R + criterion Rust runners -> sign-aligned agreement gate (all corr > 0.99) -> timing, with thread-pinned env and full metadata in env.json
+- Expanded Python (scikit-fda 0.10.1) and R (fda/roahd/fda.usc/fdasrvf) runners from FPCA-only tracer to all six overlapping ops, and added the missing `bench_functional_boxplot` criterion group to `fdars-core/benches/depth_benchmarks.rs`.
+- Agreement gate recalibrated to Pearson correlation for depth/FPCR (MBD normalization invariance), native R pca.fd timing branch added, and two missing criterion groups populated — all prerequisites for the Wave-2 baseline run.
+- 69 PASS (all rust), 78 FAIL-NOISY (rust), 78 NA (python/r/r_native_pca_fd). NOTE: python/r NA rows counted in excluded because apply_noise_gate treats them as passed, but rank_rows separates them; total noise-excluded = 68 rust FAIL-NOISY rows (from comparison.csv).
+- single nested loop `for tr in 0..nrows { for tc in 0..ncols { if dp_skip_cell(tr, tc, band) { continue; } ... } }` — scanned all m^2 cells and `continue`-skipped ~79% via `dp_skip_cell`.
+- All OPT-03 gates green: 215 release tests pass, 6 determinism-guardrail modules pass, 5 build variants compile, zero new pmat violations, fmt+clippy clean — the entire 114+115 optimization pass is proven numeric-identical and non-breaking.
+- 67-chunk resumable scheduler (rerun_init/run_rust_next/rust_status/rust_requeue) plus grid-cell timeout/error hardening and the single `run_all.py --full` reproduction command, all TDD RED→GREEN with 56 new tests.
+- fdars-core bumped 0.46.0 -> 0.47.0 with honest paired CHANGELOG [0.47.0] entries (pinned 1.19x face_covariance figure only), README/docs install snippets refreshed to 0.47, and pmat's local caches gitignored out of the crate package.
+
+---
+
 ## v0.46.0 Quality Hardening — pmat Complexity Pass & CI Guardrail (Shipped: 2026-09-15)
 
 **Phases completed:** 6 phases, 26 plans, 42 tasks

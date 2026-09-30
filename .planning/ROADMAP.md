@@ -1,206 +1,122 @@
-# Roadmap: fdars v0.47.0 — Performance: Cross-Language Benchmarks & Optimization Pass
+# Roadmap: fdars
 
-**Milestone:** v0.47.0
-**Created:** 2026-09-19
-**Granularity:** fine
-**Phase numbering:** continues from v0.46.0 (…111) → **Phase 112+** (no reset)
+## Milestones
 
-## Overview
+- ✅ **v0.41.0 1.0 API Stabilization Pass** — Phases 81–85 (shipped 2026-09-07)
+- ✅ **v0.42.0 1.0 API Finalization** — Phases 86–89 (shipped 2026-09-08)
+- ✅ **v0.43.0 Test Determinism & Release Hardening** — Phases 90–93 (shipped 2026-09-09)
+- ✅ **v0.44.0 Differentiable Core — Reverse-Mode & Broadened Subset** — Phases 94–100 (shipped 2026-09-12)
+- ✅ **v0.45.0 Soft-DTW Barycenter — Global Optimizer (SDTW-O1)** — Phases 101–105 (shipped 2026-09-13)
+- ✅ **v0.46.0 Quality Hardening — pmat Complexity Pass & CI Guardrail** — Phases 106–111 (shipped 2026-09-15)
+- ✅ **v0.47.0 Performance — Cross-Language Benchmarks & Optimization Pass** — Phases 112–117 (shipped 2026-09-30)
 
-A **performance milestone** (not a feature milestone). The deliverable is *evidence* — head-to-head timings of `fdars-core` vs Python **scikit-fda** and the R FDA ecosystem — plus provably-improved implementations of the worst bottlenecks. It is the runtime complement to the v0.14.0 capability audit.
+## Shipped Milestones
 
-The approach is **measure-first**: stand up an external benchmark harness and establish a fair cross-language baseline (with a mandatory numeric-agreement gate) *before* optimizing anything, then attack the ranked hot paths — elastic alignment O(N²·M²) is the confirmed anchor — proving every optimization numeric-identical via the existing 2942-test suite + before/after criterion, then re-run the harness to publish the gains.
+<details>
+<summary>✅ v0.47.0 Performance — Cross-Language Benchmarks & Optimization Pass (Phases 112–117) — SHIPPED 2026-09-30</summary>
 
-**Hard constraints (honored in every phase):**
+Measure-first performance milestone. Built an external, reproducible `benchmarks/` harness (not a Cargo member) timing `fdars-core` head-to-head against scikit-fda 0.10.1 and the R FDA ecosystem on seeded, bit-identical N×M inputs across six overlapping ops (FPCA, basis smoothing, depth, functional boxplot, FPCR, elastic alignment), with all `*_NUM_THREADS=1` and a fail-closed numeric-agreement gate before any timing. Ranked hotspots, then optimized strictly non-breaking + numeric-identical: elastic-alignment anchor found already near-optimal (honest within-noise verdict), `face_covariance` upper-triangle `sym_cov_irreg` (controlled pinned A/B **1.19×**; the earlier unpinned 3.45× is superseded), SVD near-optimal. Published `documentation/PERFORMANCE.md` + README speed story (single-threaded, fdars faster than scikit-fda and R on all six ops at N=500,M=200), generated and `--check`-verifiable, with full methodology + disclosures and end-to-end reproduction. No new crate dependency. Full detail: [`milestones/v0.47.0-ROADMAP.md`](milestones/v0.47.0-ROADMAP.md); archived phase artifacts: `milestones/v0.47.0-phases/`.
 
-- **No new `fdars-core` crate dependency** — the harness is external (workspace-root `benchmarks/`, NOT a Cargo member); optimizations reuse existing infra (`nalgebra`, `faer` behind `linalg`, `rayon` behind `parallel`, criterion 0.5).
-- **Strictly non-breaking + numeric-identical** — no public API/signature/behavioral change; every optimization proven behavior-identical by the full test suite + before/after criterion + golden-value checks (≤1e-10 / bit-exact). Protects R + WASM bindings + 28 examples.
-- **Measure-first** — a committed before-baseline precedes any optimization.
-- **Fairness controls are table stakes** — thread-pinning (`*_NUM_THREADS=1`) + a numeric-agreement gate before any timing is recorded; full version/BLAS/CPU/env capture.
-- **REL-01 is terminal** — the `git tag v0.47.0` → crates.io publish is the DEFERRED operator step; never tag/publish inside a phase.
+- [x] Phase 112: Benchmark Harness Setup (3/3 plans) — completed 2026-09-22
+- [x] Phase 113: Cross-Language Baseline & Hotspot Ranking (3/3 plans) — completed 2026-09-23
+- [x] Phase 114: Elastic Alignment Optimization (2/2 plans) — completed 2026-09-23
+- [x] Phase 115: SVD/FPCA & Covariance Optimization (3/3 plans) — completed 2026-09-23
+- [x] Phase 116: Cross-Language Re-Run & Published Report (7/7 plans) — completed 2026-09-25
+- [x] Phase 117: Release Preparation & Verification (4/4 plans) — completed 2026-09-25
 
-## Phases
+**Requirements:** 12/12 satisfied (BENCH-01..05, BASE-01/02, OPT-01/02/03, RPT-01, REL-01). Audit: tech_debt (accepted; no blockers, integration 6/6 wired). Crate bumped 0.46.0 → 0.47.0, both CHANGELOGs updated, 16/16 release gates green (fmt, clippy `--all-targets`, 2942 lib + 613 integration + 215 doc tests, serde build, 28 examples, clean `cargo package`, pmat quality-gate = 0 after a user-approved numeric-identical `dp_fill_grid` decomposition, harness pytest + report checks). Release-ready — operator `git tag v0.47.0` → crates.io publish pending.
 
-- [x] **Phase 112: Benchmark Harness Setup** - External `benchmarks/` harness driving Rust/Python/R on matched inputs, with fairness + numeric-agreement gates (completed 2026-09-22)
-- [x] **Phase 113: Cross-Language Baseline & Hotspot Ranking** - Fair baseline across all three ecosystems, merged into `comparison.csv`, plus an evidence-ranked hotspot list (completed 2026-09-23)
-- [x] **Phase 114: Elastic Alignment Optimization** - Optimize the anchor O(N²·M²) hot path in `src/alignment/`, numeric-identical, with before/after criterion evidence (completed 2026-09-23)
-- [x] **Phase 115: SVD/FPCA & Covariance Optimization** - Optimize the next-ranked hot paths + the consolidated build-variant / numeric-identity / pmat proof (completed 2026-09-23)
-- [x] **Phase 116: Cross-Language Re-Run & Published Report** - Re-run the full harness post-optimization; publish the before/after perf report + reproduction instructions (completed 2026-09-25)
-- [x] **Phase 117: Release Preparation & Verification** - Bump 0.46.0 → 0.47.0, CHANGELOG, all whole-crate gates + pmat green (terminal) (completed 2026-09-25)
+</details>
 
-## Phase Details
+<details>
+<summary>✅ v0.46.0 Quality Hardening — pmat Complexity Pass & CI Guardrail (Phases 106–111) — SHIPPED 2026-09-15</summary>
 
-### Phase 112: Benchmark Harness Setup
+Quality/refactor milestone driving the curated `pmat quality-gate --checks complexity,satd,dead-code,duplicates` to **PASS (0 violations)** on `fdars-core` and wiring it into CI as a guardrail. Strictly non-breaking + numeric-identical: ~114 functions decomposed into private helpers (cognitive ≤23 / cyclomatic ≤30), entropy `DataTransformation` patterns factored out, the critical `.unwrap()` and 2 SATD doc-comment false-positives fixed. No public API/signature change, no new crate dependency; full suite (2942 lib + 215 doctests + 28 examples) green throughout. **Gate redefinition (operator decision):** pmat's `entropy` analyzer is stochastic (non-deterministic count across runs) → excluded from the gate; entropy was materially reduced (11–13 → ~2) and left as an advisory metric. Full detail: [`milestones/v0.46.0-ROADMAP.md`](milestones/v0.46.0-ROADMAP.md); archived phase artifacts: `milestones/v0.46.0-phases/`.
 
-**Goal**: A reproducible external harness exists that times fdars, scikit-fda, and the R FDA ecosystem on identical inputs, with fairness controls and a numeric-agreement gate wired in before the first measurement.
-**Depends on**: Nothing (first phase of this milestone; independent of `fdars-core` internals)
-**Requirements**: BENCH-01, BENCH-02, BENCH-03, BENCH-04, BENCH-05
-**Success Criteria** (what must be TRUE):
+- [x] Phase 106: Top-Level Complexity Hotspots (4/4 plans) — completed 2026-09-14
+- [x] Phase 107: SPM Complexity Cluster (4/4 plans) — completed 2026-09-14
+- [x] Phase 108: Entropy Extraction & SATD/Unwrap Cleanup (4/4 plans) — completed 2026-09-14
+- [x] Phase 109: Complexity Tail & Quality-Gate Green (14/14 plans) — completed 2026-09-15
+- [x] Phase 110: pmat CI Guardrail (1/1 plan) — completed 2026-09-15
+- [x] Phase 111: Release Preparation & Verification (1/1 plan) — completed 2026-09-15
 
-  1. Running the orchestration script generates matched curve-set files from a single seeded generator and every ecosystem runner (Rust/Python/R) consumes the identical shared-format (CSV-default) data — verifiable by a spot-check that the three runners load bit-identical inputs.
-  2. The Python runner (scikit-fda 0.10.1, pinned via `requirements.lock`) and the R runner (`fda`/`fda.usc`/`refund`/`fdapace`/`roahd`/`fdasrvf`, pinned via `renv.lock`) each execute the overlapping operation set (FPCA, basis smoothing, functional depth, functional boxplot, FPCR regression, elastic alignment/Karcher mean) and emit structured timing JSON.
-  3. fdars timings are collected from the existing criterion 0.5 harness by parsing `target/criterion/*/estimates.json` into the shared comparison format — with no new dev-dependency and no `cargo-criterion` binary.
-  4. A baseline run pins `OMP/OPENBLAS/MKL/RAYON_NUM_THREADS=1` and captures full version + BLAS-backend + CPU + thread-env metadata into `benchmarks/results/env.json`.
-  5. A numeric-agreement gate verifies each library computes the same result (sign-aligned FPCA correlation > 0.99; 1e-3 depth/regression, 1e-2 elastic warping) and aborts/flags before any timing is recorded on mismatch.
+**Requirements:** 7/7 satisfied (QUAL-01/02/03/04/05, CI-01, REL-01). Audit: passed. Crate bumped 0.45.0 → 0.46.0, both CHANGELOGs updated, whole-crate gates green (fmt, clippy `--all-targets`, 2942 tests + 215 doctests, serde build, 28 examples, `cargo package`) plus the curated `pmat quality-gate` = 0. Release-ready — operator `git tag v0.46.0` → crates.io publish pending.
 
-**Plans**: 3/3 plans executed
+</details>
 
-- [x] 112-01-PLAN.md — FPCA end-to-end tracer: seeded generator + all-three-runner FPCA slice + criterion collect + agreement gate + env.json (BENCH-01..05 thin path)
-- [x] 112-02-PLAN.md — Expand Python + R runners to the full overlapping op set + add functional_boxplot criterion bench (BENCH-02)
-- [x] 112-03-PLAN.md — Expand criterion collector + agreement gate to all ops with per-op tolerances + finalize env capture (BENCH-03/04/05)
+<details>
+<summary>✅ v0.45.0 Soft-DTW Barycenter — Global Optimizer (SDTW-O1) (Phases 101–105) — SHIPPED 2026-09-13</summary>
 
-### Phase 113: Cross-Language Baseline & Hotspot Ranking
+Implementation milestone clearing the last in-core **algorithm-quality** item (`SDTW-O1`) on the 1.0 gap checklist. Replaced the single-init fixed-step MM/soft-DBA descent in `soft_dtw_barycenter` with a hand-rolled in-crate limited-memory **L-BFGS** optimizer (two-loop recursion, m=10 `VecDeque` history, Armijo backtracking line search + safeguards) driven by the exact soft-DTW gradient, wrapped in a **deterministically-seeded multi-restart** loop (pointwise mean + seeded perturbations, lowest-total-cost winner). Exposed via an additive `SoftDtwBarycenterConfig` + `soft_dtw_barycenter_with_config` entry point with the legacy 4-arg `soft_dtw_barycenter` preserved byte-for-byte as a thin non-breaking wrapper. Strictly additive/non-breaking, **no new crate dependency**, wasm32-safe. Full detail: [`milestones/v0.45.0-ROADMAP.md`](milestones/v0.45.0-ROADMAP.md); archived phase artifacts: `milestones/v0.45.0-phases/`.
 
-**Goal**: A fair, honest cross-language baseline is committed and the optimization targets are ranked by evidence — so Phases 114–115 attack the highest-leverage work first.
-**Depends on**: Phase 112 (needs the harness + numeric-agreement gate + env capture to produce a valid baseline)
-**Requirements**: BASE-01, BASE-02
-**Success Criteria** (what must be TRUE):
+- [x] Phase 101: In-Crate L-BFGS Barycenter Optimizer (1/1 plan) — completed 2026-09-13
+- [x] Phase 102: Deterministic Multi-Restart Wrapper (1/1 plan) — completed 2026-09-13
+- [x] Phase 103: `SoftDtwBarycenterConfig` API & Legacy Wrapper (1/1 plan) — completed 2026-09-13
+- [x] Phase 104: Quality Evidence — Escapes-Local-Minimum & f64 Parity (1/1 plan) — completed 2026-09-13
+- [x] Phase 105: Release Preparation & Verification (1/1 plan) — completed 2026-09-13
 
-  1. A cross-language baseline is established across all three ecosystems over an N×M input grid (≥3 sizes, elastic target at N≥100) and merged into a committed `comparison.csv`.
-  2. An evidence-ranked hotspot list exists combining the cross-language results with the criterion suite, ranked by both absolute time and relative-to-baseline leverage.
-  3. The ranking is gated on measurement noise (RSD < 5% / CI < ±5%) so no spurious speedup target is chosen; the elastic-alignment anchor is confirmed and the secondary targets (SVD/FPCA, covariance) are ordered.
+**Requirements:** 5/5 satisfied (SDTW-01/02/03/04, REL-01). Audit: passed; integration INTEGRATED. Whole-crate gates green (fmt, clippy `--all-targets`, 2942 tests, serde build, 215 doctests, 28 examples, `cargo package`). Release-ready — operator `git tag v0.45.0` → crates.io publish pending.
 
-**Plans**: 2/3 plans executed
+</details>
 
-- [x] 113-01-PLAN.md — Recalibrate agreement gate (depth/functional_boxplot/fpcr → Pearson corr) + fpca_native_r R branch + populate missing criterion output (tracer slice)
-- [x] 113-02-PLAN.md — N×M grid baseline run (gate-before-timing) + assemble committed comparison.csv + re-capture env.json
-- [x] 113-03-PLAN.md — Noise-gated leverage ranking + committed hotspot_ranking.md (elastic anchor confirmed, secondary targets ordered) + human fair/honest sign-off
+<details>
+<summary>✅ v0.44.0 Differentiable Core — Reverse-Mode & Broadened Subset (Phases 94–100) — SHIPPED 2026-09-12</summary>
 
-### Phase 114: Elastic Alignment Optimization
+Implementation milestone completing the entire **differentiable-core** section of the 1.0 gap checklist (DIF-F1/F2/F3). Added a hand-written in-crate reverse-mode (VJP) tape (`Var`/Wengert-list, `vjp` entry point) alongside the v0.39.0 forward-mode `Dual`; broadened the differentiable operation set across four families; generalized targeted f64 hot-path signatures over the scalar type via defaulted type params (`T = f64`). Strictly additive/non-breaking, no new crate dependency. Full detail: [`milestones/v0.44.0-ROADMAP.md`](milestones/v0.44.0-ROADMAP.md); archived phase artifacts: `milestones/v0.44.0-phases/`.
 
-**Goal**: The confirmed #1 bottleneck — elastic alignment O(N²·M²) in `src/alignment/` — is measurably faster while producing numerically identical output.
-**Depends on**: Phase 113 (ranking confirms the anchor + provides the committed before-baseline reference)
-**Requirements**: OPT-01
-**Success Criteria** (what must be TRUE):
+- [x] Phase 94: Reverse-Mode Autodiff Core (VJP Tape) (4/4 plans) — completed 2026-09-11
+- [x] Phase 95: Generic Scalar Hot-Path Signatures (3/3 plans) — completed 2026-09-11
+- [x] Phase 96: Differentiable Basis Evaluation & Inner Products (3/3 plans) — completed 2026-09-11
+- [x] Phase 97: Differentiable Regression Prediction & Smoothing Penalties (3/3 plans) — completed 2026-09-11
+- [x] Phase 98: Differentiable Depth & Curve Distances (1/1 plan) — completed 2026-09-11
+- [x] Phase 99: End-to-End Autodiff Flow & Gradient API (1/1 plan) — completed 2026-09-11
+- [x] Phase 100: Release Preparation & Verification (1/1 plan) — completed 2026-09-11
 
-  1. The elastic-alignment hot path in `src/alignment/` is optimized with committed before/after criterion evidence showing a statistically significant speedup on the target cells.
-  2. Output is numeric-identical — the full test suite stays green and a golden-value assertion confirms bit-identical (or ≤1e-10) results before/after.
-  3. The change is strictly non-breaking: no public signature change; the optimization lives in internals that compile under the R binding's default-only feature set (or is gated behind `linalg`/`parallel`).
+**Requirements:** 11/11 satisfied (RAD-01/02/03, DOP-01/02/03/04, GEN-01/02, API-01, REL-01). Audit: passed; integration COMPLETE. Release-ready — operator `git tag v0.44.0` → crates.io publish pending.
 
-**Plans**: 2/2 plans executed
+</details>
 
-- [x] 114-01-PLAN.md — Tracer: commit BEFORE-baseline criterion (`audit_p3_elastic_cross_banded/n500_m50`) + golden-value fixture (`equivalence_phase114.rs`, n=20,m=50, ≤1e-10) locking current elastic self-distance output
-- [x] 114-02-PLAN.md — `dp_fill_grid` band-iteration refactor (numeric-identical) + prove (golden + release + determinism guardrail + five build variants) + committed AFTER criterion with honest before/after verdict
+<details>
+<summary>✅ v0.43.0 Test Determinism & Release Hardening (Phases 90–93) — SHIPPED 2026-09-09</summary>
 
-### Phase 115: SVD/FPCA & Covariance Optimization
+Quality + release-hardening milestone. Root-caused the long-standing `co_cluster`/`svd_sign` golden flake as a **deterministic faer-vs-nalgebra SVD backend divergence** and fixed it with a least-invasive test-side `#[cfg_attr(not(feature = "linalg"), ignore)]` guard. A suite-wide robustness audit found zero further fragile tests; a new `determinism-guardrail` CI job locks the green baseline. Cleared the **Quality** blocker on the 1.0 gap checklist. Full detail: [`milestones/v0.43.0-ROADMAP.md`](milestones/v0.43.0-ROADMAP.md); archived phase artifacts: `milestones/v0.43.0-phases/`.
 
-**Goal**: The next-ranked hot paths (SVD/FPCA + covariance surface) are optimized with the same numeric-identity proof, and the milestone's cross-cutting build-variant / determinism / pmat guarantees are consolidated and proven green across all optimization work.
-**Depends on**: Phase 113 (ranking selects the targets); Phase 114 (shares the measure→optimize→prove pipeline and the accumulated non-breaking proof)
-**Requirements**: OPT-02, OPT-03
-**Success Criteria** (what must be TRUE):
+- [x] Phase 90: Golden-Flake Root-Cause & Deterministic Fix (1/1 plan) — completed 2026-09-09
+- [x] Phase 91: Suite-Wide Robustness Sweep (1/1 plan) — completed 2026-09-09
+- [x] Phase 92: CI Determinism Guardrail (1/1 plan) — completed 2026-09-09
+- [x] Phase 93: Release Preparation & Readiness Verification (1/1 plan) — completed 2026-09-09
 
-  1. The next-ranked hot paths (SVD/FPCA and covariance surface, conditional on the Phase 113 ranking) are optimized with committed before/after criterion evidence.
-  2. Every optimization commit preserves numeric identity — `cargo test --release --features linalg` is green and the determinism guardrail is green.
-  3. All five build variants (default / `linalg` / `serde` / `linalg,serde,parallel` / WASM) compile after the optimizations, and the pmat quality-gate stays green (no new complexity/entropy/SATD/defect violations from decomposition helpers).
+**Requirements:** 7/7 satisfied (FLAKE-01/02, ROBUST-01/02, CI-01, REL-01/02). Audit: passed. Release-ready — operator `git tag v0.43.0` → crates.io publish pending.
 
-**Plans**: 3/3 plans executed
+</details>
 
-- [x] 115-01-PLAN.md — Capture committed BEFORE-baseline criterion (perf_face_covariance/n200_m30) + golden-value face_covariance fixture (tracer, un-optimized code)
-- [x] 115-02-PLAN.md — sym_cov_irreg upper-triangle+mirror optimization (numeric-identical) + AFTER criterion (~2x) + SVD re-benchmark/near-optimal verdict
-- [x] 115-03-PLAN.md — OPT-03 consolidated proof battery (release test + determinism guardrail + 5 builds + pmat gate + fmt/clippy), committed
+<details>
+<summary>✅ v0.42.0 1.0 API Finalization (Phases 86–89) — SHIPPED 2026-09-08</summary>
 
-### Phase 116: Cross-Language Re-Run & Published Report
+The second breaking milestone — clears the entire **API section** of the 1.0 gap checklist: sealed `wire` `pub(crate)`, `#[non_exhaustive]` on 38 config structs + the construction-idiom change, and the full `_1d`/`_2d` → `Dim`-dispatch naming unification. API-shape-only — no numeric/behavioral change. Full detail: [`milestones/v0.42.0-ROADMAP.md`](milestones/v0.42.0-ROADMAP.md); archived phase artifacts: `milestones/v0.42.0-phases/`.
 
-**Goal**: The optimization gains are shown to be visible across all three ecosystems and turned into the milestone's proof artifact — a published head-to-head perf report a reader can reproduce.
-**Depends on**: Phases 114 and 115 (report the post-optimization numbers)
-**Requirements**: RPT-01
-**Success Criteria** (what must be TRUE):
+- [x] Phase 86: Surface Sealing (1/1 plan) — completed 2026-09-08
+- [x] Phase 87: Targeted Renames (1/1 plan) — completed 2026-09-08
+- [x] Phase 88: Large Suffix Batch (1/1 plan) — completed 2026-09-08
+- [x] Phase 89: Release Preparation & Verification (1/1 plan) — completed 2026-09-08
 
-  1. The full cross-language harness is re-run post-optimization and `comparison.csv` is updated with after-optimization numbers.
-  2. A published perf report exists with head-to-head before/after tables, N×M scaling analysis, and full methodology disclosure (likely a README speed story).
-  3. The report includes reproduction instructions a reader can follow end-to-end to regenerate the numbers from scratch.
+**Requirements:** 9/9 satisfied (SEAL-01/02/03, NAME-01/02/03/04/05, REL-01). Audit: passed. Release-ready — operator `git tag v0.42.0` → crates.io publish pending.
 
-**Plans**: 7/7 plans executed (6 waves)
-**Wave 1**
+</details>
 
-- [x] 116-01-PLAN.md — Tracer: FPCA end-to-end at N=500,M=200 (grid-aligned crosslang_grid bench → scikit-fda/R → gate → CSV → generated headline row) + freeze Phase 113 baseline/env + Phase 114/115 A/B evidence + results/ ignore carve-out
+<details>
+<summary>✅ v0.41.0 1.0 API Stabilization Pass (Phases 81–85) — SHIPPED 2026-09-07</summary>
 
-**Wave 2** *(blocked on Wave 1 completion)*
+First breaking milestone after a long additive-only run. Audit → user-approved breaking-change inventory → per-category cleanups → stability deliverables → release prep. Full detail: [`milestones/v0.41.0-ROADMAP.md`](milestones/v0.41.0-ROADMAP.md); archived phase artifacts: `milestones/v0.41.0-phases/`.
 
-- [x] 116-02-PLAN.md — crosslang_grid bench expanded to all six ops (Python/R-matched params, shared CSVs) + OP_MAP labels + functional_boxplot noise-settings bump
-- [x] 116-04-PLAN.md — render_report.py: 13 generated blocks (head-to-head, A/B, before/after incl. fdars-internal, not-rerun, N×M scaling vs theory, methodology) + --check/--check-prose/--noise-report/--ab-check (+ tests)
+- [x] Phase 81: API Audit & Deprecated-Form Removal (2/2 plans) — completed 2026-09-07
+- [x] Phase 82: Public-Surface Sealing & Non-Exhaustive Coverage (2/2 plans) — completed 2026-09-07
+- [x] Phase 83: Naming Unification (3/3 plans) — completed 2026-09-07
+- [x] Phase 84: Stability Deliverables (1/1 plan) — completed 2026-09-07
+- [x] Phase 85: Release Preparation & Verification (1/1 plan) — completed 2026-09-07
 
-**Wave 3** *(blocked on Wave 2 completion)*
+**Requirements:** 9/9 satisfied (AUDIT-01, API-01/02/03/04, STAB-01/02/03, REL-01). Audit: passed, integration INTEGRATED.
 
-- [x] 116-03-PLAN.md — run_all.py full-run plumbing: 67-chunk resumable budgeted scheduler + run log, per-cell timeouts, prebuild, footprint, single `--full` command (+ tests)
+</details>
 
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 116-05-PLAN.md — Controlled thread-pinned A/B re-confirmation of the face_covariance headline (pre-OPT-02 vs HEAD worktrees, noise-gated, bounded bumps) [INLINE]
-
-**Wave 5** *(blocked on Wave 4 completion)*
-
-- [x] 116-06-PLAN.md — Full 3-ecosystem re-run (fdars 67 chunks + 6-cell scikit-fda/R grid, gate before timing), headline noise remediation, commit after-data comparison.csv [INLINE, ~3-4.5 h]
-
-**Wave 6** *(blocked on Wave 5 completion)*
-
-- [x] 116-07-PLAN.md — Publish documentation/PERFORMANCE.md + README speed story + benchmarks/README + multimethod patch; clean-clone --check
-
-### Phase 117: Release Preparation & Verification
-
-**Goal**: The crate is release-ready at 0.47.0 with every whole-crate gate green; the tag/publish is left as the deferred operator step.
-**Depends on**: All prior phases (bump/CHANGELOG/gates are the final proof)
-**Requirements**: REL-01
-**Success Criteria** (what must be TRUE):
-
-  1. The crate version is bumped 0.46.0 → 0.47.0 and the CHANGELOG is written at both root and crate level.
-  2. All whole-crate gates are green — `cargo fmt --check`, `clippy --all-targets --features linalg,parallel -- -D warnings`, full `cargo test`, `--features serde` build, 28 examples + doctests, `cargo package` — plus the pmat quality-gate.
-  3. No tag or publish is performed inside the phase; the `git tag v0.47.0` → crates.io publish is documented as the deferred operator step.
-
-**Plans**: 4/4 plans executed (4 waves)
-**Wave 1**
-
-- [x] 117-01-PLAN.md — Tracer: 0.46.0 → 0.47.0 bump + root/crate CHANGELOG `[0.47.0]` (pinned 1.19× only) + install-snippet version bumps + keep pmat caches out of the crate package
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 117-02-PLAN.md — Clear the live pmat violation (`dp_fill_grid` cognitive complexity 37): blocking user decision (numeric-identical refactor vs recorded deviation) [INLINE, checkpoint]
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 117-03-PLAN.md — Cargo gates: fmt, clippy --all-targets, serde build, 28 examples, full test suite (lib / integration / doc, golden-flake isolation) → gate log [INLINE]
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 117-04-PLAN.md — `cargo package` (clean list, crosslang_grid from tarball via fallback), pmat gate, harness pytest + render checks, no-tag assertions, documented operator step, REL-01 verdict [INLINE]
-
-## Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 112. Benchmark Harness Setup | 3/3 | Complete    | 2026-09-22 |
-| 113. Cross-Language Baseline & Hotspot Ranking | 3/3 | Complete    | 2026-09-23 |
-| 114. Elastic Alignment Optimization | 2/2 | Complete    | 2026-09-23 |
-| 115. SVD/FPCA & Covariance Optimization | 3/3 | Complete    | 2026-09-23 |
-| 116. Cross-Language Re-Run & Published Report | 7/7 | Complete    | 2026-09-25 |
-| 117. Release Preparation & Verification | 4/4 | Complete    | 2026-09-25 |
-
-## Coverage
-
-**v0.47.0 requirements:** 12 total → 12 mapped (100%), 0 orphaned, 0 duplicated.
-
-| Requirement | Phase |
-|-------------|-------|
-| BENCH-01 | Phase 112 |
-| BENCH-02 | Phase 112 |
-| BENCH-03 | Phase 112 |
-| BENCH-04 | Phase 112 |
-| BENCH-05 | Phase 112 |
-| BASE-01 | Phase 113 |
-| BASE-02 | Phase 113 |
-| OPT-01 | Phase 114 |
-| OPT-02 | Phase 115 |
-| OPT-03 | Phase 115 |
-| RPT-01 | Phase 116 |
-| REL-01 | Phase 117 |
-
-## Execution Order
-
-Strictly sequential by dependency: **112 → 113 → 114 → 115 → 116 → 117.**
-
-- Harness (112) + baseline (113) must precede optimization (114–115) — you cannot rank or prove speedups without the measurement infrastructure and a committed baseline.
-- The two optimization phases both draw on the Phase 113 ranking; elastic alignment (114) goes first (most evidence, clean cross-language equivalent), SVD/FPCA + covariance (115) follows and carries the consolidated build-variant/determinism/pmat proof (OPT-03).
-- Report (116) after all optimization; release (117) terminal.
-
----
-*Roadmap created: 2026-09-19*
+**Shipped:** v0.14.0 → v0.47.0 (see the Milestones list above and the `milestones/` archives).

@@ -8,7 +8,9 @@ fdars is a mature Rust functional-data-analysis (FDA) library (crate `fdars-core
 
 A comprehensive, fast Rust functional-data-analysis library that closes the highest-leverage capability and performance gaps against scikit-fda — driven by the evidence-backed v0.14.0 audit backlog, top items first.
 
-## Current Milestone: v0.47.0 Performance — Cross-Language Benchmarks & Optimization Pass
+## Prior Milestone: v0.47.0 Performance — Cross-Language Benchmarks & Optimization Pass — SHIPPED 2026-09-30
+
+**Outcome:** Audit tech_debt (accepted) — 12/12 requirements, 6/6 phases verified, integration 6/6 wired. External `benchmarks/` harness (fdars vs scikit-fda 0.10.1 vs R, 6 ops, thread-pinned, fail-closed agreement gate) → evidence-ranked hotspots → numeric-identical optimization (face_covariance `sym_cov_irreg`, controlled pinned A/B **1.19×**; elastic alignment + SVD honestly near-optimal) → published `documentation/PERFORMANCE.md` + README speed story (single-threaded, fdars faster than both ecosystems on all six ops at N=500,M=200) → 0.47.0 release-ready (16/16 gates incl. pmat 0 after a user-approved `dp_fill_grid` decomposition). No new crate dependency. Tag/publish deferred to operator.
 
 **Goal:** Prove where `fdars-core` stands on speed against scikit-fda (Python) and the R FDA ecosystem, then optimize the worst bottlenecks that surfaces — behavior- and numeric-preserving, with the elastic-alignment O(N²·M²) path as the anchor target. First implementation milestone after the 1.0-checklist work; serves the "fast" half of the core value with published evidence.
 
@@ -76,11 +78,13 @@ A comprehensive, fast Rust functional-data-analysis library that closes the high
 
 ## Current State
 
-**Last shipped: v0.45.0 Soft-DTW Barycenter — Global Optimizer (SDTW-O1) — code-complete 2026-09-13** (5 phases 101–105, 5 plans; milestone audit PASSED 5/5 requirements, integration INTEGRATED — full call chain wired, re-export chains compile-verified, non-breaking parity incl. NaN). Replaced the fixed-step MM/soft-DBA descent in `soft_dtw_barycenter` with a hand-rolled in-crate L-BFGS optimizer (two-loop recursion, Armijo backtracking) on the exact soft-DTW gradient (SDTW-01); deterministically-seeded multi-restart wrapper with lowest-total-cost selection (SDTW-02); `SoftDtwBarycenterConfig` + `soft_dtw_barycenter_with_config`, legacy 4-arg fn preserved byte-for-byte as a thin wrapper delegating to the shared driver (SDTW-03); deterministic evidence that multi-restart escapes a bimodal MM stall (equal-budget control confirms restart diversity, not compute, drives the gain) + legacy bounded-f64 behavior (SDTW-04). Strictly additive/non-breaking, no new crate dependency, wasm32-safe. **Cleared the algorithm blocker (SDTW-O1)** on `documentation/ROADMAP-TO-1.0.md`. With the **API** (v0.42.0), **Quality** (v0.43.0), **differentiable-core** (v0.44.0), and now **algorithm (SDTW-O1)** items all cleared on the 1.0 checklist, the only remaining 1.0 blockers are the `fdars-r` ecosystem migration (**fdars-j75**) and the terminal **1.0-CUT**.
+**Last shipped: v0.47.0 Performance — Cross-Language Benchmarks & Optimization Pass — 2026-09-30** (6 phases 112–117, 22 plans; audit tech_debt accepted, 12/12 requirements). `fdars-core` is at **0.47.0**, release-ready (16/16 gates green). First published cross-language performance evidence: `documentation/PERFORMANCE.md` + README speed story, reproducible via `benchmarks/run_all.py --full` + `render_report.py`.
 
-**Active milestone: v0.46.0 Quality Hardening — pmat Complexity Pass & CI Guardrail** (started 2026-09-13). An extra quality cycle before the 1.0 items: drive `pmat quality-gate` to PASS on `fdars-core` (120 complexity + 11 entropy + 2 SATD violations → 0, plus the 1 critical `.unwrap()`), behavior-preservingly (all tests/doctests/examples green), and wire a pmat CI guardrail. `fdars-core` only, no new crate dependency, phases 106+. See the **Current Milestone** section above.
+**Operator ship step remaining:** `git push origin main` → `git tag v0.47.0` → `git push origin v0.47.0` → `release.yml` publishes to crates.io. **0.47.0 supersedes the unpublished 0.45.0/0.46.0** — the registry is at 0.40.0/0.42.0/0.44.0. The README/GETTING-STARTED `"0.47"` install snippets resolve only after this publish.
 
-**Operator ship step remaining:** `git push origin main` → `git tag v0.45.0` → `git push origin v0.45.0` → `release.yml` publishes to crates.io. **0.45.0 supersedes the unpublished 0.41.0/0.43.0** — the registry is at 0.40.0/0.42.0/0.44.0, so this single publish catches everything up. This milestone prepared + verified release-readiness only (all gates green incl. `cargo package`). NOTE: GSD auto-tag (`git.create_tag`) is disabled for this repo because `release.yml` couples tag-push to an automatic crates.io publish — tag deliberately, on a disk-healthy machine after a clean full `cargo test` (already green).
+**Remaining 1.0-checklist items:** `fdars-j75` (R ecosystem) and the terminal 1.0-CUT.
+
+**Known tech debt (v0.47.0 audit):** Nyquist VALIDATION.md for phases 112–115 left at draft; pre-existing 115 WR-01 (orphaned `#[must_use]`/doc block on `fill_diag_blocks`); `dp_grid_solve_banded` square-grid precondition only implicitly assumed (117 IN-01); 7 heavy single-threaded elastic benchmark cells > 540 s (reported as not run).
 
 ## Prior Milestone: v0.42.0 1.0 API Finalization — SHIPPED 2026-09-08
 
@@ -622,6 +626,8 @@ Promoted **GAP-08** — the last v0.31.0 `GAP-BACKLOG.md` item (now exhausted). 
 - `fdars-core` crate itself remains at v0.14.0 — the audit made no code changes.
 
 ## Next Milestone Goals
+
+**After v0.47.0 (2026-09-30):** no milestone active. Candidates: publish 0.47.0 (operator); the R-ecosystem item `fdars-j75`; the terminal 1.0-CUT; optionally a perf follow-up targeting the single-threaded elastic cells that exceed 540 s or multi-threaded (rayon) scaling tables (deferred from Phase 116). Start with `/gsd-new-milestone`.
 
 v0.31.0 (in progress) is a **Multi-Ecosystem Gap Audit** — the next-yardstick audit now that both prior parity backlogs (scikit-fda + core R) are exhausted. Four parallel surveys (MATLAB FDA, Julia FDA, tidyfun/refund, Python-beyond-scikit-fda) feed one consolidated gap report + a prioritized, de-duplicated, GSD-ready `GAP-BACKLOG.md`. Audit-only — zero `fdars-core` code changes, no git tag. Phases 52+. After v0.31.0, the following milestone will most likely draw top items from `GAP-BACKLOG.md`, or pursue crate-release-hardening / 1.0-readiness — to be decided via `/gsd-new-milestone`.
 

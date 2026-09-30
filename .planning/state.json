@@ -26,18 +26,18 @@
     {
       "number": "116",
       "name": "Cross-Language Re-Run & Published Report",
-      "status": "in_progress"
+      "status": "complete"
     },
     {
       "number": "117",
       "name": "Release Preparation & Verification",
-      "status": "pending"
+      "status": "complete"
     }
   ],
   "next": {
-    "command": "/gsd:progress --next",
-    "label": "Advance to the next step",
-    "reason": "Phase 116 of 6 · 0% · executing"
+    "command": "/gsd:progress",
+    "label": "Show progress",
+    "reason": "Unsure of state — showing progress"
   },
-  "updated_at": "2026-09-25T00:31:46.112Z"
+  "updated_at": "2026-09-30T06:53:32.016Z"
 }
