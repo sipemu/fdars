@@ -5,6 +5,7 @@
 
 use crate::autodiff::Scalar;
 use crate::dim::Dim;
+use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use rand::prelude::*;
@@ -14,6 +15,7 @@ use rand_distr::Normal;
 use rayon::iter::ParallelIterator;
 use std::collections::VecDeque;
 
+use super::window::DtwWindow;
 use super::{cross_distance_matrix, self_distance_matrix};
 
 /// Result of the Soft-DTW barycenter computation.
@@ -1018,6 +1020,274 @@ pub fn soft_dtw_barycenter_with_config(
         config.n_restarts,
         config.seed,
     )
+}
+
+// ---------------------------------------------------------------------------
+// Windowed soft-DTW + expected alignment matrix
+// ---------------------------------------------------------------------------
+
+/// Soft-DTW value plus the expected alignment matrix, returned by
+/// [`soft_dtw_alignment`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct SoftDtwAlignment {
+    /// The soft-DTW value (same as [`soft_dtw_distance`] for an unconstrained
+    /// window).
+    pub value: f64,
+    /// `n × m` expected alignment matrix `E` (tslearn's `soft_dtw_alignment`).
+    ///
+    /// `alignment[(i, j)]` is the expected path-membership weight of cell
+    /// `(i, j)` under the Gibbs distribution over alignment paths. The corners
+    /// `(0, 0)` and `(n − 1, m − 1)` are `1`; rows do **not** sum to 1. As
+    /// `gamma → 0` it tends to the 0/1 indicator of the hard DTW path. Its
+    /// contraction `Σ_j E[k][j] · 2 (x_k − y_j)` is `∂value/∂x_k`. Cells
+    /// excluded by the window are exactly `0`.
+    pub alignment: FdMatrix,
+}
+
+/// Validate the shared inputs of the windowed soft-DTW entry points.
+fn validate_sdtw_inputs(x: &[f64], y: &[f64], gamma: f64) -> Result<(), FdarError> {
+    if x.is_empty() || y.is_empty() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x/y",
+            expected: "non-empty series".to_string(),
+            actual: format!("lengths {} and {}", x.len(), y.len()),
+        });
+    }
+    if !(gamma.is_finite() && gamma > 0.0) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "gamma",
+            message: format!("must be finite and > 0, got {gamma}"),
+        });
+    }
+    Ok(())
+}
+
+fn sdtw_no_path_error(operation: &'static str) -> FdarError {
+    FdarError::ComputationFailed {
+        operation,
+        detail: "no admissible warping path under the window".to_string(),
+    }
+}
+
+/// Fill one soft-DTW forward row over the admissible 0-based columns `[lo, hi)`.
+///
+/// Cells outside the range must already hold `+inf`. Same per-cell expression
+/// as [`soft_dtw_forward`].
+#[inline]
+fn sdtw_fill_row(
+    prev: &[f64],
+    curr: &mut [f64],
+    xi: f64,
+    y: &[f64],
+    (lo, hi): (usize, usize),
+    gamma: f64,
+) {
+    for j in (lo + 1)..=hi {
+        let d = xi - y[j - 1];
+        let cost = d * d;
+        curr[j] = cost + softmin3(prev[j], curr[j - 1], prev[j - 1], gamma);
+    }
+}
+
+/// Full masked forward pass: (n+1) x (m+1) R table, masked cells `+inf`.
+fn soft_dtw_forward_masked(
+    x: &[f64],
+    y: &[f64],
+    gamma: f64,
+    bounds: &[(usize, usize)],
+) -> Vec<Vec<f64>> {
+    let n = x.len();
+    let m = y.len();
+    let mut r = vec![vec![f64::INFINITY; m + 1]; n + 1];
+    r[0][0] = 0.0;
+    for i in 1..=n {
+        let (before, after) = r.split_at_mut(i);
+        sdtw_fill_row(
+            &before[i - 1],
+            &mut after[0],
+            x[i - 1],
+            y,
+            bounds[i - 1],
+            gamma,
+        );
+    }
+    r
+}
+
+/// O(m)-memory masked soft-DTW value.
+fn soft_dtw_value_masked(x: &[f64], y: &[f64], gamma: f64, bounds: &[(usize, usize)]) -> f64 {
+    let m = y.len();
+    let mut prev = vec![f64::INFINITY; m + 1];
+    let mut curr = vec![f64::INFINITY; m + 1];
+    prev[0] = 0.0;
+    for (i, &b) in bounds.iter().enumerate() {
+        curr.fill(f64::INFINITY);
+        sdtw_fill_row(&prev, &mut curr, x[i], y, b, gamma);
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[m]
+}
+
+/// Whether 1-based cell (a, b) takes part in the masked backward pass: inside
+/// the grid, inside its row's window, and with a finite forward value.
+#[inline]
+fn sdtw_cell_active(r: &[Vec<f64>], bounds: &[(usize, usize)], a: usize, b: usize) -> bool {
+    let n = bounds.len();
+    if a == 0 || b == 0 || a > n {
+        return false;
+    }
+    let (lo, hi) = bounds[a - 1];
+    b > lo && b <= hi && r[a][b].is_finite()
+}
+
+/// Masked analogue of [`sdtw_backward_cell`]: inactive neighbours contribute
+/// exactly `0.0` (never evaluated, so `inf − inf` cannot produce `NaN`).
+#[inline]
+fn sdtw_backward_cell_masked(
+    e: &[Vec<f64>],
+    r: &[Vec<f64>],
+    bounds: &[(usize, usize)],
+    i: usize,
+    j: usize,
+    gamma: f64,
+) -> f64 {
+    let contrib = |a: usize, b: usize| {
+        if sdtw_cell_active(r, bounds, a, b) {
+            sdtw_backward_contrib(r[i][j], r[a][b], e[a][b], r, a, b, gamma)
+        } else {
+            0.0
+        }
+    };
+    let a = contrib(i + 1, j);
+    let b = contrib(i, j + 1);
+    let c = contrib(i + 1, j + 1);
+    a + b + c
+}
+
+/// Masked backward pass: (n+2) x (m+2) E table; inactive cells stay `0.0`.
+fn soft_dtw_backward_masked(
+    n: usize,
+    m: usize,
+    r: &[Vec<f64>],
+    gamma: f64,
+    bounds: &[(usize, usize)],
+) -> Vec<Vec<f64>> {
+    let mut e = vec![vec![0.0; m + 2]; n + 2];
+    e[n][m] = 1.0;
+    for i in (1..=n).rev() {
+        for j in (1..=m).rev() {
+            if (i == n && j == m) || !sdtw_cell_active(r, bounds, i, j) {
+                continue;
+            }
+            e[i][j] = sdtw_backward_cell_masked(&e, r, bounds, i, j, gamma);
+        }
+    }
+    e
+}
+
+/// Soft-DTW value under a tslearn-compatible global window, O(m) memory.
+///
+/// Masked cells act as `+inf` cost, so the soft-minimum runs only over
+/// admissible alignment paths. [`DtwWindow::None`] delegates to
+/// [`soft_dtw_distance`].
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `x` or `y` is empty.
+/// - [`FdarError::InvalidParameter`] if `gamma` is not finite and `> 0`, or the
+///   window is invalid / unfeasible.
+/// - [`FdarError::ComputationFailed`] if no admissible path reaches the end cell.
+///
+/// # Examples
+/// ```
+/// use fdars_core::{soft_dtw_distance, soft_dtw_distance_windowed, DtwWindow};
+/// let x = [0.1, 0.4, 0.9, 1.2, 0.7];
+/// let y = [0.2, 0.3, 1.0, 1.1, 0.6];
+/// let free = soft_dtw_distance_windowed(&x, &y, 1.0, DtwWindow::None).unwrap();
+/// assert_eq!(free, soft_dtw_distance(&x, &y, 1.0));
+/// let banded =
+///     soft_dtw_distance_windowed(&x, &y, 1.0, DtwWindow::SakoeChiba { radius: 1 }).unwrap();
+/// assert!(banded >= free);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn soft_dtw_distance_windowed(
+    x: &[f64],
+    y: &[f64],
+    gamma: f64,
+    window: DtwWindow,
+) -> Result<f64, FdarError> {
+    validate_sdtw_inputs(x, y, gamma)?;
+    if window == DtwWindow::None {
+        return Ok(soft_dtw_distance(x, y, gamma));
+    }
+    let bounds = window.row_bounds(x.len(), y.len())?;
+    let value = soft_dtw_value_masked(x, y, gamma, &bounds);
+    if value.is_finite() {
+        Ok(value)
+    } else {
+        Err(sdtw_no_path_error("soft_dtw_distance_windowed"))
+    }
+}
+
+/// Soft-DTW value plus the `n × m` expected alignment matrix (tslearn's
+/// `soft_dtw_alignment`), with an optional global window.
+///
+/// Runs the full forward and backward passes (O(n·m) memory). With
+/// [`DtwWindow::None`] it uses exactly the forward/backward passes behind the
+/// soft-DTW barycenter gradient; with a window, masked cells are `+inf` in the
+/// forward pass and receive exactly zero alignment weight in the backward pass.
+/// See [`SoftDtwAlignment`] for the semantics of the matrix.
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `x` or `y` is empty.
+/// - [`FdarError::InvalidParameter`] if `gamma` is not finite and `> 0`, or the
+///   window is invalid / unfeasible.
+/// - [`FdarError::ComputationFailed`] if no admissible path reaches the end cell.
+///
+/// # Examples
+/// ```
+/// use fdars_core::{soft_dtw_alignment, DtwWindow};
+/// let res = soft_dtw_alignment(&[1., 2., 2., 3.], &[1., 2., 3., 4.], 1.0, DtwWindow::None)
+///     .unwrap();
+/// assert!(res.value < -0.89);
+/// assert!((res.alignment[(0, 0)] - 1.0).abs() < 1e-12);
+/// assert_eq!(res.alignment.shape(), (4, 4));
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn soft_dtw_alignment(
+    x: &[f64],
+    y: &[f64],
+    gamma: f64,
+    window: DtwWindow,
+) -> Result<SoftDtwAlignment, FdarError> {
+    validate_sdtw_inputs(x, y, gamma)?;
+    let n = x.len();
+    let m = y.len();
+    let (r, e) = if window == DtwWindow::None {
+        let r = soft_dtw_forward(x, y, gamma);
+        let e = soft_dtw_backward(x, y, &r, gamma);
+        (r, e)
+    } else {
+        let bounds = window.row_bounds(n, m)?;
+        let r = soft_dtw_forward_masked(x, y, gamma, &bounds);
+        if !r[n][m].is_finite() {
+            return Err(sdtw_no_path_error("soft_dtw_alignment"));
+        }
+        let e = soft_dtw_backward_masked(n, m, &r, gamma, &bounds);
+        (r, e)
+    };
+    let value = r[n][m];
+    if !value.is_finite() {
+        return Err(sdtw_no_path_error("soft_dtw_alignment"));
+    }
+    let mut alignment = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        for j in 0..m {
+            alignment[(i, j)] = e[i + 1][j + 1];
+        }
+    }
+    Ok(SoftDtwAlignment { value, alignment })
 }
 
 // ---- MM baseline helper (used only in tests) ---------------------------------
@@ -2250,5 +2520,208 @@ mod barycenter_escape_evidence_tests {
                 col_max[j]
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod alignment_tests {
+    use super::*;
+    use crate::metric::dtw::dtw_path;
+
+    // Copied from `differentiable_tests` (private there).
+    const X: [f64; 5] = [0.1, 0.4, 0.9, 1.2, 0.7];
+    const Y: [f64; 5] = [0.2, 0.3, 1.0, 1.1, 0.6];
+
+    fn series(n: usize, phase: f64, freq: f64) -> Vec<f64> {
+        (0..n)
+            .map(|k| {
+                let t = k as f64 / n as f64;
+                (freq * t * 6.0 + phase).sin() + 0.3 * (2.0 * freq * t + phase).cos()
+            })
+            .collect()
+    }
+
+    /// `v` starts with tslearn's printed digits `mant`e`exp` (3 significant digits).
+    fn assert_prefix(v: f64, mant: f64, exp: i32) {
+        let scale = 10f64.powi(exp);
+        let lo = mant * scale;
+        let hi = (mant + 0.01) * scale;
+        assert!(
+            v >= lo * (1.0 - 1e-12) && v < hi,
+            "{v:e} not in [{lo:e}, {hi:e})"
+        );
+    }
+
+    #[test]
+    fn tslearn_docstring_golden() {
+        let x = [1., 2., 2., 3.];
+        let y = [1., 2., 3., 4.];
+        let res = soft_dtw_alignment(&x, &y, 1.0, DtwWindow::None).unwrap();
+        assert!(res.value > -0.90 && res.value <= -0.89, "{}", res.value);
+        assert!((res.value - (-0.8954437807217475)).abs() < 1e-12);
+        let expected: [[(f64, i32); 4]; 4] = [
+            [(1.00, 0), (1.88, -1), (2.83, -4), (4.19, -11)],
+            [(3.40, -1), (8.17, -1), (8.87, -2), (3.94, -5)],
+            [(5.05, -2), (7.09, -1), (5.30, -1), (6.98, -3)],
+            [(1.37, -4), (1.31, -1), (7.30, -1), (1.00, 0)],
+        ];
+        for (i, row) in expected.iter().enumerate() {
+            for (j, &(mant, exp)) in row.iter().enumerate() {
+                let v = res.alignment[(i, j)];
+                if (i, j) == (0, 0) || (i, j) == (3, 3) {
+                    assert!((v - 1.0).abs() <= 1e-12, "corner ({i},{j}) = {v}");
+                } else {
+                    assert_prefix(v, mant, exp);
+                }
+            }
+        }
+        assert_eq!(res.alignment[(3, 3)], 1.0);
+    }
+
+    #[test]
+    fn small_gamma_tends_to_hard_path() {
+        let x = [1., 2., 2., 3.];
+        let y = [1., 2., 3., 4.];
+        let res = soft_dtw_alignment(&x, &y, 0.01, DtwWindow::None).unwrap();
+        let hard = dtw_path(&x, &y, 2.0, DtwWindow::None).unwrap();
+        assert_eq!(hard.path, vec![(0, 0), (1, 1), (2, 1), (3, 2), (3, 3)]);
+        for i in 0..4 {
+            for j in 0..4 {
+                let ind = if hard.path.contains(&(i, j)) {
+                    1.0
+                } else {
+                    0.0
+                };
+                assert!((res.alignment[(i, j)] - ind).abs() < 1e-9);
+            }
+        }
+    }
+
+    #[test]
+    fn none_and_full_windows_bit_identical() {
+        let pairs = vec![
+            (X.to_vec(), Y.to_vec()),
+            (series(7, 0.3, 1.0), series(11, 1.1, 1.7)),
+        ];
+        for (x, y) in &pairs {
+            let (n, m) = (x.len(), y.len());
+            for gamma in [0.1, 1.0] {
+                let base = soft_dtw_distance(x, y, gamma);
+                let none = soft_dtw_alignment(x, y, gamma, DtwWindow::None).unwrap();
+                assert_eq!(none.value.to_bits(), base.to_bits());
+                let wn = soft_dtw_distance_windowed(x, y, gamma, DtwWindow::None).unwrap();
+                assert_eq!(wn.to_bits(), base.to_bits());
+                for radius in [n.max(m), usize::MAX] {
+                    let w = DtwWindow::SakoeChiba { radius };
+                    let full = soft_dtw_alignment(x, y, gamma, w).unwrap();
+                    assert_eq!(full.value.to_bits(), none.value.to_bits());
+                    let fv = soft_dtw_distance_windowed(x, y, gamma, w).unwrap();
+                    assert_eq!(fv.to_bits(), base.to_bits());
+                    for i in 0..n {
+                        for j in 0..m {
+                            assert_eq!(
+                                full.alignment[(i, j)].to_bits(),
+                                none.alignment[(i, j)].to_bits()
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn masked_cells_are_zero() {
+        let x6 = series(6, 0.2, 1.3);
+        let y6 = series(6, 0.9, 0.8);
+        let cases = vec![
+            (X.to_vec(), Y.to_vec(), DtwWindow::SakoeChiba { radius: 1 }),
+            (x6, y6, DtwWindow::Itakura { max_slope: 2.0 }),
+        ];
+        for (x, y, w) in &cases {
+            let (n, m) = (x.len(), y.len());
+            let mask = w.mask(n, m).unwrap();
+            for gamma in [0.1, 1.0] {
+                let res = soft_dtw_alignment(x, y, gamma, *w).unwrap();
+                for i in 0..n {
+                    for j in 0..m {
+                        let v = res.alignment[(i, j)];
+                        assert!(!v.is_nan());
+                        if !mask[i][j] {
+                            assert_eq!(v, 0.0);
+                        }
+                    }
+                }
+                let free = soft_dtw_distance(x, y, gamma);
+                assert!(res.value >= free - 1e-12);
+                let wv = soft_dtw_distance_windowed(x, y, gamma, *w).unwrap();
+                assert_eq!(wv.to_bits(), res.value.to_bits());
+            }
+        }
+    }
+
+    #[test]
+    fn windowed_gradient_matches_finite_differences() {
+        let y7 = [0.2, 0.3, 0.8, 1.0, 1.1, 0.9, 0.6];
+        let x6 = series(6, 0.2, 1.3);
+        let y6 = series(6, 0.9, 0.8);
+        let cases = vec![
+            (X.to_vec(), Y.to_vec(), DtwWindow::SakoeChiba { radius: 1 }),
+            (x6, y6, DtwWindow::Itakura { max_slope: 2.0 }),
+            (X.to_vec(), y7.to_vec(), DtwWindow::SakoeChiba { radius: 1 }),
+        ];
+        let h = 1e-6;
+        for (x, y, w) in &cases {
+            for gamma in [0.5, 1.0] {
+                let res = soft_dtw_alignment(x, y, gamma, *w).unwrap();
+                for k in 0..x.len() {
+                    let g: f64 = (0..y.len())
+                        .map(|j| res.alignment[(k, j)] * 2.0 * (x[k] - y[j]))
+                        .sum();
+                    let mut xp = x.clone();
+                    let mut xm = x.clone();
+                    xp[k] += h;
+                    xm[k] -= h;
+                    let fp = soft_dtw_distance_windowed(&xp, y, gamma, *w).unwrap();
+                    let fm = soft_dtw_distance_windowed(&xm, y, gamma, *w).unwrap();
+                    let fd = (fp - fm) / (2.0 * h);
+                    assert!((g - fd).abs() <= 1e-6, "k={k} g={g} fd={fd} w={w:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn alignment_errors() {
+        let w = DtwWindow::None;
+        assert!(matches!(
+            soft_dtw_alignment(&[], &[1.0], 1.0, w),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+        assert!(matches!(
+            soft_dtw_distance_windowed(&[1.0], &[], 1.0, w),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+        for gamma in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(matches!(
+                soft_dtw_alignment(&[1.0], &[1.0], gamma, w),
+                Err(FdarError::InvalidParameter { .. })
+            ));
+            assert!(matches!(
+                soft_dtw_distance_windowed(&[1.0], &[1.0], gamma, w),
+                Err(FdarError::InvalidParameter { .. })
+            ));
+        }
+        let x = [1.0, 2.0, 3.0];
+        let y = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+        let bad = DtwWindow::Itakura { max_slope: 1.0 };
+        assert!(matches!(
+            soft_dtw_alignment(&x, &y, 1.0, bad),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+        assert!(matches!(
+            soft_dtw_distance_windowed(&x, &y, 1.0, bad),
+            Err(FdarError::InvalidParameter { .. })
+        ));
     }
 }

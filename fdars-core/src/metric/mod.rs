@@ -150,9 +150,10 @@ pub use lp::{lp_cross, lp_self, LpDomain};
 pub use pca::{pca_cross, pca_self};
 pub use sbd::{sbd, sbd_distance_matrix, SbdResult};
 pub use soft_dtw::{
-    soft_dtw_barycenter, soft_dtw_barycenter_with_config, soft_dtw_cross, soft_dtw_distance,
-    soft_dtw_distance_generic, soft_dtw_div_cross, soft_dtw_div_self, soft_dtw_divergence,
-    soft_dtw_self, SoftDtwBarycenterConfig, SoftDtwBarycenterResult,
+    soft_dtw_alignment, soft_dtw_barycenter, soft_dtw_barycenter_with_config, soft_dtw_cross,
+    soft_dtw_distance, soft_dtw_distance_generic, soft_dtw_distance_windowed, soft_dtw_div_cross,
+    soft_dtw_div_self, soft_dtw_divergence, soft_dtw_self, SoftDtwAlignment,
+    SoftDtwBarycenterConfig, SoftDtwBarycenterResult,
 };
 pub use window::DtwWindow;
 
