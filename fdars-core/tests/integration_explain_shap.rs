@@ -920,6 +920,7 @@ fn vif_definition_via_r_squared() {
     let ncomp = 3usize;
     let scores = project_to_scores(&data, &fit.fpca.mean, &fit.fpca.rotation, n, ncomp);
 
+    #[allow(clippy::needless_range_loop)] // k also drives the LOO design and the message
     for k in 0..ncomp {
         let (x_other, y_k) = build_leave_one_out_design(&scores, k, n, ncomp);
         let p_reg = ncomp;

@@ -841,6 +841,7 @@ mod classification {
         let g = result.n_classes;
 
         // Each row should sum to the count of that class
+        #[allow(clippy::needless_range_loop)] // c is also the class label compared below
         for c in 0..g {
             let row_sum: usize = result.confusion[c].iter().sum();
             let class_count = labels.iter().filter(|&&l| l == c).count();

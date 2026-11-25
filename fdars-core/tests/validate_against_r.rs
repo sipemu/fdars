@@ -1189,8 +1189,8 @@ fn test_fpca_svd() {
     // by a factor related to grid spacing. Check structural properties instead.
     assert_eq!(result.singular_values.len(), 3);
     // Singular values should be positive and decreasing
-    for i in 0..3 {
-        assert!(result.singular_values[i] > 0.0);
+    for &sv in &result.singular_values {
+        assert!(sv > 0.0);
     }
     for i in 1..3 {
         assert!(result.singular_values[i] <= result.singular_values[i - 1] + 1e-10);
@@ -3684,6 +3684,7 @@ fn test_tsrvf_from_alignment_vs_prealigned() {
 
     // SRSF norms differ from R because our smoothing removes DP kink spike energy
     // that inflates R's norms. Verify norms are positive and finite.
+    #[allow(clippy::needless_range_loop)] // index also used in the failure message
     for i in 0..n_sub {
         assert!(
             result.srsf_norms[i] > 0.0 && result.srsf_norms[i].is_finite(),
@@ -3798,6 +3799,7 @@ fn test_tsrvf_smoothed_vs_python() {
 
     // Validate tangent vector norms
     let mut max_tv_norm_err = 0.0_f64;
+    #[allow(clippy::needless_range_loop)] // i also indexes tangent_vectors rows
     for i in 0..n_sub {
         let rust_tv_norm = l2_norm(&result.tangent_vectors.row(i), &time);
         let py_tv_norm = smoothed.tangent_vector_norms[i];

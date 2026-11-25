@@ -259,6 +259,7 @@ fn elastic_attribution_horizontal_only() {
     let attr = fdars_core::elastic_pcr_attribution(&result, &y, 3, 10, 42).unwrap();
 
     // Amplitude contribution should be zero for horizontal-only
+    #[allow(clippy::needless_range_loop)] // index also used in the failure message
     for i in 0..15 {
         assert!(
             attr.amplitude_contribution[i].abs() < 1e-12,
@@ -421,6 +422,7 @@ fn pdp_logistic_monotonic_single_component() {
     let pdp = fdars_core::functional_pdp_logistic(&fit, &data, None, 0, 30).unwrap();
 
     // Check all values are valid probabilities
+    #[allow(clippy::needless_range_loop)] // index also used in the failure message
     for g in 0..30 {
         assert!(
             pdp.pdp_curve[g] >= 0.0 && pdp.pdp_curve[g] <= 1.0,
@@ -1241,8 +1243,8 @@ fn integration_all_features_on_same_data() {
     let fit_log = functional_logistic(&data, &y_bin, None, 3, 25, 1e-6).unwrap();
     let pdp_log = fdars_core::functional_pdp_logistic(&fit_log, &data, None, 0, 20).unwrap();
     assert_eq!(pdp_log.pdp_curve.len(), 20);
-    for g in 0..20 {
-        assert!(pdp_log.pdp_curve[g] >= 0.0 && pdp_log.pdp_curve[g] <= 1.0);
+    for &v in &pdp_log.pdp_curve {
+        assert!((0.0..=1.0).contains(&v));
     }
 }
 

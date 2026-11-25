@@ -698,6 +698,7 @@ fn perm_importance_zero_r2_data() {
     let imp = fdars_core::fpc_permutation_importance(&fit, &data, &y_noise, 50, 42).unwrap();
 
     // With noise data, importances should be near zero (could be slightly negative)
+    #[allow(clippy::needless_range_loop)] // index also used in the failure message
     for k in 0..3 {
         assert!(
             imp.importance[k].abs() < 0.15,
