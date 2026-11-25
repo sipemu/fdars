@@ -47,19 +47,41 @@ use rayon::iter::ParallelIterator;
 ///
 /// `sigma = None` selects the median-distance bandwidth heuristic
 /// ([`sigma_gak`]); `sigma = Some(s)` fixes the bandwidth (`s > 0`).
+///
+/// `triangular` is Cuturi's triangular parameter `T` (see [`gak_triangular`]);
+/// the default `0` means no constraint. Triangular weighting keeps the
+/// triangular-normalized kernel PSD per Cuturi (2011). Caveats: a Gram matrix
+/// can still show tiny negative eigenvalues in floating point, and when
+/// `T > 0` and `T ≤ |len(x) − len(y)|` no admissible path exists, so the
+/// kernel between those two curves is `0`.
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct GakConfig {
     /// Bandwidth σ (> 0). `None` → auto-select via the median heuristic.
     pub sigma: Option<f64>,
+    /// Cuturi's triangular parameter `T`. `0` = no constraint (default). For
+    /// `T ≥ 1`, only cells with `|i − j| < T` contribute, weighted
+    /// `ω = 1 − |i − j| / T`.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub triangular: usize,
 }
 
 impl GakConfig {
     /// Construct a config with an explicit bandwidth σ.
     #[must_use]
     pub fn with_sigma(sigma: f64) -> Self {
-        Self { sigma: Some(sigma) }
+        Self {
+            sigma: Some(sigma),
+            ..Self::default()
+        }
+    }
+
+    /// Set Cuturi's triangular parameter `T` (`0` = no constraint).
+    #[must_use]
+    pub fn with_triangular(mut self, triangular: usize) -> Self {
+        self.triangular = triangular;
+        self
     }
 }
 
@@ -94,6 +116,50 @@ fn log_local(xi: f64, yj: f64, inv_two_sigma_sq: f64) -> f64 {
     let neg_half_dist = -(d * d) * inv_two_sigma_sq; // -d²/(2σ²)  ≤ 0
     let h = neg_half_dist.exp(); // h ∈ (0, 1]
     neg_half_dist - (2.0 - h).ln()
+}
+
+/// Log of the triangular-weighted TGAK local kernel `ω·h / (2 − ω·h)` with
+/// `ω = 1 − k/T` (`k = |i − j| < T`), the weight applied before the `2 − h`
+/// correction as in Cuturi's reference logGAK.
+#[inline]
+fn log_local_triangular(xi: f64, yj: f64, inv_two_sigma_sq: f64, k: usize, t: f64) -> f64 {
+    let d = xi - yj;
+    let g = (1.0 - k as f64 / t).ln() + (-(d * d) * inv_two_sigma_sq);
+    g - (2.0 - g.exp()).ln()
+}
+
+/// Unnormalized log-domain triangular GAK (Cuturi 2011) with parameter `T`.
+///
+/// `triangular == 0` delegates to [`loggak`] (bit-identical). For `T ≥ 1` only
+/// cells with `|i − j| < T` (1-based) are filled; all other cells stay `-inf`.
+/// Returns `-inf` when no admissible path exists (`T ≤ |n − m|`).
+pub(crate) fn loggak_triangular(x: &[f64], y: &[f64], sigma: f64, triangular: usize) -> f64 {
+    if triangular == 0 {
+        return loggak(x, y, sigma);
+    }
+    let n = x.len();
+    let m = y.len();
+    if n == 0 || m == 0 {
+        return f64::NEG_INFINITY;
+    }
+    let inv_two_sigma_sq = 1.0 / (2.0 * sigma * sigma);
+    let t = triangular as f64;
+
+    let mut prev = vec![f64::NEG_INFINITY; m + 1];
+    let mut curr = vec![f64::NEG_INFINITY; m + 1];
+    prev[0] = 0.0;
+    for i in 1..=n {
+        curr.fill(f64::NEG_INFINITY);
+        let xi = x[i - 1];
+        let j_lo = (i + 1).saturating_sub(triangular).max(1);
+        let j_hi = i.saturating_add(triangular - 1).min(m);
+        for j in j_lo..=j_hi {
+            let ll = log_local_triangular(xi, y[j - 1], inv_two_sigma_sq, i.abs_diff(j), t);
+            curr[j] = ll + logsumexp3(prev[j], curr[j - 1], prev[j - 1]);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[m]
 }
 
 /// Unnormalized log-domain Global Alignment Kernel between two 1D series.
@@ -160,6 +226,60 @@ pub fn gak(x: &[f64], y: &[f64], sigma: f64) -> f64 {
     let log_xx = loggak(x, x, sigma);
     let log_yy = loggak(y, y, sigma);
     normalize_log(log_xy, log_xx, log_yy)
+}
+
+/// Normalized triangular Global Alignment Kernel (Cuturi 2011) with parameter `T`.
+///
+/// Returns `k_T(x, y) / sqrt(k_T(x, x) · k_T(y, y))` computed in log space, where
+/// `k_T` sums over alignment paths restricted to cells with `|i − j| < T`, each
+/// local kernel weighted as `ω·h / (2 − ω·h)` with `ω = 1 − |i − j| / T` and
+/// `h = exp(−(x_i − y_j)² / (2σ²))`.
+///
+/// `T = 0` means no constraint and is bit-identical to [`gak`] (and to tslearn's
+/// `gak`). tslearn's `gak` exposes no `T`, so the triangular parameter follows
+/// Cuturi (2011, "Fast Global Alignment Kernels") and his reference logGAK code.
+/// Triangular weighting keeps the kernel PSD; floating-point Gram matrices may
+/// still show tiny negative eigenvalues. When `T > 0` and `T ≤ |n − m|` no
+/// admissible path exists and the result is `0.0` (never `NaN`).
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `x` or `y` is empty.
+/// - [`FdarError::InvalidParameter`] if `sigma` is not finite and `> 0`.
+///
+/// # Examples
+/// ```
+/// use fdars_core::{gak, gak_triangular};
+/// let x = [0.0, 1.0, 2.0];
+/// let y = [0.0, 1.0, 3.0];
+/// assert_eq!(gak_triangular(&x, &y, 2.0, 0).unwrap(), gak(&x, &y, 2.0));
+/// let k = gak_triangular(&x, &y, 2.0, 2).unwrap();
+/// assert!((0.0..=1.0).contains(&k));
+/// assert!((gak_triangular(&x, &x, 2.0, 2).unwrap() - 1.0).abs() < 1e-12);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn gak_triangular(
+    x: &[f64],
+    y: &[f64],
+    sigma: f64,
+    triangular: usize,
+) -> Result<f64, FdarError> {
+    if x.is_empty() || y.is_empty() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x/y",
+            expected: "non-empty series".to_string(),
+            actual: format!("lengths {} and {}", x.len(), y.len()),
+        });
+    }
+    if !(sigma.is_finite() && sigma > 0.0) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "sigma",
+            message: format!("bandwidth must be finite and > 0, got {sigma}"),
+        });
+    }
+    let log_xy = loggak_triangular(x, y, sigma, triangular);
+    let log_xx = loggak_triangular(x, x, sigma, triangular);
+    let log_yy = loggak_triangular(y, y, sigma, triangular);
+    Ok(normalize_log(log_xy, log_xx, log_yy))
 }
 
 /// Apply triangular normalization in log space and exponentiate to `[0, 1]`.
@@ -253,7 +373,7 @@ pub fn sigma_gak(data: &FdMatrix) -> f64 {
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn gak_gram_matrix(data: &FdMatrix, config: &GakConfig) -> Result<FdMatrix, FdarError> {
-    let (gram, _diag_log, _sigma, _rows) = build_train_gram(data, config)?;
+    let (gram, _diag_log, _sigma, _rows, _triangular) = build_train_gram(data, config)?;
     Ok(gram)
 }
 
@@ -273,7 +393,7 @@ pub fn gak_gram_matrix(data: &FdMatrix, config: &GakConfig) -> Result<FdMatrix, 
 fn build_train_gram(
     data: &FdMatrix,
     config: &GakConfig,
-) -> Result<(FdMatrix, Vec<f64>, f64, Vec<Vec<f64>>), FdarError> {
+) -> Result<(FdMatrix, Vec<f64>, f64, Vec<Vec<f64>>, usize), FdarError> {
     let n = data.nrows();
     let m = data.ncols();
     if n == 0 || m == 0 {
@@ -298,10 +418,11 @@ fn build_train_gram(
 
     // Pre-collect rows once (avoid O(n²) row materializations in the hot loop).
     let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
+    let triangular = config.triangular;
 
     // Precompute the n diagonal self-log-kernels once (O(n)); reused in normalization.
     let diag_log: Vec<f64> = iter_maybe_parallel!(0..n)
-        .map(|i| loggak(&rows[i], &rows[i], sigma))
+        .map(|i| loggak_triangular(&rows[i], &rows[i], sigma, triangular))
         .collect();
 
     // Compute the upper triangle (order-independent) in parallel, then scatter +
@@ -310,7 +431,7 @@ fn build_train_gram(
         .flat_map(|i| {
             ((i + 1)..n)
                 .map(|j| {
-                    let log_xy = loggak(&rows[i], &rows[j], sigma);
+                    let log_xy = loggak_triangular(&rows[i], &rows[j], sigma, triangular);
                     normalize_log(log_xy, diag_log[i], diag_log[j])
                 })
                 .collect::<Vec<_>>()
@@ -330,7 +451,7 @@ fn build_train_gram(
             idx += 1;
         }
     }
-    Ok((gram, diag_log, sigma, rows))
+    Ok((gram, diag_log, sigma, rows, triangular))
 }
 
 /// Result of [`gak_gram_train`]: a training GAK Gram plus everything needed to
@@ -361,6 +482,10 @@ pub struct GakGramTrain {
     /// [`gak_gram_predict`] can evaluate the cross-kernel `loggak(test, train)`.
     /// Kept `pub(crate)` — an internal contract, not part of the public surface.
     pub(crate) train_rows: Vec<Vec<f64>>,
+    /// Cuturi's triangular parameter `T` used for training (`0` = none).
+    /// Prediction reuses this exact value.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub triangular: usize,
 }
 
 impl GakGramTrain {
@@ -412,12 +537,13 @@ impl GakGramTrain {
 /// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn gak_gram_train(data: &FdMatrix, config: &GakConfig) -> Result<GakGramTrain, FdarError> {
-    let (gram, log_self, sigma, train_rows) = build_train_gram(data, config)?;
+    let (gram, log_self, sigma, train_rows, triangular) = build_train_gram(data, config)?;
     Ok(GakGramTrain {
         gram,
         log_self,
         sigma,
         train_rows,
+        triangular,
     })
 }
 
@@ -502,7 +628,7 @@ pub fn gak_gram_predict(train: &GakGramTrain, new_data: &FdMatrix) -> Result<FdM
 
     // Test self-log-kernels: computed once (O(n_test)), reused across all columns.
     let test_self: Vec<f64> = iter_maybe_parallel!(0..n_test)
-        .map(|t| loggak(&test_rows[t], &test_rows[t], sigma))
+        .map(|t| loggak_triangular(&test_rows[t], &test_rows[t], sigma, train.triangular))
         .collect();
 
     // n_test × n_train cross-Gram. Rows are independent → parallelize over test
@@ -513,7 +639,8 @@ pub fn gak_gram_predict(train: &GakGramTrain, new_data: &FdMatrix) -> Result<FdM
         .map(|t| {
             let mut row = vec![0.0; n_train];
             for j in 0..n_train {
-                let log_xy = loggak(&test_rows[t], &train.train_rows[j], sigma);
+                let log_xy =
+                    loggak_triangular(&test_rows[t], &train.train_rows[j], sigma, train.triangular);
                 row[j] = normalize_log(log_xy, test_self[t], train.log_self[j]);
             }
             row
@@ -956,5 +1083,171 @@ mod tests {
             gak_gram_predict(&fit, &bad),
             Err(FdarError::InvalidDimension { .. })
         ));
+    }
+
+    // ---- Triangular GAK (Cuturi 2011 parameter T) ----------------------------
+
+    /// Independent linear-domain triangular GAK oracle (full table, no logs).
+    fn tgak_linear_oracle(x: &[f64], y: &[f64], sigma: f64, t: usize) -> f64 {
+        let raw = |a: &[f64], b: &[f64]| -> f64 {
+            let (n, m) = (a.len(), b.len());
+            let mut k = vec![vec![0.0_f64; m + 1]; n + 1];
+            k[0][0] = 1.0;
+            for i in 1..=n {
+                for j in 1..=m {
+                    let lag = i.abs_diff(j);
+                    if lag >= t {
+                        continue;
+                    }
+                    let w = 1.0 - lag as f64 / t as f64;
+                    let d = a[i - 1] - b[j - 1];
+                    let h = (-(d * d) / (2.0 * sigma * sigma)).exp();
+                    let local = w * h / (2.0 - w * h);
+                    k[i][j] = local * (k[i - 1][j] + k[i][j - 1] + k[i - 1][j - 1]);
+                }
+            }
+            k[n][m]
+        };
+        raw(x, y) / (raw(x, x) * raw(y, y)).sqrt()
+    }
+
+    #[test]
+    fn test_gak_triangular_t0_bit_identical() {
+        let cases: [(&[f64], &[f64], f64); 3] = [
+            (&[0.0, 1.0], &[0.0, 2.0], 1.0),
+            (&[0.0, 1.0, 2.0], &[0.0, 1.0, 3.0], 2.0),
+            (&[1.0, 2.0, 3.0], &[1.0, 2.0, 2.0, 3.0, 4.0], 1.0),
+        ];
+        for (x, y, s) in cases {
+            let t0 = gak_triangular(x, y, s, 0).unwrap();
+            assert_eq!(t0.to_bits(), gak(x, y, s).to_bits());
+        }
+    }
+
+    #[test]
+    fn test_gak_triangular_tslearn_goldens() {
+        let a = gak_triangular(&[1., 2., 3.], &[1., 2., 2., 3.], 2.0, 0).unwrap();
+        assert!((0.839..0.840).contains(&a), "{a}");
+        assert!((a - 0.839_336_907_936_809).abs() < 1e-12, "{a}");
+        let b = gak_triangular(&[1., 2., 3.], &[1., 2., 2., 3., 4.], 1.0, 0).unwrap();
+        assert!((0.273..0.274).contains(&b), "{b}");
+        assert!((b - 0.273_385_590_873_337_9).abs() < 1e-12, "{b}");
+    }
+
+    #[test]
+    fn test_gak_triangular_hand_values() {
+        let t1 = gak_triangular(&[0.0, 1.0], &[0.0, 2.0], 1.0, 1).unwrap();
+        assert!((t1 - 0.435_266_598_393_583_8).abs() < 1e-12, "{t1}");
+        let t2 = gak_triangular(&[0.0, 1.0], &[0.0, 2.0], 1.0, 2).unwrap();
+        assert!((t2 - 0.438_350_292_134_473_46).abs() < 1e-12, "{t2}");
+    }
+
+    #[test]
+    fn test_gak_triangular_vs_linear_oracle() {
+        let x = [0.1, 0.5, 1.2, 0.9, 0.3, -0.2];
+        let y = [0.0, 0.6, 1.0, 1.1, 0.2];
+        let z = [0.4, 0.2, 0.8, 1.3];
+        for t in [1usize, 2, 3, 5] {
+            for (a, b) in [(&x[..], &y[..]), (&y[..], &z[..]), (&x[..], &x[..])] {
+                if t <= a.len().abs_diff(b.len()) {
+                    continue;
+                }
+                let got = gak_triangular(a, b, 0.8, t).unwrap();
+                let want = tgak_linear_oracle(a, b, 0.8, t);
+                assert!(
+                    ((got - want) / want).abs() < 1e-12,
+                    "T={t}: got {got}, oracle {want}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_gak_triangular_no_admissible_path() {
+        let x = [0.0, 1.0, 2.0];
+        let y = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0];
+        let k = gak_triangular(&x, &y, 1.0, 2).unwrap();
+        assert_eq!(k, 0.0);
+        assert!(!k.is_nan());
+    }
+
+    #[test]
+    fn test_gak_triangular_errors() {
+        assert!(matches!(
+            gak_triangular(&[], &[1.0], 1.0, 0),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+        assert!(matches!(
+            gak_triangular(&[1.0], &[], 1.0, 2),
+            Err(FdarError::InvalidDimension { .. })
+        ));
+        for s in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(matches!(
+                gak_triangular(&[1.0], &[1.0], s, 1),
+                Err(FdarError::InvalidParameter { .. })
+            ));
+        }
+    }
+
+    fn psd_fixture() -> FdMatrix {
+        let rows: Vec<Vec<f64>> = (0..8)
+            .map(|i| {
+                (0..50)
+                    .map(|k| (k as f64 * 0.15 + i as f64 * 0.4).sin() + 0.1 * i as f64)
+                    .collect()
+            })
+            .collect();
+        matrix_from_rows(&rows)
+    }
+
+    #[test]
+    fn test_gak_gram_triangular_t0_matches_default() {
+        let data = psd_fixture();
+        let a = gak_gram_matrix(&data, &GakConfig::with_sigma(2.0)).unwrap();
+        let b = gak_gram_matrix(&data, &GakConfig::with_sigma(2.0).with_triangular(0)).unwrap();
+        assert_eq!(a, b);
+        let c = gak_gram_matrix(&data, &GakConfig::default()).unwrap();
+        let d = gak_gram_train(&data, &GakConfig::default()).unwrap();
+        assert_eq!(c, d.gram);
+        assert_eq!(d.triangular, 0);
+        // Off-diagonal entries equal the pairwise `gak` bit-for-bit.
+        let r0 = data.row(0);
+        let r1 = data.row(1);
+        assert_eq!(a[(0, 1)].to_bits(), gak(&r0, &r1, 2.0).to_bits());
+    }
+
+    #[test]
+    fn test_gak_gram_triangular_psd_and_predict() {
+        let data = psd_fixture();
+        let cfg = GakConfig::with_sigma(2.0).with_triangular(5);
+        let gram = gak_gram_matrix(&data, &cfg).unwrap();
+        let n = data.nrows();
+        for i in 0..n {
+            assert_eq!(gram[(i, i)], 1.0);
+            for j in 0..n {
+                assert_eq!(gram[(i, j)].to_bits(), gram[(j, i)].to_bits());
+            }
+        }
+        let eig = gram.to_dmatrix().symmetric_eigenvalues();
+        let min_eig = eig.iter().cloned().fold(f64::INFINITY, f64::min);
+        assert!(min_eig >= -1e-8, "min eigenvalue {min_eig}");
+        // Pairwise consistency.
+        let r0 = data.row(0);
+        let r3 = data.row(3);
+        let pw = gak_triangular(&r0, &r3, 2.0, 5).unwrap();
+        assert!((gram[(0, 3)] - pw).abs() < 1e-12);
+
+        let fit = gak_gram_train(&data, &cfg).unwrap();
+        assert_eq!(fit.triangular, 5);
+        assert_eq!(fit.gram, gram);
+        let pred = gak_gram_predict(&fit, &data).unwrap();
+        for i in 0..n {
+            for j in 0..n {
+                assert!((pred[(i, j)] - fit.gram[(i, j)]).abs() < 1e-12);
+            }
+        }
+        // Triangular constraint actually changes the kernel.
+        let free = gak_gram_matrix(&data, &GakConfig::with_sigma(2.0)).unwrap();
+        assert!((free[(0, 3)] - gram[(0, 3)]).abs() > 1e-12);
     }
 }

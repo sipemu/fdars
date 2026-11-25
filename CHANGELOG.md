@@ -11,6 +11,36 @@ signatures and dependencies, with one intentional exception: the v0.40.0 soft-DT
 barycenter correction changes convergence behavior intentionally (see [0.40.0]
 Changed below).
 
+## [Unreleased]
+
+**DTW-family alignment extensions (GH #44).** Additive and non-breaking;
+existing functions are numerically unchanged; no new crate dependency.
+
+### Added
+
+- `dtw_path` / `DtwPath` — optimal hard-DTW warping path via traceback, with
+  tslearn `dtw_path` tie-breaking (diagonal, then vertical, then horizontal);
+  `cost` equals `dtw_distance(x, y, p, max(n, m))` bit-for-bit.
+- `DtwWindow` (`None` / `SakoeChiba { radius }` / `Itakura { max_slope }`) plus
+  `DtwWindow::mask` — global warping windows whose admissible cells match
+  tslearn's `sakoe_chiba_mask` / `itakura_mask` exactly.
+- `dtw_distance_windowed` — O(m)-memory hard-DTW distance under a `DtwWindow`.
+- `soft_dtw_distance_windowed` — soft-DTW value under a `DtwWindow` (masked
+  cells act as `+inf`).
+- `soft_dtw_alignment` / `SoftDtwAlignment` — soft-DTW value plus the `n × m`
+  expected alignment matrix `E` (tslearn `soft_dtw_alignment`), with a
+  mask-respecting backward pass (masked cells get exactly zero weight).
+- `gak_triangular` — normalized GAK with Cuturi's triangular parameter `T`,
+  computed in log space; `T = 0` is bit-identical to `gak`.
+- `GakConfig::triangular` + `GakConfig::with_triangular` — triangular `T` for
+  `gak_gram_matrix` / `gak_gram_train` (and kernel k-means); default `0` keeps
+  the previous Gram matrices bit-identical.
+- `GakGramTrain::triangular` — the training `T`, reused by `gak_gram_predict`.
+
+tslearn parity: window masks, `dtw_path` tie-breaking and `soft_dtw_alignment`
+reproduce tslearn's documented values; tslearn's `gak` has no `T`, so the
+triangular parameter follows Cuturi (2011, "Fast Global Alignment Kernels").
+
 ## [0.47.0] - 2026-09-25
 
 **Performance — Cross-Language Benchmarks & Optimization Pass.** Strictly

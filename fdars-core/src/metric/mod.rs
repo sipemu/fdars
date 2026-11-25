@@ -141,7 +141,8 @@ pub use deriv::{deriv_cross, deriv_self};
 pub use dtw::{dtw_cross, dtw_distance, dtw_distance_windowed, dtw_path, dtw_self, DtwPath};
 pub use fourier::{fourier_cross, fourier_self};
 pub use gak::{
-    gak, gak_gram_matrix, gak_gram_predict, gak_gram_train, sigma_gak, GakConfig, GakGramTrain,
+    gak, gak_gram_matrix, gak_gram_predict, gak_gram_train, gak_triangular, sigma_gak, GakConfig,
+    GakGramTrain,
 };
 pub use hausdorff::{hausdorff_3d, hausdorff_cross, hausdorff_self};
 pub use hshift::{hshift_cross, hshift_self};
