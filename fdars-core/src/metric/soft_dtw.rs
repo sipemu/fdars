@@ -501,7 +501,7 @@ fn soft_dtw_accumulate_gradient_and_weight(
 
 /// Dot product of two equal-length slices.
 #[inline]
-fn lbfgs_dot(a: &[f64], b: &[f64]) -> f64 {
+pub(crate) fn lbfgs_dot(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
 }
 
@@ -544,7 +544,7 @@ fn eval_obj_and_grad(
 /// Produces the descent direction `d = -H_k * g` in `d`.
 /// `q_buf` is a reusable work buffer (will be resized to `g.len()`).
 /// History is stored oldest-first in `s_hist`/`y_hist`.
-fn two_loop_lbfgs(
+pub(crate) fn two_loop_lbfgs(
     g: &[f64],
     s_hist: &VecDeque<Vec<f64>>,
     y_hist: &VecDeque<Vec<f64>>,
@@ -663,7 +663,7 @@ fn init_barycenter_mean(rows: &[Vec<f64>]) -> Vec<f64> {
 ///
 /// Returns 1.0 when the history is empty or the denominator (yᵀy) is near-zero.
 #[inline]
-fn lbfgs_hessian_scale(s_hist: &VecDeque<Vec<f64>>, y_hist: &VecDeque<Vec<f64>>) -> f64 {
+pub(crate) fn lbfgs_hessian_scale(s_hist: &VecDeque<Vec<f64>>, y_hist: &VecDeque<Vec<f64>>) -> f64 {
     if s_hist.is_empty() {
         return 1.0;
     }

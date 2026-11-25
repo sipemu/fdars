@@ -8,6 +8,8 @@
 //! - [`elastic_distance`] — Elastic (Fisher-Rao) distance between curves
 //! - [`align_to_target`] — Align a set of curves to a common target
 //! - [`karcher_mean`] — Karcher (Fréchet) mean in the elastic metric
+//! - [`WarpOptimConfig`] + `*_with_config` — DP or Riemannian L-BFGS warp optimiser
+//!   with in-objective warp penalties (`l2gam`, `l2psi`, `roughness`, `geodesic`)
 //! - [`elastic_self_distance_matrix`] / [`elastic_cross_distance_matrix`] — Distance matrices
 //! - [`reparameterize_curve`] / [`compose_warps`] — Warping utilities
 
@@ -25,12 +27,14 @@ mod karcher;
 mod lambda_cv;
 mod multires;
 mod nd;
+mod optim;
 mod outlier;
 mod pairwise;
 mod partial_match;
 mod persistence;
 mod phase_boxplot;
 mod quality;
+mod rbfgs;
 mod robust_karcher;
 mod set;
 mod shape;
@@ -66,7 +70,9 @@ pub use elastic_depth::{elastic_depth, ElasticDepthResult};
 pub use fpns::{horiz_fpns, FpnsResult};
 pub use generative::{gauss_model, joint_gauss_model, GenerativeModelResult};
 pub use geodesic::{curve_geodesic, curve_geodesic_nd, GeodesicPath, GeodesicPathNd};
-pub use karcher::{karcher_mean, karcher_mean_banded, karcher_mean_with_band};
+pub use karcher::{
+    karcher_mean, karcher_mean_banded, karcher_mean_with_band, karcher_mean_with_config,
+};
 pub use lambda_cv::{lambda_cv, LambdaCvConfig, LambdaCvResult};
 pub use multires::{elastic_align_pair_multires, MultiresConfig};
 pub use nd::{
@@ -74,13 +80,16 @@ pub use nd::{
     AlignmentResultNd,
 };
 pub use nd::{karcher_covariance_nd, karcher_mean_nd, pca_nd, KarcherMeanResultNd, PcaNdResult};
+pub use optim::{WarpObjectivePenalty, WarpOptimConfig, WarpOptimMethod};
 pub use outlier::{elastic_outlier_detection, ElasticOutlierConfig, ElasticOutlierResult};
 pub use pairwise::{
     amplitude_distance, amplitude_self_distance_matrix, elastic_align_pair,
-    elastic_align_pair_banded, elastic_align_pair_penalized, elastic_cross_distance_matrix,
-    elastic_cross_distance_matrix_banded, elastic_cross_distance_matrix_with_band,
-    elastic_distance, elastic_distance_banded, elastic_self_distance_matrix,
-    elastic_self_distance_matrix_banded, elastic_self_distance_matrix_with_band,
+    elastic_align_pair_banded, elastic_align_pair_penalized, elastic_align_pair_with_config,
+    elastic_cross_distance_matrix, elastic_cross_distance_matrix_banded,
+    elastic_cross_distance_matrix_with_band, elastic_cross_distance_matrix_with_config,
+    elastic_distance, elastic_distance_banded, elastic_distance_with_config,
+    elastic_self_distance_matrix, elastic_self_distance_matrix_banded,
+    elastic_self_distance_matrix_with_band, elastic_self_distance_matrix_with_config,
     phase_distance_pair, phase_self_distance_matrix, WarpPenaltyType,
 };
 pub use partial_match::{elastic_partial_match, PartialMatchConfig, PartialMatchResult};
@@ -623,6 +632,51 @@ pub(crate) fn dp_alignment_core_banded(
     lambda: f64,
     band: Option<usize>,
 ) -> Vec<f64> {
+    dp_alignment_core_with_penalty(q1, q2, argvals, band, |sc, tc, sr, tr| {
+        dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
+    })
+}
+
+/// Compute the λ·(√slope−1)²·dt (`l2psi`) penalty for a DP edge.
+///
+/// The pointwise ψ-penalty of fdasrvf/fdasrsf `penalty = "l2psi"`: with
+/// ψ = √γ̇ it integrates (ψ − 1)² along the piecewise-linear DP path, so — like
+/// the first-order [`dp_lambda_penalty`] (`l2gam`) — it is additive edge by
+/// edge and therefore expressible inside the DP objective.
+#[inline]
+pub(super) fn dp_l2psi_penalty(
+    argvals: &[f64],
+    sc: usize,
+    tc: usize,
+    sr: usize,
+    tr: usize,
+    lambda: f64,
+) -> f64 {
+    if lambda > 0.0 {
+        let dt = argvals[tc] - argvals[sc];
+        let slope = (argvals[tr] - argvals[sr]) / dt;
+        lambda * (slope.sqrt() - 1.0).powi(2) * dt
+    } else {
+        0.0
+    }
+}
+
+/// Core DP alignment with an arbitrary additive edge penalty.
+///
+/// `penalty(sc, tc, sr, tr)` is added to the data edge weight of every move
+/// (it must be a pointwise function of the edge slope integrated over the edge
+/// for the DP to be exact). [`dp_alignment_core_banded`] passes the first-order
+/// [`dp_lambda_penalty`] closure, so its numerics are unchanged.
+pub(crate) fn dp_alignment_core_with_penalty<P>(
+    q1: &[f64],
+    q2: &[f64],
+    argvals: &[f64],
+    band: Option<usize>,
+    penalty: P,
+) -> Vec<f64>
+where
+    P: Fn(usize, usize, usize, usize) -> f64,
+{
     let m = argvals.len();
     if m < 2 {
         return argvals.to_vec();
@@ -656,12 +710,11 @@ pub(crate) fn dp_alignment_core_banded(
                 tr,
                 rslope_tab[dr][dc],
                 dc as f64 * h,
-            ) + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
+            ) + penalty(sc, tc, sr, tr)
         })
     } else {
         dp_grid_solve_banded(m, m, band, |sr, sc, tr, tc| {
-            dp_edge_weight(&q1n, &q2n, argvals, sc, tc, sr, tr)
-                + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
+            dp_edge_weight(&q1n, &q2n, argvals, sc, tc, sr, tr) + penalty(sc, tc, sr, tr)
         })
     };
 

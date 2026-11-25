@@ -1,8 +1,10 @@
 //! Karcher (Frechet) mean computation in the elastic metric.
 
+use super::optim::{check_grid, optimal_warp, WarpOptimConfig};
 use super::set::apply_stored_warps;
 use super::srsf::{reparameterize_curve, srsf_inverse, srsf_transform};
-use super::{band_radius, dp_alignment_core_banded, KarcherMeanResult};
+use super::{band_radius, KarcherMeanResult};
+use crate::error::FdarError;
 use crate::fdata::mean_1d;
 use crate::helpers::{gradient_uniform, linear_interp};
 use crate::iter_maybe_parallel;
@@ -100,6 +102,7 @@ fn relative_change(q_old: &[f64], q_new: &[f64]) -> f64 {
 ///
 /// `band = None` performs the full DP search; a finite `band` confines the warp
 /// to a Sakoe–Chiba corridor of that grid-index radius.
+#[cfg(test)]
 pub(super) fn align_srsf_pair_banded(
     q1: &[f64],
     q2: &[f64],
@@ -107,8 +110,26 @@ pub(super) fn align_srsf_pair_banded(
     lambda: f64,
     band: Option<usize>,
 ) -> (Vec<f64>, Vec<f64>) {
-    let gamma = dp_alignment_core_banded(q1, q2, argvals, lambda, band);
+    let gamma = super::dp_alignment_core_banded(q1, q2, argvals, lambda, band);
+    warp_srsf_by_gamma(q2, argvals, gamma)
+}
 
+/// Align a single SRSF q2 to q1 under a [`WarpOptimConfig`] and return
+/// `(gamma, aligned_q)`. The classic DP config is identical to
+/// [`align_srsf_pair_banded`].
+fn align_srsf_pair_cfg(
+    q1: &[f64],
+    q2: &[f64],
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+    band: Option<usize>,
+) -> (Vec<f64>, Vec<f64>) {
+    let gamma = optimal_warp(q1, q2, argvals, cfg, band);
+    warp_srsf_by_gamma(q2, argvals, gamma)
+}
+
+/// `(γ, (q2∘γ)·√γ̇)` with γ̇ from finite differences.
+fn warp_srsf_by_gamma(q2: &[f64], argvals: &[f64], gamma: Vec<f64>) -> (Vec<f64>, Vec<f64>) {
     // Warp q2 by gamma and adjust by sqrt(gamma')
     let q2_warped = reparameterize_curve(q2, argvals, &gamma);
 
@@ -177,13 +198,13 @@ fn pre_center_template(
     mu_q: &[f64],
     mu: &[f64],
     argvals: &[f64],
-    lambda: f64,
+    cfg: &WarpOptimConfig,
     band: Option<usize>,
 ) -> (Vec<f64>, Vec<f64>) {
     let n = data_srsfs.len();
     let m = argvals.len();
     let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
-        .map(|i| align_srsf_pair_banded(mu_q, &data_srsfs[i], argvals, lambda, band))
+        .map(|i| align_srsf_pair_cfg(mu_q, &data_srsfs[i], argvals, cfg, band))
         .collect();
 
     let mut init_gammas = FdMatrix::zeros(n, m);
@@ -297,7 +318,14 @@ pub fn karcher_mean(
     tol: f64,
     lambda: f64,
 ) -> KarcherMeanResult {
-    karcher_mean_impl(data, argvals, max_iter, tol, lambda, 0.0)
+    karcher_mean_impl(
+        data,
+        argvals,
+        max_iter,
+        tol,
+        &WarpOptimConfig::classic_dp(lambda),
+        0.0,
+    )
 }
 
 /// Karcher (Fréchet) mean in the elastic metric, confining every alignment to a
@@ -317,7 +345,14 @@ pub fn karcher_mean_banded(
     lambda: f64,
     band_frac: f64,
 ) -> KarcherMeanResult {
-    karcher_mean_impl(data, argvals, max_iter, tol, lambda, band_frac)
+    karcher_mean_impl(
+        data,
+        argvals,
+        max_iter,
+        tol,
+        &WarpOptimConfig::classic_dp(lambda),
+        band_frac,
+    )
 }
 
 /// Karcher (Fréchet) mean in the elastic metric with an opt-in Sakoe–Chiba band.
@@ -353,9 +388,61 @@ pub fn karcher_mean_with_band(
         argvals,
         max_iter,
         tol,
-        lambda,
+        &WarpOptimConfig::classic_dp(lambda),
         band_frac.unwrap_or(0.0),
     )
+}
+
+/// Karcher (Fréchet) mean in the elastic metric with a selectable warp
+/// optimiser and in-objective warp penalty (fdasrvf `time_warping(optim_method,
+/// penalty_method, lambda)`).
+///
+/// Every curve-to-mean alignment (pre-centering, coarse and fine iterations)
+/// uses `cfg`. With `method = Dp` and `penalty = L2Gam` this is identical to
+/// [`karcher_mean`]`(data, argvals, max_iter, tol, cfg.lambda)`.
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] if `data` has no rows or `argvals` does not
+/// match `data.ncols()` (or has < 2 points); [`FdarError::InvalidParameter`]
+/// for a non-increasing `argvals` or an invalid `cfg`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::{karcher_mean, karcher_mean_with_config, WarpOptimConfig,
+///     WarpOptimMethod};
+/// use fdars_core::simulation::{sim_fundata, EFunType, EValType};
+///
+/// let t: Vec<f64> = (0..40).map(|i| i as f64 / 39.0).collect();
+/// let data = sim_fundata(8, &t, 3, EFunType::Fourier, EValType::Exponential, Some(1));
+///
+/// let classic = karcher_mean(&data, &t, 5, 1e-3, 0.0);
+/// let same = karcher_mean_with_config(&data, &t, 5, 1e-3, &WarpOptimConfig::default()).unwrap();
+/// assert_eq!(classic, same);
+///
+/// let mut cfg = WarpOptimConfig::default();
+/// cfg.method = WarpOptimMethod::Rbfgs;
+/// let rb = karcher_mean_with_config(&data, &t, 5, 1e-3, &cfg).unwrap();
+/// assert_eq!(rb.mean.len(), 40);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn karcher_mean_with_config(
+    data: &FdMatrix,
+    argvals: &[f64],
+    max_iter: usize,
+    tol: f64,
+    cfg: &WarpOptimConfig,
+) -> Result<KarcherMeanResult, FdarError> {
+    if data.nrows() == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least 1 row".to_string(),
+            actual: "0".to_string(),
+        });
+    }
+    check_grid(argvals, data.ncols(), "data")?;
+    cfg.validate()?;
+    Ok(karcher_mean_impl(data, argvals, max_iter, tol, cfg, 0.0))
 }
 
 fn karcher_mean_impl(
@@ -363,7 +450,7 @@ fn karcher_mean_impl(
     argvals: &[f64],
     max_iter: usize,
     tol: f64,
-    lambda: f64,
+    cfg: &WarpOptimConfig,
     band_frac: f64,
 ) -> KarcherMeanResult {
     let (n, m) = data.shape();
@@ -375,7 +462,7 @@ fn karcher_mean_impl(
     // compute them once and reuse instead of re-transforming every iteration.
     let data_srsfs: Vec<Vec<f64>> = (0..n).map(|i| srsf_mat.row(i)).collect();
     let (mut mu_q, mu) = select_template(&srsf_mat, data, argvals);
-    let (mu_q_c, mu_c) = pre_center_template(&data_srsfs, &mu_q, &mu, argvals, lambda, fine_band);
+    let (mu_q_c, mu_c) = pre_center_template(&data_srsfs, &mu_q, &mu, argvals, cfg, fine_band);
     mu_q = mu_q_c;
     let mut mu = mu_c;
 
@@ -413,11 +500,11 @@ fn karcher_mean_impl(
 
             let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
                 .map(|i| {
-                    align_srsf_pair_banded(
+                    align_srsf_pair_cfg(
                         &mu_q_c,
                         &coarse_srsfs[i],
                         &argvals_coarse,
-                        lambda,
+                        cfg,
                         coarse_band,
                     )
                 })
@@ -449,7 +536,7 @@ fn karcher_mean_impl(
         n_iter = fine_start + iter + 1;
 
         let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
-            .map(|i| align_srsf_pair_banded(&mu_q, &data_srsfs[i], argvals, lambda, fine_band))
+            .map(|i| align_srsf_pair_cfg(&mu_q, &data_srsfs[i], argvals, cfg, fine_band))
             .collect();
 
         let mu_q_new = accumulate_alignments(&align_results, &mut final_gammas, m, n);
@@ -468,7 +555,7 @@ fn karcher_mean_impl(
     // If coarse converged but no fine iterations ran, do one fine pass for final_gammas
     if converged && fine_start > 0 {
         let align_results: Vec<(Vec<f64>, Vec<f64>)> = iter_maybe_parallel!(0..n)
-            .map(|i| align_srsf_pair_banded(&mu_q, &data_srsfs[i], argvals, lambda, fine_band))
+            .map(|i| align_srsf_pair_cfg(&mu_q, &data_srsfs[i], argvals, cfg, fine_band))
             .collect();
         let mu_q_new = accumulate_alignments(&align_results, &mut final_gammas, m, n);
         mu_q = mu_q_new;

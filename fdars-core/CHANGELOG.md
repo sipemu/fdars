@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Riemannian L-BFGS warp optimiser + in-objective warp penalties (GH #42 ALN-RBFGS,
+GH #43 ALN-PEN).** Additive and non-breaking; every existing function is
+bit-identical (proved against hashes recorded on the previous commit); no new
+crate dependency.
+
+### Added
+
+- `WarpOptimMethod { Dp (default), Rbfgs }` — `Rbfgs` is a Riemannian
+  limited-memory BFGS over `l = √γ̇` on the unit Hilbert sphere (port of fdasrsf
+  2.7.5 `optimum_reparam(method="RBFGS")`, after Huang, Gallivan, Srivastava &
+  Absil): exp-map steps, parallel-translated BFGS pairs, cautious update, fading
+  barrier, exact discrete gradient; seeded by a coarse (≤ 51 point) DP warp and
+  refined on SRSFs resampled `scl` times finer. Reuses the soft-DTW L-BFGS
+  two-loop recursion. Typically lower alignment cost than DP with smooth warps;
+  matches fdasrsf RBFGS warps to < 0.015 (sup) and its cost to < 5% on golden
+  cases.
+- `WarpObjectivePenalty { L2Gam (default), L2Psi, Roughness, Geodesic }` —
+  warp penalties applied **inside** the objective (fdasrvf/fdasrsf
+  `penalty`/`penalty_method`). `L2Gam` (the classic first-order penalty) and
+  `L2Psi` are applied pointwise inside the DP; `Roughness` (`∫ γ̈²`) and
+  `Geodesic` need `Rbfgs` (DP with `lambda > 0` returns `InvalidParameter`, as
+  fdasrsf raises).
+- `WarpOptimConfig` (sealed; `method`, `lambda`, `penalty`, `max_iter`, `scl`)
+  with `validate()`, and the entry points `elastic_align_pair_with_config`,
+  `elastic_distance_with_config`, `elastic_self_distance_matrix_with_config`,
+  `elastic_cross_distance_matrix_with_config`, `karcher_mean_with_config`
+  (all `Result<_, FdarError>`). The default config equals the classic
+  functions bit-for-bit.
+
+### Deprecated (documentation only)
+
+- The post-hoc Tikhonov smoothing behind `WarpPenaltyType::SecondOrder` /
+  `Combined` (`elastic_align_pair_penalized`) — prefer the in-objective
+  `Rbfgs` + `Roughness` penalty. Behaviour unchanged; no `#[deprecated]`
+  attribute.
+
 **DTW-family alignment extensions (GH #44).** Additive and non-breaking;
 existing functions are numerically unchanged; no new crate dependency.
 

@@ -1,7 +1,9 @@
 //! Pairwise elastic alignment, distance computation, and distance matrices.
 
+use super::optim::{check_grid, optimal_warp, WarpOptimConfig};
 use super::srsf::{reparameterize_curve, srsf_single, srsf_transform};
-use super::{band_radius, dp_alignment_core_banded, AlignmentResult};
+use super::{band_radius, AlignmentResult};
+use crate::error::FdarError;
 use crate::helpers::{l2_distance, simpsons_weights};
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -40,7 +42,14 @@ use rayon::iter::ParallelIterator;
 pub fn elastic_align_pair(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> AlignmentResult {
     let q1 = srsf_single(f1, argvals);
     let q2 = srsf_single(f2, argvals);
-    elastic_align_pair_from_srsf(f2, &q1, &q2, argvals, None, lambda)
+    elastic_align_pair_from_srsf(
+        f2,
+        &q1,
+        &q2,
+        argvals,
+        None,
+        &WarpOptimConfig::classic_dp(lambda),
+    )
 }
 
 /// Align curve f2 to curve f1, confining the warp to a Sakoe–Chiba band.
@@ -75,7 +84,14 @@ pub fn elastic_align_pair_banded(
     let q1 = srsf_single(f1, argvals);
     let q2 = srsf_single(f2, argvals);
     let band = band_radius(band_frac, argvals.len());
-    elastic_align_pair_from_srsf(f2, &q1, &q2, argvals, band, lambda)
+    elastic_align_pair_from_srsf(
+        f2,
+        &q1,
+        &q2,
+        argvals,
+        band,
+        &WarpOptimConfig::classic_dp(lambda),
+    )
 }
 
 /// Compute the elastic distance between two curves.
@@ -119,6 +135,172 @@ pub fn elastic_distance_banded(
     elastic_align_pair_banded(f1, f2, argvals, lambda, band_frac).distance
 }
 
+// ─── Configurable optimiser / in-objective penalty ───────────────────────────
+
+/// Align curve f2 to curve f1 with a selectable warp optimiser and an
+/// in-objective warp penalty.
+///
+/// With [`WarpOptimConfig::default`] (DP, `lambda = 0`) — and more generally
+/// with `method = Dp`, `penalty = L2Gam` — this returns exactly
+/// [`elastic_align_pair`]`(f1, f2, argvals, cfg.lambda)`. Set
+/// `cfg.method = WarpOptimMethod::Rbfgs` for the Riemannian L-BFGS optimiser
+/// (smooth warps, typically lower cost than DP's piecewise-linear warp, faster
+/// on fine grids), and `cfg.penalty` to put an `l2gam` / `l2psi` / `roughness`
+/// / `geodesic` penalty inside the objective (see [`WarpObjectivePenalty`]).
+///
+/// [`WarpObjectivePenalty`]: super::WarpObjectivePenalty
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] if `f1`, `f2` and `argvals` differ in length
+/// or have fewer than 2 points; [`FdarError::InvalidParameter`] if `argvals` is
+/// not strictly increasing or `cfg` is invalid ([`WarpOptimConfig::validate`]).
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::{
+///     elastic_align_pair, elastic_align_pair_with_config, WarpOptimConfig, WarpOptimMethod,
+/// };
+///
+/// let t: Vec<f64> = (0..60).map(|i| i as f64 / 59.0).collect();
+/// let f1: Vec<f64> = t.iter().map(|&s| (-(s - 0.4).powi(2) / 0.01).exp()).collect();
+/// let f2: Vec<f64> = t.iter().map(|&s| (-(s - 0.55).powi(2) / 0.01).exp()).collect();
+///
+/// // Default config == classic DP alignment, bit-for-bit.
+/// let dp = elastic_align_pair_with_config(&f1, &f2, &t, &WarpOptimConfig::default()).unwrap();
+/// assert_eq!(dp, elastic_align_pair(&f1, &f2, &t, 0.0));
+///
+/// // Riemannian L-BFGS warp optimiser.
+/// let mut cfg = WarpOptimConfig::default();
+/// cfg.method = WarpOptimMethod::Rbfgs;
+/// let rb = elastic_align_pair_with_config(&f1, &f2, &t, &cfg).unwrap();
+/// assert!(rb.gamma.windows(2).all(|w| w[1] >= w[0]));
+/// assert_eq!(rb.gamma[0], 0.0);
+/// assert_eq!(rb.gamma[59], 1.0);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_align_pair_with_config(
+    f1: &[f64],
+    f2: &[f64],
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+) -> Result<AlignmentResult, FdarError> {
+    check_grid(argvals, f1.len(), "f1")?;
+    check_grid(argvals, f2.len(), "f2")?;
+    cfg.validate()?;
+    let q1 = srsf_single(f1, argvals);
+    let q2 = srsf_single(f2, argvals);
+    Ok(elastic_align_pair_from_srsf(
+        f2, &q1, &q2, argvals, None, cfg,
+    ))
+}
+
+/// Elastic distance between two curves under a [`WarpOptimConfig`].
+///
+/// Shorthand for [`elastic_align_pair_with_config`] returning only the
+/// distance; the default config equals [`elastic_distance`].
+///
+/// # Errors
+/// As [`elastic_align_pair_with_config`].
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::{elastic_distance_with_config, WarpOptimConfig, WarpOptimMethod};
+///
+/// let t: Vec<f64> = (0..40).map(|i| i as f64 / 39.0).collect();
+/// let f1: Vec<f64> = t.iter().map(|&s| (s * 6.0).sin()).collect();
+/// let f2: Vec<f64> = t.iter().map(|&s| ((s + 0.1) * 6.0).sin()).collect();
+/// let mut cfg = WarpOptimConfig::default();
+/// cfg.method = WarpOptimMethod::Rbfgs;
+/// let d = elastic_distance_with_config(&f1, &f2, &t, &cfg).unwrap();
+/// assert!(d >= 0.0);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_distance_with_config(
+    f1: &[f64],
+    f2: &[f64],
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+) -> Result<f64, FdarError> {
+    elastic_align_pair_with_config(f1, f2, argvals, cfg).map(|r| r.distance)
+}
+
+/// Symmetric elastic distance matrix under a [`WarpOptimConfig`].
+///
+/// The default config equals [`elastic_self_distance_matrix`] bit-for-bit.
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] / [`FdarError::InvalidParameter`] for a
+/// mismatched or non-increasing `argvals` or an invalid `cfg`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::{
+///     elastic_self_distance_matrix_with_config, WarpOptimConfig, WarpOptimMethod,
+/// };
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let t: Vec<f64> = (0..30).map(|i| i as f64 / 29.0).collect();
+/// let mut data = FdMatrix::zeros(3, 30);
+/// for i in 0..3 {
+///     for j in 0..30 {
+///         data[(i, j)] = ((t[j] + 0.05 * i as f64) * 6.0).sin();
+///     }
+/// }
+/// let mut cfg = WarpOptimConfig::default();
+/// cfg.method = WarpOptimMethod::Rbfgs;
+/// let d = elastic_self_distance_matrix_with_config(&data, &t, &cfg).unwrap();
+/// assert_eq!(d.shape(), (3, 3));
+/// assert_eq!(d[(0, 1)], d[(1, 0)]);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_self_distance_matrix_with_config(
+    data: &FdMatrix,
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+) -> Result<FdMatrix, FdarError> {
+    check_grid(argvals, data.ncols(), "data")?;
+    cfg.validate()?;
+    Ok(self_distance_matrix_impl(data, argvals, None, cfg))
+}
+
+/// Elastic distance matrix between two datasets under a [`WarpOptimConfig`].
+///
+/// The default config equals [`elastic_cross_distance_matrix`] bit-for-bit.
+///
+/// # Errors
+/// As [`elastic_self_distance_matrix_with_config`], for either dataset.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::{elastic_cross_distance_matrix_with_config, WarpOptimConfig};
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let t: Vec<f64> = (0..25).map(|i| i as f64 / 24.0).collect();
+/// let a = FdMatrix::from_column_major(t.iter().map(|&s| (s * 5.0).sin()).collect(), 1, 25)
+///     .unwrap();
+/// let b = FdMatrix::from_column_major(t.iter().map(|&s| (s * 5.0).cos()).collect(), 1, 25)
+///     .unwrap();
+/// let d = elastic_cross_distance_matrix_with_config(&a, &b, &t, &WarpOptimConfig::default())
+///     .unwrap();
+/// assert_eq!(d.shape(), (1, 1));
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_cross_distance_matrix_with_config(
+    data1: &FdMatrix,
+    data2: &FdMatrix,
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+) -> Result<FdMatrix, FdarError> {
+    check_grid(argvals, data1.ncols(), "data1")?;
+    check_grid(argvals, data2.ncols(), "data2")?;
+    cfg.validate()?;
+    Ok(cross_distance_matrix_impl(data1, data2, argvals, None, cfg))
+}
+
 // ─── Internal Helpers with Pre-computed SRSFs ────────────────────────────────
 
 /// Align curve f2 to curve f1 given their pre-computed SRSFs.
@@ -132,10 +314,10 @@ fn elastic_align_pair_from_srsf(
     q2: &[f64],
     argvals: &[f64],
     band: Option<usize>,
-    lambda: f64,
+    cfg: &WarpOptimConfig,
 ) -> AlignmentResult {
-    // Find optimal warping via DP
-    let gamma = dp_alignment_core_banded(q1, q2, argvals, lambda, band);
+    // Find the optimal warping (DP by default)
+    let gamma = optimal_warp(q1, q2, argvals, cfg, band);
 
     // Apply warping to f2
     let f_aligned = reparameterize_curve(f2, argvals, &gamma);
@@ -166,9 +348,9 @@ fn elastic_distance_from_srsf(
     argvals: &[f64],
     weights: &[f64],
     band: Option<usize>,
-    lambda: f64,
+    cfg: &WarpOptimConfig,
 ) -> f64 {
-    let gamma = dp_alignment_core_banded(q1, q2, argvals, lambda, band);
+    let gamma = optimal_warp(q1, q2, argvals, cfg, band);
     let f_aligned = reparameterize_curve(f2, argvals, &gamma);
     let q_aligned = srsf_single(&f_aligned, argvals);
     l2_distance(q1, &q_aligned, weights)
@@ -192,7 +374,7 @@ fn elastic_distance_from_srsf(
 /// # Returns
 /// Symmetric n × n distance matrix.
 pub fn elastic_self_distance_matrix(data: &FdMatrix, argvals: &[f64], lambda: f64) -> FdMatrix {
-    self_distance_matrix_impl(data, argvals, None, lambda)
+    self_distance_matrix_impl(data, argvals, None, &WarpOptimConfig::classic_dp(lambda))
 }
 
 /// Symmetric elastic distance matrix using a Sakoe–Chiba band (see
@@ -209,7 +391,7 @@ pub fn elastic_self_distance_matrix_banded(
     band_frac: f64,
 ) -> FdMatrix {
     let band = band_radius(band_frac, argvals.len());
-    self_distance_matrix_impl(data, argvals, band, lambda)
+    self_distance_matrix_impl(data, argvals, band, &WarpOptimConfig::classic_dp(lambda))
 }
 
 /// Symmetric elastic distance matrix with an opt-in Sakoe–Chiba band.
@@ -237,14 +419,14 @@ pub fn elastic_self_distance_matrix_with_band(
     band_frac: Option<f64>,
 ) -> FdMatrix {
     let band = band_frac.and_then(|f| band_radius(f, argvals.len()));
-    self_distance_matrix_impl(data, argvals, band, lambda)
+    self_distance_matrix_impl(data, argvals, band, &WarpOptimConfig::classic_dp(lambda))
 }
 
 fn self_distance_matrix_impl(
     data: &FdMatrix,
     argvals: &[f64],
     band: Option<usize>,
-    lambda: f64,
+    cfg: &WarpOptimConfig,
 ) -> FdMatrix {
     let n = data.nrows();
 
@@ -259,7 +441,7 @@ fn self_distance_matrix_impl(
                 .map(|j| {
                     let fj = data.row(j);
                     let qj = srsfs.row(j);
-                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, &weights, band, lambda)
+                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, &weights, band, cfg)
                 })
                 .collect::<Vec<_>>()
         })
@@ -297,7 +479,13 @@ pub fn elastic_cross_distance_matrix(
     argvals: &[f64],
     lambda: f64,
 ) -> FdMatrix {
-    cross_distance_matrix_impl(data1, data2, argvals, None, lambda)
+    cross_distance_matrix_impl(
+        data1,
+        data2,
+        argvals,
+        None,
+        &WarpOptimConfig::classic_dp(lambda),
+    )
 }
 
 /// Elastic distance matrix between two datasets using a Sakoe–Chiba band (see
@@ -311,7 +499,13 @@ pub fn elastic_cross_distance_matrix_banded(
     band_frac: f64,
 ) -> FdMatrix {
     let band = band_radius(band_frac, argvals.len());
-    cross_distance_matrix_impl(data1, data2, argvals, band, lambda)
+    cross_distance_matrix_impl(
+        data1,
+        data2,
+        argvals,
+        band,
+        &WarpOptimConfig::classic_dp(lambda),
+    )
 }
 
 /// Elastic distance matrix between two datasets with an opt-in Sakoe–Chiba band.
@@ -340,7 +534,13 @@ pub fn elastic_cross_distance_matrix_with_band(
     band_frac: Option<f64>,
 ) -> FdMatrix {
     let band = band_frac.and_then(|f| band_radius(f, argvals.len()));
-    cross_distance_matrix_impl(data1, data2, argvals, band, lambda)
+    cross_distance_matrix_impl(
+        data1,
+        data2,
+        argvals,
+        band,
+        &WarpOptimConfig::classic_dp(lambda),
+    )
 }
 
 fn cross_distance_matrix_impl(
@@ -348,7 +548,7 @@ fn cross_distance_matrix_impl(
     data2: &FdMatrix,
     argvals: &[f64],
     band: Option<usize>,
-    lambda: f64,
+    cfg: &WarpOptimConfig,
 ) -> FdMatrix {
     let n1 = data1.nrows();
     let n2 = data2.nrows();
@@ -365,7 +565,7 @@ fn cross_distance_matrix_impl(
                 .map(|j| {
                     let fj = data2.row(j);
                     let qj = srsfs2.row(j);
-                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, &weights, band, lambda)
+                    elastic_distance_from_srsf(&fj, &qi, &qj, argvals, &weights, band, cfg)
                 })
                 .collect::<Vec<_>>()
         })
@@ -433,6 +633,17 @@ pub fn amplitude_self_distance_matrix(data: &FdMatrix, argvals: &[f64], lambda: 
 /// `FirstOrder` uses the standard DP penalty on slope deviation.
 /// `SecondOrder` and `Combined` first run standard DP alignment, then
 /// apply iterative Tikhonov smoothing to reduce warp curvature.
+///
+/// **Deprecated in favour of in-objective penalties (documentation only; the
+/// behaviour is unchanged).** The post-hoc Tikhonov smoothing of `SecondOrder`
+/// / `Combined` does not minimise any alignment objective — it smooths the DP
+/// warp after the fact, so the curvature penalty never trades off against the
+/// alignment cost. Prefer [`elastic_align_pair_with_config`] with
+/// `method = WarpOptimMethod::Rbfgs` and `penalty =
+/// WarpObjectivePenalty::Roughness` (`∫ γ̈²` inside the objective, fdasrvf/fdasrsf
+/// `penalty = "roughness"`), or `L2Gam` / `L2Psi` inside the DP.
+///
+/// [`elastic_align_pair_with_config`]: super::elastic_align_pair_with_config
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 #[non_exhaustive]
 pub enum WarpPenaltyType {
@@ -498,6 +709,12 @@ fn tikhonov_smooth_gamma(gamma: &[f64], argvals: &[f64], alpha: f64, n_iter: usi
 /// [`WarpPenaltyType::Combined`], runs the standard DP alignment first,
 /// then applies iterative Tikhonov smoothing to the warping function to
 /// reduce curvature (gamma'') while preserving alignment quality.
+///
+/// **Deprecated (documentation only):** the post-hoc smoothing path is kept
+/// for compatibility and is numerically unchanged, but new code should put the
+/// curvature penalty inside the objective with
+/// [`elastic_align_pair_with_config`] (`WarpOptimMethod::Rbfgs` +
+/// `WarpObjectivePenalty::Roughness`); see [`WarpPenaltyType`].
 ///
 /// # Arguments
 /// * `f1` — Target curve (length m)
