@@ -4,6 +4,7 @@
 //! - Lp distances (L1, L2, L∞)
 //! - Hausdorff distance
 //! - Dynamic Time Warping (DTW), warping paths, and Sakoe-Chiba / Itakura windows
+//! - DTW Barycenter Averaging (DBA, Petitjean et al. 2011)
 //! - Fourier-based semimetric
 //! - Horizontal shift semimetric
 //! - Soft-DTW (differentiable DTW relaxation)
@@ -18,6 +19,7 @@ use crate::matrix::FdMatrix;
 use rayon::iter::ParallelIterator;
 
 pub mod basis_coef;
+pub mod dba;
 pub mod deriv;
 pub mod dtw;
 pub mod fourier;
@@ -137,6 +139,7 @@ pub(super) fn cross_distance_matrix(
 // ---------------------------------------------------------------------------
 
 pub use basis_coef::{basis_coef_cross, basis_coef_self};
+pub use dba::{dtw_barycenter_averaging, DbaConfig, DbaInit, DbaResult};
 pub use deriv::{deriv_cross, deriv_self};
 pub use dtw::{dtw_cross, dtw_distance, dtw_distance_windowed, dtw_path, dtw_self, DtwPath};
 pub use fourier::{fourier_cross, fourier_self};
