@@ -90,6 +90,7 @@ pub mod detrend;
 pub mod dim;
 pub mod distance;
 pub(crate) mod distributions;
+pub mod dtw_kmeans;
 pub mod famm;
 pub mod fdata;
 pub mod fem_smoothing;
@@ -597,6 +598,9 @@ pub use clustering::{
     calinski_harabasz, calinski_harabasz_from_distances, fuzzy_cmeans_fd, kmeans_fd,
     silhouette_score, silhouette_score_from_distances, FuzzyCmeansResult, KmeansResult,
 };
+
+// Re-export DTW k-means with DBA centroids (GH #45)
+pub use dtw_kmeans::{dtw_kmeans, DtwKMeansConfig, DtwKMeansInit, DtwKMeansResult};
 
 // Re-export kernel-k-means clustering (GAK-backed, no centroid)
 pub use kernel_kmeans::{kernel_kmeans_fd, KernelKmeansConfig, KernelKmeansResult};

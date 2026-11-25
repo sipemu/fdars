@@ -51,6 +51,9 @@ pub use crate::metric::{
     DtwWindow, LpDomain, SbdResult, SoftDtwBarycenterConfig,
 };
 
+// DTW k-means with DBA centroids
+pub use crate::dtw_kmeans::{dtw_kmeans, DtwKMeansConfig, DtwKMeansResult};
+
 // k-Shape clustering + SBD-backed k-medoids
 pub use crate::kshape::{kshape_fd, sbd_kmedoids, KShapeConfig, KShapeResult};
 

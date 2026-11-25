@@ -24,7 +24,7 @@
 //! minimises a smoothed objective by gradient descent, DBA works on hard DTW and
 //! is the standard averaging baseline in tslearn, dtaidistance and
 //! DynamicAxisWarping.jl. Use it as the centroid step of a DTW k-means (see
-//! `dtw_kmeans`).
+//! [`dtw_kmeans`](crate::dtw_kmeans::dtw_kmeans)).
 
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
@@ -36,7 +36,7 @@ use super::dtw::{dtw_distance_windowed, dtw_path};
 use super::window::DtwWindow;
 
 /// DBA uses the squared local cost `(a − b)²`.
-const DBA_P: f64 = 2.0;
+pub(crate) const DBA_P: f64 = 2.0;
 
 /// Initial barycenter for [`dtw_barycenter_averaging`].
 #[derive(Debug, Clone, PartialEq, Default)]

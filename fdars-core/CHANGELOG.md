@@ -35,6 +35,27 @@ tslearn parity: window masks, `dtw_path` tie-breaking and `soft_dtw_alignment`
 reproduce tslearn's documented values; tslearn's `gak` has no `T`, so the
 triangular parameter follows Cuturi (2011, "Fast Global Alignment Kernels").
 
+**DTW Barycenter Averaging (GH #45).** Additive and non-breaking; no new crate
+dependency.
+
+### Added
+
+- `dtw_barycenter_averaging` / `DbaConfig` / `DbaInit` / `DbaResult` — Petitjean
+  DTW Barycenter Averaging with mean (default), medoid or custom
+  initialisation, an optional `DtwWindow`, per-series weights and a resampled
+  `barycenter_size`. Built on `dtw_path`; loop, stopping rule and tie-breaking
+  follow tslearn's `dtw_barycenter_averaging`.
+- `dtw_kmeans` / `DtwKMeansConfig` / `DtwKMeansInit` / `DtwKMeansResult`
+  (+ `predict`) — DTW k-means with DBA centroids warm-started from the previous
+  centroid (tslearn `TimeSeriesKMeans(metric="dtw")`), k-means++ seeding on DTW
+  costs, `n_init` restarts seeded `seed + r`, and in-place re-seeding of empty
+  clusters.
+
+Validation: golden barycenters from tslearn 0.10.0 (mean, Sakoe-Chiba, Itakura,
+resampled, weighted, custom and medoid init) and dtaidistance 2.5.1 (`dba`,
+`dba_loop`), plus tslearn `TimeSeriesKMeans` labels and centroids from a fixed
+initialisation.
+
 ## [0.47.0] - 2026-09-25
 
 **Performance — Cross-Language Benchmarks & Optimization Pass.** Strictly
