@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Iterative least-squares shift registration + landmark shift registration (GH #46
+ALN-SHIFT).** Additive and non-breaking; the existing golden-section
+`least_squares_shift_registration` is unchanged; no new crate dependency.
+
+### Added
+
+- `iterative_shift_registration(data, argvals, template, &IterativeShiftConfig)` —
+  Ramsay & Silverman (ch. 7) modified Newton–Raphson shift registration with the
+  template re-estimated on every iteration, a port of scikit-fda 0.10.1
+  `LeastSquaresShiftRegistration`. `ShiftTemplate { Mean (default), Fixed(&[f64]),
+  Custom(&dyn Fn(&FdMatrix) -> Vec<f64>) }`; sealed `IterativeShiftConfig { max_iter = 5,
+  tol = 1e-2, step_size = 1, restrict_domain = false, extrapolation, initial }` with
+  `validate()`; `IterativeShiftResult` reports shifts, template, `n_iter`, `converged`
+  and the (optionally restricted) registered grid. Matches scikit-fda golden shifts to
+  < 1e-10 (restricted domain: < 1e-12 with SciPy's quadrature matched, < 1e-5 raw).
+- `ShiftExtrapolation { Boundary (default), Linear, Periodic, Zeros }` and
+  `shift_curves(data, argvals, shifts, extrapolation, restrict_domain)` (scikit-fda
+  `FData.shift`).
+- Landmark shift registration: `landmark_shift_deltas(landmarks, LandmarkLocation)`
+  (`LandmarkLocation { Mean (default), MidRange, Fixed(f64), Custom(&dyn Fn(&[f64]) -> f64) }`),
+  `landmark_shift_deltas_multi` (several landmarks per curve, least-squares common
+  shift) and `landmark_shift_registration(data, argvals, landmarks, location,
+  &LandmarkShiftConfig)` (scikit-fda `landmark_shift_deltas` /
+  `landmark_shift_registration`).
+- Sign convention: fdars registers `fᵢ(t − δᵢ)`, so all new shifts are the negation
+  of scikit-fda's `deltas_`. Documented deviations: Boundary (not linear)
+  extrapolation by default; restricted-domain integration recomputed each iteration
+  (scikit-fda restricts cumulatively and asserts when the interval re-widens);
+  fdars' even-N Simpson rule; zero Newton step for curves with zero derivative energy.
+
 **Riemannian L-BFGS warp optimiser + in-objective warp penalties (GH #42 ALN-RBFGS,
 GH #43 ALN-PEN).** Additive and non-breaking; every existing function is
 bit-identical (proved against hashes recorded on the previous commit); no new

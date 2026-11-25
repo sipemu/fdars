@@ -12,6 +12,8 @@
 //!   with in-objective warp penalties (`l2gam`, `l2psi`, `roughness`, `geodesic`)
 //! - [`elastic_self_distance_matrix`] / [`elastic_cross_distance_matrix`] — Distance matrices
 //! - [`reparameterize_curve`] / [`compose_warps`] — Warping utilities
+//! - [`iterative_shift_registration`] — iterative least-squares shift registration
+//!   with template re-estimation; [`landmark_shift_registration`] — landmark shift
 
 mod bayesian;
 mod closed;
@@ -25,6 +27,7 @@ mod generative;
 mod geodesic;
 mod karcher;
 mod lambda_cv;
+mod landmark_shift;
 mod multires;
 mod nd;
 mod optim;
@@ -40,6 +43,7 @@ mod set;
 mod shape;
 mod shape_ci;
 mod shift;
+mod shift_iterative;
 mod srsf;
 mod transfer;
 mod tsrvf;
@@ -74,6 +78,10 @@ pub use karcher::{
     karcher_mean, karcher_mean_banded, karcher_mean_with_band, karcher_mean_with_config,
 };
 pub use lambda_cv::{lambda_cv, LambdaCvConfig, LambdaCvResult};
+pub use landmark_shift::{
+    landmark_shift_deltas, landmark_shift_deltas_multi, landmark_shift_registration,
+    LandmarkLocation, LandmarkShiftConfig, LandmarkShiftResult,
+};
 pub use multires::{elastic_align_pair_multires, MultiresConfig};
 pub use nd::{
     elastic_align_pair_nd, elastic_distance_nd, srsf_inverse_nd, srsf_transform_nd,
@@ -110,6 +118,10 @@ pub use shape::{
 pub use shape_ci::{shape_confidence_interval, ShapeCiConfig, ShapeCiResult};
 pub use shift::{
     least_squares_shift_registration, ShiftRegistrationResult, DEFAULT_MAX_SHIFT_FRACTION,
+};
+pub use shift_iterative::{
+    iterative_shift_registration, shift_curves, IterativeShiftConfig, IterativeShiftResult,
+    ShiftExtrapolation, ShiftTemplate, ShiftedCurves,
 };
 pub use srsf::{
     compose_warps, invert_warp, reparameterize_curve, srsf_inverse, srsf_transform,
