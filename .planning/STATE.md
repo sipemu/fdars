@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-25T23:04:28.627Z"
-last_activity: 2026-11-25
+last_updated: "2026-11-25T23:32:27.996Z"
+last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 2c1759aa9c169618feafd81876e7057c9dfc4146
+state_head: ead7b3679667e200a87468b0493c598c2fc0e817
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261125-x3k: ALN-DBA (GH #45) DTW Barycenter Averaging (mean/medoid/custom init, DtwWindow) + DTW k-means with DBA centroids
+Last activity: 2026-11-26 - Completed quick task 261126-07k: ALN-RBFGS + ALN-PEN (GH #42, #43) Riemannian L-BFGS warp optimiser + in-objective warp penalties (WarpOptimConfig, *_with_config)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -178,6 +178,7 @@ Decisions relevant to current work (v0.47.0):
 |---|-------------|------|--------|-----------|
 | 261125-v9x | ALN-DTWPATH (GH #44): DTW warping path, Sakoe-Chiba/Itakura windows, soft-DTW alignment matrix, GAK triangular T | 2026-11-25 | 97cbc54b | [261125-v9x-aln-dtwpath-gh-44-dtw-warping-path-trace](./quick/261125-v9x-aln-dtwpath-gh-44-dtw-warping-path-trace/) |
 | 261125-x3k | ALN-DBA (#45): Petitjean DTW Barycenter Averaging with mean/medoid init + DBA k-means | 2026-11-26 | 2c1759aa | [261125-x3k-aln-dba-45-petitjean-dtw-barycenter-aver](./quick/261125-x3k-aln-dba-45-petitjean-dtw-barycenter-aver/) |
+| 261126-07k | ALN-RBFGS + ALN-PEN (#42, #43): Riemannian L-BFGS warp optimiser + in-objective warp penalties | 2026-11-26 | ead7b367 | [261126-07k-aln-rbfgs-aln-pen-42-43-riemannian-l-bfg](./quick/261126-07k-aln-rbfgs-aln-pen-42-43-riemannian-l-bfg/) |
 
 ## Deferred Items
 
