@@ -1,19 +1,19 @@
 ---
 gsd_state_version: "1.0"
 milestone: v0.47.0
-milestone_name: "Performance: Cross-Language Benchmarks & Optimization Pass"
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-09-30T06:53:31.999Z"
-last_activity: 2026-09-30
+last_updated: "2026-11-25T22:03:56.313Z"
+last_activity: 2026-11-25
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: df9f4083b0e63420fd8185be42595e6e7a35bbbc
+state_head: 97cbc54bc7c91f429d0ff17a25a7093386842e59
 progress:
   total_phases: 6
   completed_phases: 6
   total_plans: 22
   completed_plans: 22
   percent: 100
+milestone_name: "Performance: Cross-Language Benchmarks & Optimization Pass"
 current_phase: 117
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-09-30 — Milestone v0.47.0 completed and archived
+Last activity: 2026-11-25 - Completed quick task 261125-v9x: ALN-DTWPATH (GH #44) DTW path, windows, soft-DTW alignment, GAK triangular T
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -171,6 +171,12 @@ Decisions relevant to current work (v0.47.0):
 - Historical build/CI hazards (MEMORY.md) apply: run clippy `--all-targets --features linalg,parallel -- -D warnings` (CI lints test/bench code); run `cargo fmt` per commit (`--no-verify` commits leave fmt drift → CI fmt-check fails); keep the `--features serde` build green (repaired v0.40.0 — do not regress); watch `/tmp` and `target/` disk pressure on full builds + benches (`rm -rf target/debug/{incremental,examples}` to free space; doctests link in a small `/tmp` tmpfs); the pre-commit hook runs the full cargo gate and times out — prefer inline execution + `commit --no-verify` after out-of-band gates; run the full combined gate per-gate FOREGROUND with 600s timeout (as one background bash it gets killed mid-run). Audit-milestone note is INVERTED here: this milestone DOES change `fdars-core` code (optimizations) → it is a normal tag-eligible release, but tag/publish stays the deferred operator step per config.
 - FPCR gate failure at n=100,m=50: |Pearson corr|=0.9495 < threshold 0.95. Python (scikit-fda) vs R (fda.usc) FPCR fitted values diverge more at n=100 than n=60. Cannot proceed with grid baseline run without threshold relaxation or algorithmic alignment. Options: (A) use n<100 for FPCR cells, (B) exclude FPCR from gate for n>=100 with disclosure, (C) investigate ncomp alignment between libraries.
 - NEW (Plan 02 Task 3): FPCA HARD-gate fdars-vs-python min|corr|=0.9874 < 0.99 at cell n=300,m=50 — PC3/PC4 eigenvalue near-degeneracy (subspace agrees 0.999, individual axes 0.988). NOT the FPCR issue; FPCA must stay hard-gated (coordinator). Grid aborted at cell 3; comparison.csv not written. Needs decision: gate FPCA on subspace/principal-angles (recommended), or reduce ncomp, or disclose fdars-vs-python FPCA.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 261125-v9x | ALN-DTWPATH (GH #44): DTW warping path, Sakoe-Chiba/Itakura windows, soft-DTW alignment matrix, GAK triangular T | 2026-11-25 | 97cbc54b | [261125-v9x-aln-dtwpath-gh-44-dtw-warping-path-trace](./quick/261125-v9x-aln-dtwpath-gh-44-dtw-warping-path-trace/) |
 
 ## Deferred Items
 
