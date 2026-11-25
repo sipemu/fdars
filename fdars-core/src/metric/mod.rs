@@ -3,7 +3,7 @@
 //! This module provides various distance measures including:
 //! - Lp distances (L1, L2, L∞)
 //! - Hausdorff distance
-//! - Dynamic Time Warping (DTW)
+//! - Dynamic Time Warping (DTW), warping paths, and Sakoe-Chiba / Itakura windows
 //! - Fourier-based semimetric
 //! - Horizontal shift semimetric
 //! - Soft-DTW (differentiable DTW relaxation)
@@ -29,6 +29,7 @@ pub mod lp;
 pub mod pca;
 pub mod sbd;
 pub mod soft_dtw;
+pub mod window;
 
 #[cfg(test)]
 mod tests;
@@ -137,7 +138,7 @@ pub(super) fn cross_distance_matrix(
 
 pub use basis_coef::{basis_coef_cross, basis_coef_self};
 pub use deriv::{deriv_cross, deriv_self};
-pub use dtw::{dtw_cross, dtw_distance, dtw_self};
+pub use dtw::{dtw_cross, dtw_distance, dtw_distance_windowed, dtw_path, dtw_self, DtwPath};
 pub use fourier::{fourier_cross, fourier_self};
 pub use gak::{
     gak, gak_gram_matrix, gak_gram_predict, gak_gram_train, sigma_gak, GakConfig, GakGramTrain,
@@ -153,6 +154,7 @@ pub use soft_dtw::{
     soft_dtw_distance_generic, soft_dtw_div_cross, soft_dtw_div_self, soft_dtw_divergence,
     soft_dtw_self, SoftDtwBarycenterConfig, SoftDtwBarycenterResult,
 };
+pub use window::DtwWindow;
 
 // Test-only crate-internal re-exports of the underlying `_1d` primitives, so the
 // inline `#[cfg(test)]` modules that pin bit-identity against the dispatchers keep
