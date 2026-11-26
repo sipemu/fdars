@@ -270,6 +270,7 @@ pub use covariance::{
 
 // Re-export alignment types and functions
 pub use alignment::{
+    ab_closure_residual, ab_elastic_distance_pl, ab_elastic_match_pl, ab_project_closed,
     ab_transform, ab_transform_inverse, affine_registration, affine_warp_curves, align_to_target,
     alignment_quality, amplitude_boxplot_from_aligned, amplitude_distance,
     amplitude_distance_at_warp_generic, amplitude_self_distance_matrix, bayesian_align_group,
@@ -305,7 +306,7 @@ pub use alignment::{
     srsf_transform_nd, srsf_transform_smoothed, srvf_to_curve, transfer_alignment,
     tsrvf_from_alignment, tsrvf_from_alignment_with_method, tsrvf_inverse, tsrvf_transform,
     tsrvf_transform_with_method, warp_complexity, warp_inverse_error, warp_smoothness,
-    warp_statistics, AffineDomain, AffineMetric, AffineRegistrationConfig,
+    warp_statistics, AbPlMatching, AffineDomain, AffineMetric, AffineRegistrationConfig,
     AffineRegistrationResult, AffineWarps, AlignmentDiagnostic, AlignmentDiagnosticSummary,
     AlignmentQuality, AlignmentResult, AlignmentResultNd, AlignmentSetResult, AmplitudeBoxplot,
     BayesianAlignConfig, BayesianAlignmentResult, BayesianGroupChain, BayesianGroupConfig,

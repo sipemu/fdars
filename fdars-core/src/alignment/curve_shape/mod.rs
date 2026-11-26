@@ -55,6 +55,11 @@
 //! `F_{a,b}(c) = 2b |c'|^{1/2} (c'/|c'|)^{a/(2b)}` that pulls the L² metric back
 //! to `g^{a,b}`. The SRVF is the case `a = 1, b = 1/2` (geomstats
 //! `ElasticMetric(a=1, b=0.5)`); see [`CurveShapeMetric`] for the conventions.
+//! Closed contours are supported through the F-space closure condition
+//! [`ab_closure_residual`] / projection [`ab_project_closed`]. For polygons,
+//! [`ab_elastic_distance_pl`] computes the exact `(a, b)` distance modulo
+//! reparametrisation (Bauer et al., J. Nonlinear Sci. 2024, §4.1) without any
+//! discretisation of the matching.
 //!
 //! Reference: Srivastava & Klassen, *Functional and Shape Data Analysis*
 //! (Springer 2016), ch. 5–6; fdasrsf 2.7.5 `curve_functions` / `curve_stats`;
@@ -62,6 +67,8 @@
 //! space of plane curves", SIAM J. Imaging Sci. 13 (2020); geomstats 2.8.0
 //! `discrete_curves.FTransform` / `ElasticMetric`.
 
+#[cfg(test)]
+mod ab_closed_tests;
 #[cfg(test)]
 mod ab_tests;
 mod boxplot;
@@ -72,6 +79,9 @@ mod geometry;
 mod karcher;
 #[cfg(test)]
 mod optim_tests;
+mod pl_exact;
+#[cfg(test)]
+mod pl_exact_tests;
 #[cfg(test)]
 mod tests;
 
@@ -88,6 +98,7 @@ pub use karcher::{
     curve_shape_karcher_covariance, curve_shape_karcher_mean, curve_shape_karcher_median,
     curve_shape_pca, CurveShapeKarcherResult, CurveShapePcaResult,
 };
+pub use pl_exact::{ab_elastic_distance_pl, ab_elastic_match_pl, AbPlMatching};
 
 use geometry::Grid;
 
@@ -105,7 +116,7 @@ use rayon::iter::ParallelIterator;
 /// * [`Srvf`](Self::Srvf) (default) — the square-root velocity (Fisher–Rao)
 ///   metric, for curves in any R^d.
 /// * [`Elastic { a, b }`](Self::Elastic) — the general first-order elastic
-///   metric `g^{a,b}` for **open planar** curves (`d = 2`, `closed = false`),
+///   metric `g^{a,b}` for **planar** curves (`d = 2`), open or closed,
 ///   computed in the coordinates of the Kurtek–Needham transform
 ///   `F(c) = 2b |c'|^{1/2} e^{iλθ}`, `λ = a/(2b)`, `θ` the continuous lift of the
 ///   tangent angle (see [`ab_transform`]).
@@ -126,7 +137,15 @@ use rayon::iter::ParallelIterator;
 ///   `rotation = true` the optimal F-space rotation `ψ` over all of SO(2) is used,
 ///   which is the exact quotient over rotations **and** branches; the reported
 ///   curve rotation is `ψ/λ`. With `rotation = false` the distance is the plain
-///   L² distance of the `k = 0` branches (geomstats `ElasticMetric.dist`).
+///   L² distance of the `k = 0` branches (geomstats `ElasticMetric.dist`), or,
+///   with [`CurveShapeConfig::branch_search`], the minimum over the relative
+///   branches `k ∈ {−1, 0, 1}`.
+/// * Closed contours (`closed = true`): the curve rebuilt from `F` has
+///   displacement `c(1) − c(0) = (4b²)⁻¹ ∫ |F|² e^{iφ/λ}` (`φ` the lifted `arg F`),
+///   so the closed-curve manifold is `{F : ∫ |F|² e^{iφ/λ} = 0}` (`∫ q‖q‖ = 0`
+///   for `λ = 1`); transforms are projected onto it ([`ab_project_closed`]) and
+///   Karcher statistics use its tangent space. Starting points are searched as
+///   for the SRVF.
 /// * Scale: `‖F(c)‖² = 4b²·length(c)`. With `scale = false` the distance is
 ///   `‖F1 − F2*‖` (the geomstats pull-back distance). With `scale = true` the
 ///   transforms are normalised to the unit sphere and the distance is the
@@ -166,7 +185,7 @@ pub enum CurveShapeMetric {
     /// Square-root velocity (Fisher–Rao) metric, any dimension.
     #[default]
     Srvf,
-    /// General `(a, b)` elastic metric for open planar curves (`a, b > 0`).
+    /// General `(a, b)` elastic metric for planar curves (`a, b > 0`).
     Elastic {
         /// Bending weight `a > 0`.
         a: f64,
@@ -254,8 +273,46 @@ pub struct CurveShapeConfig {
     /// Default 2.
     pub align_iter: usize,
     /// Shape-space metric. Default [`CurveShapeMetric::Srvf`];
-    /// [`CurveShapeMetric::Elastic`] requires open planar curves.
+    /// [`CurveShapeMetric::Elastic`] requires planar curves (open or closed).
     pub metric: CurveShapeMetric,
+    /// With [`CurveShapeMetric::Elastic`] and `rotation = false`: minimise the
+    /// distance over the F-angle ambiguity. `F` is multivalued for non-integer
+    /// `λ = a/(2b)` (branches differ by `e^{2πiλk}`) and the default compares the
+    /// `k = 0` branches `θ(0) ∈ (−π, π]` of both curves (geomstats
+    /// `ElasticMetric.dist`), so two curves whose initial tangents straddle the
+    /// branch cut (angles near `±π`) are compared through a lifted angle
+    /// difference near `2π`. With `branch_search = true` the transform of `β2`
+    /// is also tried on the relative branches `k = ±1` (`F2 ↦ e^{±2πiλ}F2`,
+    /// which cover every relative initial-angle lift in `(−π, π]`) and the
+    /// best is kept; the curve itself is never rotated. Ignored with
+    /// `rotation = true` (the SO(2) Procrustes in F-space already quotients the
+    /// branches) and for the SRVF. Default `false`.
+    ///
+    /// ```
+    /// use fdars_core::alignment::{curve_shape_distance, CurveShapeConfig, CurveShapeMetric};
+    /// use fdars_core::matrix::FdMatrix;
+    /// let m = 50;
+    /// // two nearly identical leftward segments, initial angles just above/below π
+    /// let mut b1 = FdMatrix::zeros(2, m);
+    /// let mut b2 = FdMatrix::zeros(2, m);
+    /// for j in 0..m {
+    ///     let t = j as f64 / (m - 1) as f64;
+    ///     b1[(0, j)] = -t;
+    ///     b1[(1, j)] = 0.02 * t;
+    ///     b2[(0, j)] = -t;
+    ///     b2[(1, j)] = -0.02 * t;
+    /// }
+    /// let mut cfg = CurveShapeConfig::default();
+    /// cfg.metric = CurveShapeMetric::Elastic { a: 1.0, b: 1.0 }; // λ = 1/2
+    /// cfg.rotation = false;
+    /// cfg.reparam = false;
+    /// let d0 = curve_shape_distance(&b1, &b2, &cfg).unwrap();
+    /// cfg.branch_search = true;
+    /// let d1 = curve_shape_distance(&b1, &b2, &cfg).unwrap();
+    /// assert!(d1 < 0.1 && d0 > 1.0);
+    /// ```
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub branch_search: bool,
     /// Warp optimiser of the reparametrisation step (default: the classic
     /// 35-move DP, bit-identical to the behaviour before this option).
     ///
@@ -324,6 +381,7 @@ impl Default for CurveShapeConfig {
             lambda: 0.0,
             align_iter: 2,
             metric: CurveShapeMetric::Srvf,
+            branch_search: false,
             warp_optim: WarpOptimConfig::default(),
         }
     }
@@ -335,7 +393,6 @@ impl CurveShapeConfig {
     /// # Errors
     /// [`FdarError::InvalidParameter`] if `seed_step == 0`, `align_iter == 0`,
     /// `lambda` is negative / non-finite, the metric parameters are invalid,
-    /// the elastic `(a, b)` metric is combined with `closed = true`,
     /// `warp_optim.lambda ≠ 0`, `warp_optim.band_frac ≠ 0` (no band for curve
     /// shapes), or `warp_optim` (with weight `lambda`) is invalid
     /// ([`WarpOptimConfig::validate`]).
@@ -378,12 +435,6 @@ impl CurveShapeConfig {
         let mut warp = self.warp_optim.clone();
         warp.lambda = self.lambda;
         warp.validate()?;
-        if self.closed && self.metric != CurveShapeMetric::Srvf {
-            return bad(
-                "metric",
-                "the (a,b) elastic metric supports open curves only (closed = false)".to_string(),
-            );
-        }
         Ok(())
     }
 
@@ -680,6 +731,85 @@ pub fn project_closed_srvf(q: &FdMatrix) -> Result<FdMatrix, FdarError> {
     Ok(qc)
 }
 
+/// Closure residual of a planar `(a, b)` F-transform: the displacement
+/// `c(1) − c(0) = (4b²)⁻¹ ∫ |F|² e^{iφ/λ} dt` of the curve
+/// [`ab_transform_inverse`] rebuilds from `f` (`λ = a/(2b)`, `φ` the continuous
+/// lift of `arg F`). Zero iff that curve is closed; for `a = 1, b = 1/2` it is
+/// [`closure_residual`].
+///
+/// **Derivation.** The inverse transform is `c' = |F|²/(4b²) · e^{iφ/λ}`
+/// (speed `|F|²/(4b²)`, tangent angle `φ/λ`), so `c(1) − c(0) = ∫ c'`. A
+/// different starting branch rotates the rebuilt curve rigidly and leaves
+/// closure unchanged; the residual is homogeneous of degree 2 in `F`.
+///
+/// # Errors
+/// As [`ab_transform_inverse`].
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{ab_closure_residual, ab_transform};
+/// use fdars_core::matrix::FdMatrix;
+/// let m = 201;
+/// let mut circle = FdMatrix::zeros(2, m);
+/// for j in 0..m {
+///     let th = 2.0 * std::f64::consts::PI * j as f64 / (m - 1) as f64;
+///     circle[(0, j)] = th.cos();
+///     circle[(1, j)] = th.sin();
+/// }
+/// let f = ab_transform(&circle, 1.0, 1.0).unwrap(); // λ = 1/2
+/// let r = ab_closure_residual(&f, 1.0, 1.0).unwrap();
+/// assert!(r.iter().all(|v| v.abs() < 1e-3)); // closed up to quadrature error
+/// ```
+pub fn ab_closure_residual(f: &FdMatrix, a: f64, b: f64) -> Result<Vec<f64>, FdarError> {
+    validate_planar(f, "f", a, b)?;
+    let g = geometry::closure_vec_ab(f, &Grid::new(f.ncols()), a / (2.0 * b));
+    Ok(g.iter().map(|v| v / (4.0 * b * b)).collect())
+}
+
+/// Project a planar `(a, b)` F-transform onto the closed-curve manifold
+/// `{F : ∫ |F|² e^{iφ/λ} = 0}` (see [`ab_closure_residual`]): Gauss–Newton
+/// iterations along the closure normals
+/// `b_x = 2cos(φ/λ)·F − λ⁻¹ sin(φ/λ)·iF`, `b_y = 2sin(φ/λ)·F + λ⁻¹ cos(φ/λ)·iF`
+/// (the L² gradients of the residual) with the exact Gram-matrix Jacobian and a
+/// backtracking line search. The L² norm is preserved; on return the residual
+/// of the unit-norm copy is below `1e-10`. For `λ = a/(2b) = 1` this is
+/// [`project_closed_srvf`] (bit-identical).
+///
+/// # Errors
+/// As [`ab_transform_inverse`], plus [`FdarError::ComputationFailed`] if the
+/// iteration does not reach the tolerance.
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{ab_closure_residual, ab_project_closed, ab_transform};
+/// use fdars_core::alignment::ab_transform_inverse;
+/// use fdars_core::matrix::FdMatrix;
+/// // an open arc (three quarters of a circle)
+/// let m = 101;
+/// let mut beta = FdMatrix::zeros(2, m);
+/// for j in 0..m {
+///     let th = 1.5 * std::f64::consts::PI * j as f64 / (m - 1) as f64;
+///     beta[(0, j)] = th.cos();
+///     beta[(1, j)] = th.sin();
+/// }
+/// let (a, b) = (1.0, 2.0); // λ = 1/4
+/// let f = ab_project_closed(&ab_transform(&beta, a, b).unwrap(), a, b).unwrap();
+/// assert!(ab_closure_residual(&f, a, b).unwrap().iter().all(|v| v.abs() < 1e-9));
+/// let c = ab_transform_inverse(&f, a, b).unwrap();
+/// assert!((c[(0, m - 1)] - c[(0, 0)]).abs() < 1e-9 && (c[(1, m - 1)] - c[(1, 0)]).abs() < 1e-9);
+/// ```
+pub fn ab_project_closed(f: &FdMatrix, a: f64, b: f64) -> Result<FdMatrix, FdarError> {
+    validate_planar(f, "f", a, b)?;
+    let (fc, ok) = geometry::project_closed_lam(f, &Grid::new(f.ncols()), a / (2.0 * b));
+    if !ok {
+        return Err(FdarError::ComputationFailed {
+            operation: "ab_project_closed",
+            detail: "F-space closure projection did not converge".to_string(),
+        });
+    }
+    Ok(fc)
+}
+
 /// Optimal rotation `R = argmax ⟨q1, R q2⟩` over SO(d) (or O(d) with
 /// `allow_reflection`) by SVD Procrustes (Kabsch). Exact for `q1 = R₀ q2`.
 ///
@@ -757,7 +887,7 @@ fn srvf_cfg(beta: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
         }
     }
     if cfg.closed {
-        q = geometry::project_closed(&q, grid).0;
+        q = geometry::project_closed_lam(&q, grid, cfg.metric.ratio()).0;
     }
     q
 }
@@ -859,7 +989,13 @@ fn make_candidate(
     grid: &Grid,
 ) -> Candidate {
     let q = geometry::rotate(&r, q_w);
-    let rotation = curve_rotation(r, cfg);
+    // Without rotation the curve is never rotated (a branch change of the
+    // F-transform under `branch_search` is not a curve rotation).
+    let rotation = if cfg.rotation {
+        curve_rotation(r, cfg)
+    } else {
+        geometry::identity(q_w.nrows())
+    };
     let beta = geometry::rotate(&rotation, beta_w);
     let distance = srvf_distance(q1, &q, cfg, grid);
     Candidate {
@@ -872,14 +1008,42 @@ fn make_candidate(
     }
 }
 
-/// Procrustes rotation if enabled, identity otherwise.
+/// Procrustes rotation if enabled; otherwise the identity, or (elastic metric
+/// with `branch_search`) the best relative F-branch rotation.
 fn best_rotation(q1: &FdMatrix, q2: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
     if cfg.rotation {
         geometry::procrustes(q1, q2, grid, cfg.allow_reflection)
             .unwrap_or_else(|_| geometry::identity(q1.nrows()))
+    } else if cfg.branch_search && matches!(cfg.metric, CurveShapeMetric::Elastic { .. }) {
+        best_branch(q1, q2, cfg.metric.ratio(), grid)
     } else {
         geometry::identity(q1.nrows())
     }
+}
+
+/// F-space rotation `Rot(2πλk)`, `k ∈ {−1, 0, 1}`, maximising `⟨q1, R q2⟩`
+/// (ties keep `k = 0`).
+fn best_branch(q1: &FdMatrix, q2: &FdMatrix, lam: f64, grid: &Grid) -> FdMatrix {
+    let rot = |k: f64| {
+        let (s, c) = (2.0 * std::f64::consts::PI * lam * k).sin_cos();
+        let mut r = FdMatrix::zeros(2, 2);
+        r[(0, 0)] = c;
+        r[(1, 0)] = s;
+        r[(0, 1)] = -s;
+        r[(1, 1)] = c;
+        r
+    };
+    let mut best = geometry::identity(2);
+    let mut best_ip = geometry::inner(q1, q2, grid);
+    for k in [-1.0, 1.0] {
+        let r = rot(k);
+        let ip = geometry::inner(q1, &geometry::rotate(&r, q2), grid);
+        if ip > best_ip {
+            best_ip = ip;
+            best = r;
+        }
+    }
+    best
 }
 
 /// Align a prepared curve with a fixed starting point: alternate Procrustes and

@@ -100,6 +100,31 @@ ones bit-for-bit, pinned by tests).
   Lemire's `lbimproved` C++ (p = 1) and Tan et al.'s `LbEnhanced` Java code (p = 2), and
   `LB_Keogh ≤ LB_Improved ≤ DTW`, `LB_Enhanced ≤ DTW` on thousands of random pairs.
 
+**(a,b) elastic metrics: closed contours, exact piecewise-linear distance, branch search
+(GH #68 ALN-CAV).** Additive; every SRVF result and every open-curve `(a,b)` result with the
+default `branch_search = false` is bit-identical (the λ = 1 closure path dispatches to the
+existing SRVF projector).
+
+### Added
+
+- `CurveShapeConfig::closed = true` now works with `CurveShapeMetric::Elastic { a, b }` in
+  every `curve_shape_*` function (align/distance/matrix, Karcher mean/median, covariance,
+  PCA, TSRVF, depth, outliers, box plot, CI). Closure condition in F-space: the curve rebuilt
+  from `F` has displacement `(4b²)⁻¹ ∫ |F|² e^{iφ/λ}` (`φ` the lifted `arg F`, λ = a/(2b));
+  transforms are projected onto `{∫ |F|² e^{iφ/λ} = 0}` by Gauss–Newton along its L²
+  gradients `b_x = 2cos(φ/λ)F − λ⁻¹sin(φ/λ)iF`, `b_y = 2sin(φ/λ)F + λ⁻¹cos(φ/λ)iF`, and the
+  Karcher tangent spaces use these normals. Seed search as for the SRVF.
+- `ab_closure_residual(f, a, b)` and `ab_project_closed(f, a, b)` (public helpers; `a = 1,
+  b = 1/2` = `closure_residual` / `project_closed_srvf`).
+- `CurveShapeConfig::branch_search` (default `false`): with the elastic metric and
+  `rotation = false`, also try the relative F-branches `e^{±2πiλ}` of `β2` (initial tangents
+  on opposite sides of the `±π` cut) without rotating the curve.
+- `ab_elastic_distance_pl(c1, c2, a, b)` / `ab_elastic_match_pl` → `AbPlMatching`: exact
+  `(a,b)` elastic distance (modulo translation and reparametrisation) between piecewise-linear
+  curves in R^d, with the optimal generalised matching — Bauer et al. (J. Nonlinear Sci. 2024)
+  §4.1 via the Lahiri–Robinson–Klassen P/N-segment structure: vertex longest-path DP, P-segment
+  rays swept by initial slope in straightened coordinates, `O(N1²N2²(N1+N2))`.
+
 **Bayesian group alignment band calibration (GH #64 ALN-CAV).** One fix to the posterior
 summaries of `bayesian_align_group`; the chains, warp / σ² summaries and every
 `center_draws = false` result are bit-identical (FNV-hash tests pinned on the previous commit).

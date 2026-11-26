@@ -417,23 +417,171 @@ pub(super) fn project_closed(q: &FdMatrix, grid: &Grid) -> (FdMatrix, bool) {
     (scaled(&qn, n0 / n1), converged)
 }
 
+// ─── Closure under the (a, b) elastic metric (F-transform) ─────────────────
+
+/// Closure functional of a planar F-transform, `G_λ(F) = ∫ |F|² e^{iφ/λ} dt ∈ R²`
+/// (`φ` the continuous lift of `arg F`, as in [`velocity_from_f`]). The curve
+/// reconstructed from `F` has displacement `c(1) − c(0) = G_λ(F)/(4b²)`
+/// (trapezoid weights = the cumulative-trapezoid endpoint), so it is closed iff
+/// `G_λ = 0`. For `λ = 1` this is [`closure_vec`].
+pub(super) fn closure_vec_ab(f: &FdMatrix, grid: &Grid, lam: f64) -> Vec<f64> {
+    let phi = unwrapped_angle(f);
+    let mut g = vec![0.0; 2];
+    for (j, ph) in phi.iter().enumerate() {
+        let r2 = f[(0, j)] * f[(0, j)] + f[(1, j)] * f[(1, j)];
+        let (s, c) = (ph / lam).sin_cos();
+        g[0] += grid.w[j] * r2 * c;
+        g[1] += grid.w[j] * r2 * s;
+    }
+    g
+}
+
+/// L² gradients of the two components of [`closure_vec_ab`]: with
+/// `ψ = φ/λ` and `iF = (−F_y, F_x)`,
+/// `b_x = 2 cos ψ · F − (sin ψ/λ) · iF`, `b_y = 2 sin ψ · F + (cos ψ/λ) · iF`
+/// (for `λ = 1` these are the SRVF closure normals of [`closure_normals`]).
+pub(super) fn closure_normals_ab(f: &FdMatrix, lam: f64) -> Vec<FdMatrix> {
+    let m = f.ncols();
+    let phi = unwrapped_angle(f);
+    let mut bx = FdMatrix::zeros(2, m);
+    let mut by = FdMatrix::zeros(2, m);
+    for (j, ph) in phi.iter().enumerate() {
+        let (fx, fy) = (f[(0, j)], f[(1, j)]);
+        let (ix, iy) = (-fy, fx);
+        let (s, c) = (ph / lam).sin_cos();
+        bx[(0, j)] = 2.0 * c * fx - s / lam * ix;
+        bx[(1, j)] = 2.0 * c * fy - s / lam * iy;
+        by[(0, j)] = 2.0 * s * fx + c / lam * ix;
+        by[(1, j)] = 2.0 * s * fy + c / lam * iy;
+    }
+    vec![bx, by]
+}
+
+/// Closure normals for the metric with F-exponent `lam` (`1` = SRVF, any d).
+pub(super) fn closure_normals_lam(q: &FdMatrix, lam: f64) -> Vec<FdMatrix> {
+    if lam == 1.0 {
+        closure_normals(q)
+    } else {
+        closure_normals_ab(q, lam)
+    }
+}
+
+/// Euclidean norm of a closure residual.
+fn res_norm(g: &[f64]) -> f64 {
+    g.iter().map(|v| v * v).sum::<f64>().sqrt()
+}
+
+/// `f + t·(x_0 b_0 + x_1 b_1)`.
+fn step_along(f: &FdMatrix, normals: &[FdMatrix], x: &[f64], t: f64) -> FdMatrix {
+    let mut out = f.clone();
+    for (xk, bk) in x.iter().zip(normals) {
+        for (o, bv) in out.as_mut_slice().iter_mut().zip(bk.as_slice()) {
+            *o += t * xk * bv;
+        }
+    }
+    out
+}
+
+/// Scale-free closure residual `|G_λ(F)|/‖F‖²` (`G_λ` is homogeneous of
+/// degree 2, so this is the residual of the unit-norm rescaling).
+fn rel_residual_ab(f: &FdMatrix, grid: &Grid, lam: f64) -> f64 {
+    let n2 = inner(f, f, grid);
+    if n2 > 1e-300 {
+        res_norm(&closure_vec_ab(f, grid, lam)) / n2
+    } else {
+        0.0
+    }
+}
+
+/// One Gauss–Newton step of the F-space closure projection with backtracking
+/// on the scale-free residual [`rel_residual_ab`]. Returns the new iterate and
+/// its residual, or `None` if no step decreases the residual (or the Gram
+/// matrix is singular).
+fn closure_ab_step(f: &FdMatrix, res: f64, grid: &Grid, lam: f64) -> Option<(FdMatrix, f64)> {
+    let g = closure_vec_ab(f, grid, lam);
+    let normals = closure_normals_ab(f, lam);
+    // Exact first-order model: dG_i along b_k is ⟨b_i, b_k⟩.
+    let jac: Vec<Vec<f64>> = (0..2)
+        .map(|i| {
+            (0..2)
+                .map(|k| inner(&normals[i], &normals[k], grid))
+                .collect()
+        })
+        .collect();
+    let x = solve_small(jac, g.iter().map(|v| -v).collect())?;
+    let mut t = 1.0;
+    for _ in 0..40 {
+        let cand = step_along(f, &normals, &x, t);
+        let r = rel_residual_ab(&cand, grid, lam);
+        if r < res {
+            return Some((cand, r));
+        }
+        t *= 0.5;
+    }
+    None
+}
+
+/// Project a planar F-transform onto the closed-curve manifold
+/// `{F : ∫ |F|² e^{iφ/λ} = 0}` of the `(a, b)` metric (`λ = a/(2b)`):
+/// Gauss–Newton iterations along the closure normals [`closure_normals_ab`]
+/// (exact Gram-matrix Jacobian, backtracking line search) on the unit-norm
+/// copy; the L² norm of the input is restored (closure is homogeneous). For
+/// `λ = 1` the SRVF projector [`project_closed`] is used unchanged.
+///
+/// Returns the projected transform and whether the residual reached
+/// [`CLOSURE_TOL`].
+pub(super) fn project_closed_lam(q: &FdMatrix, grid: &Grid, lam: f64) -> (FdMatrix, bool) {
+    if lam == 1.0 {
+        return project_closed(q, grid);
+    }
+    project_closed_ab(q, grid, lam)
+}
+
+/// General-λ F-space closure projection (see [`project_closed_lam`]).
+pub(super) fn project_closed_ab(f: &FdMatrix, grid: &Grid, lam: f64) -> (FdMatrix, bool) {
+    let n0 = norm(f, grid);
+    if n0 < 1e-300 {
+        return (f.clone(), true);
+    }
+    let mut fu = scaled(f, 1.0 / n0);
+    let mut res = rel_residual_ab(&fu, grid, lam);
+    let mut converged = res < CLOSURE_TOL;
+    for _ in 0..CLOSURE_MAX_ITER {
+        if converged {
+            break;
+        }
+        match closure_ab_step(&fu, res, grid, lam) {
+            Some((next, r)) => {
+                fu = next;
+                res = r;
+                converged = res < CLOSURE_TOL;
+            }
+            None => break,
+        }
+    }
+    let n1 = norm(&fu, grid);
+    (scaled(&fu, n0 / n1), converged)
+}
+
 /// Project a vector field `v` onto the tangent space at `q`.
 ///
 /// * `sphere` — remove the radial component `⟨v, q⟩ q/‖q‖²` (pre-shape sphere).
-/// * `closed` — remove the closure normals (Gram–Schmidt orthonormalised).
+/// * `closed` — remove the closure normals (Gram–Schmidt orthonormalised) of
+///   the metric with F-exponent `lam` (`1` = SRVF, see [`closure_normals_lam`]).
 pub(super) fn project_tangent(
     v: &FdMatrix,
     q: &FdMatrix,
     grid: &Grid,
     sphere: bool,
     closed: bool,
+    lam: f64,
 ) -> FdMatrix {
     let mut basis: Vec<FdMatrix> = Vec::new();
     if sphere {
         basis.push(q.clone());
     }
     if closed {
-        basis.extend(closure_normals(q));
+        basis.extend(closure_normals_lam(q, lam));
     }
     // Gram–Schmidt (modified) on the normal directions, then remove them from v.
     let mut ortho: Vec<FdMatrix> = Vec::with_capacity(basis.len());

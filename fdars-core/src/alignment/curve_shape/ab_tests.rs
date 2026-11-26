@@ -699,10 +699,10 @@ fn downstream_runs_under_elastic_metric() {
 #[test]
 fn elastic_metric_validation() {
     let c = sample(20, gc1);
+    // closed contours are supported since GH #68 (see `ab_closed_tests`)
     let mut cfg = cfg_with(elastic(1.0, 1.0), true, true, true);
     cfg.closed = true;
-    assert!(cfg.validate().is_err());
-    assert!(curve_shape_distance(&c, &c, &cfg).is_err());
+    assert!(cfg.validate().is_ok());
     for (a, b) in [
         (0.0, 1.0),
         (1.0, -1.0),
