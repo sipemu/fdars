@@ -475,19 +475,8 @@ pub fn decompose(
     })
 }
 
-/// Invert [`decompose`]: reconstruct the original signal from a coefficient pyramid.
-///
-/// Rebuilds the filter bank from `coeffs.family`, then folds the detail bands back in
-/// reverse level order (coarsest-first), calling `single_level_synthesis` with each
-/// level's exact analysis-input length recovered from `coeffs.level_lens`. Returns
-/// exactly `coeffs.signal_len` samples. Never emits NaN/inf when inputs are finite.
-///
-/// # Errors
-/// - [`FdarError::InvalidDimension`] if the coefficient pyramid is internally
-///   inconsistent (band count / metadata mismatch).
-/// - [`FdarError::InvalidParameter`] if the family is unsupported.
-#[must_use = "the reconstructed signal is the result of the inverse transform"]
-pub fn reconstruct(coeffs: &WaveletCoeffs) -> Result<Vec<f64>, FdarError> {
+/// Shared metadata check for [`reconstruct`] / [`analysis_adjoint`].
+fn validate_pyramid(coeffs: &WaveletCoeffs) -> Result<(), FdarError> {
     if coeffs.details.len() != coeffs.levels || coeffs.level_lens.len() != coeffs.levels {
         return Err(FdarError::InvalidDimension {
             parameter: "coeffs",
@@ -506,6 +495,23 @@ pub fn reconstruct(coeffs: &WaveletCoeffs) -> Result<Vec<f64>, FdarError> {
             actual: "0".to_string(),
         });
     }
+    Ok(())
+}
+
+/// Invert [`decompose`]: reconstruct the original signal from a coefficient pyramid.
+///
+/// Rebuilds the filter bank from `coeffs.family`, then folds the detail bands back in
+/// reverse level order (coarsest-first), calling `single_level_synthesis` with each
+/// level's exact analysis-input length recovered from `coeffs.level_lens`. Returns
+/// exactly `coeffs.signal_len` samples. Never emits NaN/inf when inputs are finite.
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if the coefficient pyramid is internally
+///   inconsistent (band count / metadata mismatch).
+/// - [`FdarError::InvalidParameter`] if the family is unsupported.
+#[must_use = "the reconstructed signal is the result of the inverse transform"]
+pub fn reconstruct(coeffs: &WaveletCoeffs) -> Result<Vec<f64>, FdarError> {
+    validate_pyramid(coeffs)?;
     let fb = filters::filter_bank(&coeffs.family)?;
     let mut approx = coeffs.approx.clone();
     // Fold coarsest-first: level index counts down from levels-1 to 0.
@@ -513,6 +519,64 @@ pub fn reconstruct(coeffs: &WaveletCoeffs) -> Result<Vec<f64>, FdarError> {
         let detail = &coeffs.details[lvl];
         let target_len = coeffs.level_lens[lvl];
         approx = single_level_synthesis(&approx, detail, &fb, coeffs.mode, target_len)?;
+    }
+    Ok(approx)
+}
+
+/// Transpose of [`extend_signal`]: fold a length-`extended_len(n, mode)` vector back
+/// onto `n` samples.
+///
+/// Periodic even `n` is the identity; periodic odd `n` adds the duplicated tail
+/// sample into index `n - 1`; symmetric adds the mirrored half
+/// (`out[i] = e[i] + e[2n-1-i]`).
+fn fold_extension(ext: &[f64], n: usize, mode: BoundaryMode) -> Vec<f64> {
+    let mut out = ext[..n].to_vec();
+    match mode {
+        BoundaryMode::Periodic => {
+            if ext.len() > n {
+                out[n - 1] += ext[n];
+            }
+        }
+        BoundaryMode::Symmetric => {
+            let m = ext.len();
+            for (i, o) in out.iter_mut().enumerate() {
+                *o += ext[m - 1 - i];
+            }
+        }
+    }
+    out
+}
+
+/// Exact adjoint (transpose) `Aᵀ` of the multi-level analysis operator `A` of
+/// [`decompose`], applied to a coefficient pyramid: `⟨decompose(x), c⟩ = ⟨x, Aᵀc⟩`.
+///
+/// Each level applies the transpose of the even-length periodic core followed by
+/// the transpose of the boundary extension ([`fold_extension`]). When `A` is
+/// orthogonal (periodic mode, every per-level input length even) this equals
+/// [`reconstruct`] bit for bit; otherwise (symmetric mode, or periodic with odd
+/// per-level lengths) the analysis operator is not orthogonal and only the adjoint
+/// maps coefficient-space weights to the time-domain functional that reproduces
+/// `⟨coeffs(x), w⟩ = Σ_t x(t)·β(t)`.
+///
+/// # Errors
+/// Same as [`reconstruct`] (inconsistent pyramid metadata, unsupported family).
+pub(crate) fn analysis_adjoint(coeffs: &WaveletCoeffs) -> Result<Vec<f64>, FdarError> {
+    validate_pyramid(coeffs)?;
+    let fb = filters::filter_bank(&coeffs.family)?;
+    let mut approx = coeffs.approx.clone();
+    for lvl in (0..coeffs.levels).rev() {
+        let detail = &coeffs.details[lvl];
+        let n = coeffs.level_lens[lvl];
+        let expected = coeff_len(n, coeffs.mode);
+        if approx.len() != expected || detail.len() != expected {
+            return Err(FdarError::InvalidDimension {
+                parameter: "coeffs",
+                expected: format!("{expected} coefficients per band at level {lvl}"),
+                actual: format!("approx {}, detail {}", approx.len(), detail.len()),
+            });
+        }
+        let ext = core_synthesis(&approx, detail, &fb, extended_len(n, coeffs.mode));
+        approx = fold_extension(&ext, n, coeffs.mode);
     }
     Ok(approx)
 }
@@ -1122,5 +1186,52 @@ mod tests {
             ),
             Err(FdarError::InvalidParameter { .. })
         ));
+    }
+    /// GH #82: `analysis_adjoint` is the exact transpose of `decompose`
+    /// (`⟨A x, c⟩ == ⟨x, Aᵀ c⟩`) under both modes, odd and even lengths, and is
+    /// bit-identical to `reconstruct` in the orthogonal (periodic, even) case.
+    #[test]
+    fn analysis_adjoint_is_exact_transpose_of_decompose() {
+        let flat = |c: &WaveletCoeffs| {
+            let mut v = c.approx.clone();
+            for d in &c.details {
+                v.extend_from_slice(d);
+            }
+            v
+        };
+        for family in [WaveletFamily::Haar, WaveletFamily::Daubechies(4)] {
+            for mode in [BoundaryMode::Periodic, BoundaryMode::Symmetric] {
+                for n in [37usize, 64] {
+                    let x = pseudo_random(n, 11);
+                    let ax = decompose(&x, family.clone(), mode, None).unwrap();
+                    let ax_flat = flat(&ax);
+                    // Random coefficient pyramid c with the same layout.
+                    let c_flat = pseudo_random(ax_flat.len(), 23);
+                    let mut c = ax.clone();
+                    let mut off = c.approx.len();
+                    c.approx.copy_from_slice(&c_flat[..off]);
+                    for d in &mut c.details {
+                        let len = d.len();
+                        d.copy_from_slice(&c_flat[off..off + len]);
+                        off += len;
+                    }
+                    let atc = analysis_adjoint(&c).unwrap();
+                    assert_eq!(atc.len(), n);
+                    let lhs: f64 = ax_flat.iter().zip(&c_flat).map(|(a, b)| a * b).sum();
+                    let rhs: f64 = x.iter().zip(&atc).map(|(a, b)| a * b).sum();
+                    assert!(
+                        (lhs - rhs).abs() <= 1e-10 * lhs.abs().max(1.0),
+                        "{family:?} {mode:?} n={n}: <Ax,c>={lhs} vs <x,A'c>={rhs}"
+                    );
+                    if mode == BoundaryMode::Periodic && ax.level_lens.iter().all(|l| l % 2 == 0) {
+                        assert_eq!(
+                            atc,
+                            reconstruct(&c).unwrap(),
+                            "orthogonal case must match reconstruct"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

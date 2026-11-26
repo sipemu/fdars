@@ -54,6 +54,15 @@ Changed below).
   `f_i` onto the source mean (`f_i∘γ_i ≈ μ_T`, `μ_T∘γ_b ≈ μ_S`). The orders only
   coincide for commuting warps, so results change for multi-feature curves
   (`gammas`, `aligned_data`, `distances`; intentional) (GH #77).
+
+- `wavelet::wcr` / `wavelet::wnet` (GH #82): `beta_t` is now the adjoint of the DWT
+  analysis operator applied to `coeff_weights`, so `intercept + Σ_t x(t)·β(t)`
+  reproduces `fitted_values` under every boundary mode. Previously β(t) was the
+  inverse DWT, which is only the adjoint when the transform is orthogonal; with
+  `BoundaryMode::Symmetric` β(t) was shrunk by ≈ 2⁻ˡᵉᵛᵉˡ (and periodic mode with odd
+  per-level lengths was slightly off). Fits, `fitted_values`, `coeff_weights`,
+  `intercept` and `predict` are unchanged; periodic even-length `beta_t` is
+  bit-identical.
 - `inference::itp_two_pop` permutation null relabelled only group B (group A kept
   its observed rows), inflating permutation statistics and destroying power; both
   groups are now relabelled as in `fdatest` (`coeff[sample(n), ]`). The B-spline

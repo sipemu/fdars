@@ -6,16 +6,21 @@
 //! **in coefficient space** — either PCR (reusing [`crate::regression::fdata_to_pc`])
 //! or PLS (reusing [`crate::regression::fdata_to_pls`]). The fitted
 //! coefficient-space weights are then mapped back to the time-domain functional
-//! coefficient β(t) by the inverse DWT ([`crate::wavelet::reconstruct`]).
+//! coefficient β(t) by the adjoint of the analysis operator (which coincides with the
+//! inverse DWT [`crate::wavelet::reconstruct`] when the transform is orthogonal).
 //!
 //! ## Why this recovers β(t) exactly
 //!
-//! The multi-level orthogonal DWT is a linear, orthonormal map `W`: the design row
-//! for curve `i` is `c_i = W x_i` (wavelet coefficients). If the true relationship
-//! is `y = α + C β_c` in coefficient space (with `C` the coefficient design), then
-//! in the time domain `y = α + X (Wᵀ β_c)`, so the time-domain coefficient is
-//! `β(t) = Wᵀ β_c` — exactly the inverse DWT of the coefficient-space weights.
-//! `coeff_weights_to_beta_t` performs that inverse DWT.
+//! The multi-level DWT is a linear map `W`: the design row for curve `i` is
+//! `c_i = W x_i` (wavelet coefficients). If the relationship is `y = α + C β_c` in
+//! coefficient space (with `C` the coefficient design), then in the time domain
+//! `y = α + X (Wᵀ β_c)`, so the time-domain coefficient is `β(t) = Wᵀ β_c` — the
+//! **adjoint** of the analysis operator applied to the coefficient-space weights.
+//! `coeff_weights_to_beta_t` computes that adjoint. For [`BoundaryMode::Periodic`]
+//! with even per-level lengths `W` is orthonormal and `Wᵀ` is the inverse DWT; for
+//! [`BoundaryMode::Symmetric`] (a redundant mirror extension) or odd per-level
+//! lengths `W` is not orthogonal, and the inverse DWT would *not* reproduce the
+//! fitted values (GH #82).
 //!
 //! ## Shared seams (reused by the `wnet` regressor, Plan 70-02)
 //!
@@ -65,7 +70,9 @@
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 use crate::regression::{fdata_to_pc, fdata_to_pls};
-use crate::wavelet::{decompose_matrix, reconstruct, BoundaryMode, WaveletCoeffs, WaveletFamily};
+use crate::wavelet::{
+    analysis_adjoint, decompose_matrix, BoundaryMode, WaveletCoeffs, WaveletFamily,
+};
 
 /// Which coefficient-space fit `wcr` uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -154,7 +161,7 @@ pub struct WcrResult {
 }
 
 /// Band layout of a per-curve wavelet-coefficient vector — everything
-/// [`reconstruct`] needs to rebuild a [`WaveletCoeffs`] shell from a flat vector.
+/// [`crate::wavelet::reconstruct`] needs to rebuild a [`WaveletCoeffs`] shell from a flat vector.
 ///
 /// Coefficients are concatenated **finest-first**: `[approx ++ details[0] ++
 /// details[1] ++ ...]`, matching [`WaveletCoeffs`] band order.
@@ -263,17 +270,20 @@ pub(crate) fn curves_to_coeff_design(
 }
 
 /// SHARED SEAM. Map a `P`-length coefficient-space weight vector back to the time
-/// domain via the inverse DWT.
+/// domain via the adjoint of the DWT analysis operator.
 ///
 /// Splits `weights` into the approximation band and the finest-first detail bands per
-/// `layout`, packs them into a [`WaveletCoeffs`] shell, and calls [`reconstruct`],
-/// yielding β(t) of length `layout.signal_len`.
+/// `layout`, packs them into a [`WaveletCoeffs`] shell, and applies the analysis
+/// adjoint, yielding β(t) of length `layout.signal_len` with
+/// `⟨coeffs(x), weights⟩ == Σ_t x(t)·β(t)` for every curve `x` under every boundary
+/// mode. In the orthogonal case (periodic, even per-level lengths) this is
+/// bit-identical to [`crate::wavelet::reconstruct`].
 ///
 /// # Errors
 /// - [`FdarError::InvalidDimension`] if `weights.len()` does not equal the total
 ///   coefficient count implied by `layout`.
 /// - [`FdarError::InvalidParameter`] if the family is unsupported (surfaced from
-///   [`reconstruct`]).
+///   [`crate::wavelet::analysis_adjoint`]).
 pub(crate) fn coeff_weights_to_beta_t(
     weights: &[f64],
     layout: &CoeffLayout,
@@ -304,7 +314,7 @@ pub(crate) fn coeff_weights_to_beta_t(
         mode: layout.mode,
         level_lens: layout.level_lens.clone(),
     };
-    reconstruct(&coeffs)
+    analysis_adjoint(&coeffs)
 }
 
 // ---------------------------------------------------------------------------
@@ -597,7 +607,7 @@ pub fn wcr(data: &FdMatrix, y: &[f64], config: &WcrConfig) -> Result<WcrResult, 
         intercept - offset
     };
 
-    // β(t) via inverse DWT of the coefficient-space weights (shared seam).
+    // β(t) via the analysis adjoint of the coefficient-space weights (shared seam).
     let beta_t = coeff_weights_to_beta_t(&coeff_weights, &layout)?;
 
     let residuals: Vec<f64> = y
@@ -1274,7 +1284,7 @@ pub fn wnet(data: &FdMatrix, y: &[f64], config: &WnetConfig) -> Result<WnetResul
         .map(|(&yi, &yh)| yi - yh)
         .collect();
 
-    // β(t) via inverse DWT of the coefficient-space weights (shared seam).
+    // β(t) via the analysis adjoint of the coefficient-space weights (shared seam).
     let beta_t = coeff_weights_to_beta_t(&coeff_weights, &layout)?;
 
     Ok(WnetResult {
@@ -2435,5 +2445,147 @@ mod tests {
         assert_eq!(wnet_fit.beta_t().len(), m);
         assert_eq!(wnet_fit.fitted_values(), wnet_fit.fitted_values.as_slice());
         assert_eq!(wnet_fit.fitted_values().len(), n);
+    }
+
+    // -----------------------------------------------------------------------
+    // GH #82: β(t) must be the ADJOINT of the analysis operator applied to the
+    // coefficient-space weights, so that `fitted_i == intercept + Σ_t x_i(t)·β(t)`
+    // under every boundary mode (not only the orthogonal even-length periodic one).
+    // -----------------------------------------------------------------------
+
+    /// Max |intercept + X·β(t) − fitted| over the training rows (plain time-domain dot).
+    fn beta_t_consistency_gap(
+        data: &FdMatrix,
+        beta_t: &[f64],
+        intercept: f64,
+        fitted: &[f64],
+    ) -> f64 {
+        let (n, m) = data.shape();
+        (0..n)
+            .map(|i| {
+                let lin: f64 = (0..m).map(|j| data[(i, j)] * beta_t[j]).sum();
+                (intercept + lin - fitted[i]).abs()
+            })
+            .fold(0.0_f64, f64::max)
+    }
+
+    /// Scale of the fitted values, for a relative tolerance.
+    fn fitted_scale(fitted: &[f64]) -> f64 {
+        fitted.iter().fold(1.0_f64, |a, &f| a.max(f.abs()))
+    }
+
+    #[test]
+    fn wcr_beta_t_reproduces_fitted_under_every_boundary_mode() {
+        // m = 64 (even pyramid) and m = 37 (odd per-level lengths) × both modes.
+        for &(m, mode) in &[
+            (64usize, BoundaryMode::Symmetric),
+            (37usize, BoundaryMode::Symmetric),
+            (37usize, BoundaryMode::Periodic),
+            (64usize, BoundaryMode::Periodic),
+        ] {
+            let n = 150usize;
+            let data = spanning_design(n, m, 4242);
+            let y: Vec<f64> = (0..n)
+                .map(|i| {
+                    1.0 + (0..m)
+                        .map(|j| data[(i, j)] * (0.1 * j as f64).sin())
+                        .sum::<f64>()
+                })
+                .collect();
+            for method in [WcrMethod::Pcr, WcrMethod::Pls] {
+                let fit = wcr(
+                    &data,
+                    &y,
+                    &WcrConfig {
+                        mode,
+                        ncomp: 5,
+                        method,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                let gap =
+                    beta_t_consistency_gap(&data, &fit.beta_t, fit.intercept, &fit.fitted_values);
+                assert!(
+                    gap < 1e-8 * fitted_scale(&fit.fitted_values),
+                    "wcr {method:?} m={m} {mode:?}: intercept + X·beta_t deviates from fitted by {gap}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn wnet_beta_t_reproduces_fitted_under_every_boundary_mode() {
+        for &(m, mode) in &[
+            (64usize, BoundaryMode::Symmetric),
+            (37usize, BoundaryMode::Symmetric),
+            (37usize, BoundaryMode::Periodic),
+            (64usize, BoundaryMode::Periodic),
+        ] {
+            let n = 120usize;
+            let data = spanning_design(n, m, 777);
+            let y: Vec<f64> = (0..n)
+                .map(|i| {
+                    0.5 + (0..m)
+                        .map(|j| data[(i, j)] * (0.2 * j as f64).cos())
+                        .sum::<f64>()
+                })
+                .collect();
+            let fit = wnet(
+                &data,
+                &y,
+                &WnetConfig {
+                    mode,
+                    n_lambda: 8,
+                    n_folds: 3,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let gap = beta_t_consistency_gap(&data, &fit.beta_t, fit.intercept, &fit.fitted_values);
+            assert!(
+                gap < 1e-8 * fitted_scale(&fit.fitted_values),
+                "wnet m={m} {mode:?}: intercept + X·beta_t deviates from fitted by {gap}"
+            );
+        }
+    }
+
+    #[test]
+    fn wcr_symmetric_recovers_planted_time_domain_beta() {
+        // Issue #82 repro: y = 1 + X·β_true (plain dot) with a full-column-rank X
+        // (n ≫ m). With enough components the fit is exact, so the unique β(t)
+        // satisfying X·β = fitted − intercept is β_true itself.
+        let (n, m) = (200usize, 32usize);
+        let data = spanning_design(n, m, 9001);
+        let beta_true: Vec<f64> = (0..m)
+            .map(|j| {
+                let t = j as f64 / m as f64;
+                (2.0 * std::f64::consts::PI * t).sin()
+                    - 0.5 * (4.0 * std::f64::consts::PI * t).cos()
+            })
+            .collect();
+        let y: Vec<f64> = (0..n)
+            .map(|i| 1.0 + (0..m).map(|j| data[(i, j)] * beta_true[j]).sum::<f64>())
+            .collect();
+        let fit = wcr(
+            &data,
+            &y,
+            &WcrConfig {
+                mode: BoundaryMode::Symmetric,
+                ncomp: m,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let e = rel_l2(&fit.beta_t, &beta_true);
+        assert!(
+            e < 1e-6,
+            "symmetric wcr beta_t rel L2 err {e} vs planted beta"
+        );
+        assert!(
+            (fit.intercept - 1.0).abs() < 1e-6,
+            "intercept {}",
+            fit.intercept
+        );
     }
 }
