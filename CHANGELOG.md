@@ -13,6 +13,22 @@ Changed below).
 
 ## [Unreleased]
 
+**Missing options for continuous registration and partial-curve conformal (GH #72 ALN-CAV).**
+Opt-in; default results are bit-identical (FNV-hash tests pinned before the change).
+
+### Added
+
+- `ContinuousRegistrationConfig::periodic` (default `false`): R `register.fd(periodic = TRUE)`.
+  A free time shift `δᵢ` is estimated jointly with `Wᵢ` (R's use of the first W coefficient);
+  curves are registered as `yᵢ(hᵢ(t) + δᵢ)` on their periodic extension (natural cubic spline
+  over three concatenated periods), with the exact shift gradient. The shift is returned in
+  the new `ContinuousRegistrationResult::shift`; returned warps are `hᵢ + δᵢ` as R's `warpfd`.
+  Golden-tested against R fda 6.3.0 (Fourier `yfd`, both criteria): criterion ≤ R's,
+  shifts within 6e-4 of R's.
+- `ContinuousRegistrationConfig::r_defaults()`: R's default W basis (2 linear B-splines,
+  `lfd_order = 0`, `iterlim = 20`, `crit = 2`); golden-tested against
+  `register.fd(..., WfdParobj = NULL)`. `ContinuousRegistrationConfig::default()` is unchanged.
+
 **Parallel tempering for Bayesian group alignment (GH #69 ALN-CAV).** Opt-in; default pCN
 and infHMC results are bit-identical (FNV-hash tests pinned before the change).
 

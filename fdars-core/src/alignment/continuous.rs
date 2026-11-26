@@ -52,8 +52,14 @@
 //! * `F(t)` is integrated by the cumulative trapezoid rule on the fine grid (R:
 //!   Romberg extrapolation + trapezoid); convergence uses a *relative* criterion
 //!   decrease `tol` (R: absolute `conv = 1e-4`).
-//! * `periodic = TRUE` (Fourier shift parameter) is not supported.
-//! * Default W basis: 6 cubic B-splines (R: 2 linear B-splines, i.e. a linear W).
+//! * `periodic = TRUE` is supported via [`ContinuousRegistrationConfig::periodic`]:
+//!   as in R the first W coefficient becomes a free time shift `δᵢ` and the
+//!   registered curve is `yᵢ(hᵢ(t) + δᵢ)` evaluated on the periodic extension of
+//!   `yᵢ` (R `shifty`). R requires a Fourier `yfd`; fdars interpolates the
+//!   discrete curve by a natural cubic spline fitted to three concatenated periods
+//!   (so the middle period is, to high accuracy, the periodic cubic spline).
+//! * Default W basis: 6 cubic B-splines (R: 2 linear B-splines, i.e. a linear W);
+//!   [`ContinuousRegistrationConfig::r_defaults`] reproduces R's defaults.
 //! * `max_template_iter > 1` adds Procrustes re-estimation of the mean target,
 //!   which `register.fd` leaves to the caller.
 
@@ -121,9 +127,19 @@ pub struct ContinuousRegistrationConfig {
     /// Stop the template passes when `‖y₀⁽ᵏ⁾ − y₀⁽ᵏ⁻¹⁾‖ / ‖y₀⁽ᵏ⁻¹⁾‖ ≤ template_tol`
     /// (default `1e-4`).
     pub template_tol: f64,
-    /// Initial W coefficients (`n × nbasis`; column 0 is ignored). Default: zeros
-    /// (identity warps), as R.
+    /// Initial W coefficients (`n × nbasis`; column 0 is ignored unless
+    /// `periodic`, in which case it is the initial shift `δᵢ`, as in R). Default:
+    /// zeros (identity warps), as R.
     pub initial_coefficients: Option<FdMatrix>,
+    /// Periodic registration (R `register.fd(periodic = TRUE)`, default `false`).
+    ///
+    /// The curves are treated as one period on `[a, b] = [argvals[0],
+    /// argvals[m−1]]` (so `yᵢ(a)` should equal `yᵢ(b)`), and a free time shift
+    /// `δᵢ` is estimated jointly with `Wᵢ`: the registered curve is
+    /// `yᵢ(hᵢ(t) + δᵢ)` on the periodic extension, the returned warp is
+    /// `hᵢ(t) + δᵢ` (endpoints are then `a + δᵢ`, `b + δᵢ`, as R's `warpfd`) and
+    /// `δᵢ` is reported in [`ContinuousRegistrationResult::shift`].
+    pub periodic: bool,
 }
 
 impl Default for ContinuousRegistrationConfig {
@@ -140,11 +156,39 @@ impl Default for ContinuousRegistrationConfig {
             max_template_iter: 1,
             template_tol: 1e-4,
             initial_coefficients: None,
+            periodic: false,
         }
     }
 }
 
 impl ContinuousRegistrationConfig {
+    /// The defaults of R `fda::register.fd` (`WfdParobj = NULL`, `iterlim = 20`,
+    /// `crit = 2`): a W basis of 2 linear B-splines (`nbasis = 2`, `norder = 2`,
+    /// i.e. a linear `W` and an exponential-type warp with one free parameter),
+    /// no roughness penalty (`lambda = 0`, `lfd_order = 0`, R's
+    /// `fdPar` default `int2Lfd(norder − 2)`), at most 20 iterations, and the
+    /// minimum-eigenvalue criterion. All other fields are the fdars defaults
+    /// (`ContinuousRegistrationConfig::default()` itself is unchanged).
+    ///
+    /// # Example
+    /// ```
+    /// use fdars_core::alignment::ContinuousRegistrationConfig;
+    /// let cfg = ContinuousRegistrationConfig::r_defaults();
+    /// assert_eq!((cfg.nbasis, cfg.norder, cfg.max_iter), (2, 2, 20));
+    /// ```
+    #[must_use]
+    pub fn r_defaults() -> Self {
+        Self {
+            criterion: ContinuousRegistrationCriterion::MinEigenvalue,
+            nbasis: 2,
+            norder: 2,
+            lambda: 0.0,
+            lfd_order: 0,
+            max_iter: 20,
+            ..Self::default()
+        }
+    }
+
     /// Validate the scalar parameters.
     ///
     /// # Errors
@@ -214,9 +258,10 @@ pub struct ContinuousRegistrationResult {
     /// Registered curves `yᵢ(hᵢ(t))` on `argvals` (`n × m`).
     pub registered_data: FdMatrix,
     /// Warping functions `hᵢ(t)` on `argvals` (`n × m`); strictly increasing with
-    /// `hᵢ(a) = a`, `hᵢ(b) = b`.
+    /// `hᵢ(a) = a`, `hᵢ(b) = b` (periodic registration: `hᵢ(t) + δᵢ`).
     pub warps: FdMatrix,
-    /// B-spline coefficients of `Wᵢ` (`n × nbasis`, column 0 is always 0).
+    /// B-spline coefficients of `Wᵢ` (`n × nbasis`, column 0 is always 0; the
+    /// periodic shift is reported separately in `shift`, as R).
     pub w_coefficients: FdMatrix,
     /// Clamped knot vector of the W basis (length `nbasis + norder`).
     pub w_knots: Vec<f64>,
@@ -230,6 +275,9 @@ pub struct ContinuousRegistrationResult {
     pub converged: Vec<bool>,
     /// Number of registration passes performed.
     pub n_template_iter: usize,
+    /// Estimated time shift `δᵢ` per curve (R `reglist$shift`); all zeros unless
+    /// [`ContinuousRegistrationConfig::periodic`].
+    pub shift: Vec<f64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -365,6 +413,8 @@ pub(super) struct CcSetup {
     pub(super) kmat: Vec<f64>,
     pub(super) knots: Vec<f64>,
     pub(super) criterion: ContinuousRegistrationCriterion,
+    /// Periodic registration: coefficient 0 is the free shift `δ`.
+    pub(super) periodic: bool,
 }
 
 impl CcSetup {
@@ -397,11 +447,42 @@ impl CcSetup {
             kmat,
             knots,
             criterion: cfg.criterion,
+            periodic: cfg.periodic,
         }
     }
 
     fn nfine(&self) -> usize {
         self.xfine.len()
+    }
+
+    /// Index of the first estimated coefficient (0 = shift when periodic, else 1).
+    fn first_active(&self) -> usize {
+        usize::from(!self.periodic)
+    }
+
+    /// Number of estimated coefficients.
+    fn n_active(&self) -> usize {
+        self.nb - self.first_active()
+    }
+
+    /// Time shift encoded in `c` (0 unless periodic).
+    fn shift(&self, c: &[f64]) -> f64 {
+        if self.periodic {
+            c[0]
+        } else {
+            0.0
+        }
+    }
+
+    /// Value and derivative of a curve at warped time `x` (`h + δ`); periodic
+    /// registration wraps `x` into `[a, b)` first.
+    fn eval_curve(&self, spline: &NaturalSpline, x: f64) -> (f64, f64) {
+        if self.periodic {
+            let w = self.b - self.a;
+            spline.eval(self.a + (x - self.a).rem_euclid(w))
+        } else {
+            spline.eval(x)
+        }
     }
 
     /// `exp W` on the fine grid.
@@ -542,7 +623,14 @@ pub(super) fn crit_eval(
     let nf = setup.nfine();
     let na = setup.nb - 1;
     let fw = fine_warp(setup, c, with_grad);
-    let (yv, yd): (Vec<f64>, Vec<f64>) = fw.h.iter().map(|&h| spline.eval(h)).unzip();
+    let (yv, yd): (Vec<f64>, Vec<f64>) = if setup.periodic {
+        let delta = c[0];
+        fw.h.iter()
+            .map(|&h| setup.eval_curve(spline, h + delta))
+            .unzip()
+    } else {
+        fw.h.iter().map(|&h| spline.eval(h)).unzip()
+    };
     let nfl = nf as f64;
     let pen = setup.penalty(c);
     let (f, r, factor, s) = match setup.criterion {
@@ -562,7 +650,17 @@ pub(super) fn crit_eval(
         }
     };
     let mut jr = Vec::new();
-    if with_grad {
+    if with_grad && setup.periodic {
+        // Column 0: ∂(y(h + δ))/∂δ = Dy(h + δ); columns 1..: W coefficients.
+        let nact = na + 1;
+        jr = vec![0.0; nf * nact];
+        for j in 0..nf {
+            jr[j * nact] = factor * yd[j];
+            for k in 0..na {
+                jr[j * nact + k + 1] = factor * yd[j] * fw.dh[j * na + k];
+            }
+        }
+    } else if with_grad {
         jr = vec![0.0; nf * na];
         for j in 0..nf {
             for k in 0..na {
@@ -582,23 +680,26 @@ pub(super) fn crit_eval(
 fn gn_system(setup: &CcSetup, ev: &CritEval, c: &[f64]) -> (Vec<f64>, Vec<f64>) {
     let nf = setup.nfine();
     let na = setup.nb - 1;
+    let nact = setup.n_active();
+    // Offset of the first W coefficient among the active parameters.
+    let o = nact - na;
     let w = 2.0 * ev.s / nf as f64;
-    let mut g = vec![0.0; na];
-    let mut hm = vec![0.0; na * na];
+    let mut g = vec![0.0; nact];
+    let mut hm = vec![0.0; nact * nact];
     for j in 0..nf {
-        let row = &ev.jr[j * na..(j + 1) * na];
-        for p in 0..na {
+        let row = &ev.jr[j * nact..(j + 1) * nact];
+        for p in 0..nact {
             g[p] += w * row[p] * ev.r[j];
-            for q in 0..na {
-                hm[p * na + q] += w * row[p] * row[q];
+            for q in 0..nact {
+                hm[p * nact + q] += w * row[p] * row[q];
             }
         }
     }
     for p in 0..na {
         for q in 0..na {
             let kpq = setup.kmat[p * na + q];
-            g[p] += 2.0 * kpq * c[q + 1];
-            hm[p * na + q] += 2.0 * kpq;
+            g[p + o] += 2.0 * kpq * c[q + 1];
+            hm[(p + o) * nact + q + o] += 2.0 * kpq;
         }
     }
     (g, hm)
@@ -625,13 +726,15 @@ enum LmStep {
 /// Solve the damped system `(H + μ·D) δ = g` and return `c − δ` if it is admissible.
 fn damped_candidate(hm: &[f64], g: &[f64], c: &[f64], mu: f64, floor: f64) -> Option<Vec<f64>> {
     let na = g.len();
+    // The active parameters are the trailing `na` entries of `c`.
+    let first = c.len() - na;
     let mut a = hm.to_vec();
     for p in 0..na {
         a[p * na + p] += mu * hm[p * na + p].max(floor);
     }
     let delta = crate::linalg::cholesky_solve(&a, g, na).ok()?;
     let mut cn = c.to_vec();
-    for (cp, d) in cn[1..].iter_mut().zip(&delta) {
+    for (cp, d) in cn[first..].iter_mut().zip(&delta) {
         *cp -= d;
     }
     cn.iter()
@@ -647,7 +750,7 @@ fn lm_step(
     cur: &CritEval,
     mu: &mut f64,
 ) -> LmStep {
-    let na = setup.nb - 1;
+    let na = setup.n_active();
     let (g, hm) = gn_system(setup, cur, c);
     if g.iter().all(|v| *v == 0.0) {
         return LmStep::Stalled;
@@ -685,7 +788,9 @@ pub(super) fn register_curve(
     tol: f64,
 ) -> CurveFit {
     let mut c = c0.to_vec();
-    c[0] = 0.0;
+    if !setup.periodic {
+        c[0] = 0.0;
+    }
     let mut cur = crit_eval(setup, spline, y0, &c, true);
     let mut history = vec![cur.f];
     let mut mu = 1e-3;
@@ -826,9 +931,15 @@ fn registered_rows(
     for (i, fit) in fits.iter().enumerate() {
         let fw = fine_warp(setup, &fit.c, false);
         let h = warp_at(setup, &fw, argvals);
+        let delta = setup.shift(&fit.c);
         for (j, &hj) in h.iter().enumerate() {
-            warps[(i, j)] = hj;
-            reg[(i, j)] = splines[i].eval(hj).0;
+            if setup.periodic {
+                warps[(i, j)] = hj + delta;
+                reg[(i, j)] = setup.eval_curve(&splines[i], hj + delta).0;
+            } else {
+                warps[(i, j)] = hj;
+                reg[(i, j)] = splines[i].eval(hj).0;
+            }
         }
     }
     (reg, warps)
@@ -851,7 +962,9 @@ fn rel_change(new: &[f64], old: &[f64]) -> f64 {
 /// `Wᵢ` a clamped B-spline expansion, chosen to minimise the least-squares or
 /// the Ramsay–Li minimum-eigenvalue criterion `2·λ_min` of the cross-product
 /// matrix of `(y₀, yᵢ∘hᵢ)` (see [`ContinuousRegistrationCriterion`]) plus a
-/// roughness penalty `λ ∫ (Dᴸ Wᵢ)²`. Curves are optimised independently (in
+/// roughness penalty `λ ∫ (Dᴸ Wᵢ)²`. With `config.periodic` a time shift `δᵢ`
+/// is estimated jointly and the curves are registered as `yᵢ(hᵢ(t) + δᵢ)` on
+/// their periodic extension (R `periodic = TRUE`). Curves are optimised independently (in
 /// parallel with the `parallel` feature) by penalised Gauss–Newton with
 /// Levenberg–Marquardt step control on the exact gradient.
 ///
@@ -907,7 +1020,7 @@ pub fn continuous_registration(
     let nfine = config.n_fine.unwrap_or_else(|| m.max(201));
     let setup = CcSetup::new(argvals[0], argvals[m - 1], nfine, config);
     let splines: Vec<NaturalSpline> = (0..n)
-        .map(|i| NaturalSpline::new(argvals, &data.row(i)))
+        .map(|i| curve_spline(argvals, &data.row(i), config.periodic))
         .collect();
     let mut coefs: Vec<Vec<f64>> = match &config.initial_coefficients {
         Some(init) => (0..n).map(|i| init.row(i)).collect(),
@@ -937,6 +1050,26 @@ pub fn continuous_registration(
     }
 }
 
+/// Interpolating spline of one curve; periodic curves are fitted on three
+/// concatenated periods so that the middle one is (to high accuracy) the
+/// periodic cubic spline (only the middle period is ever evaluated).
+fn curve_spline(argvals: &[f64], y: &[f64], periodic: bool) -> NaturalSpline {
+    if !periodic {
+        return NaturalSpline::new(argvals, y);
+    }
+    let m = argvals.len();
+    let w = argvals[m - 1] - argvals[0];
+    let mut x = Vec::with_capacity(3 * m);
+    let mut v = Vec::with_capacity(3 * m);
+    x.extend(argvals[..m - 1].iter().map(|t| t - w));
+    v.extend_from_slice(&y[..m - 1]);
+    x.extend_from_slice(argvals);
+    v.extend_from_slice(y);
+    x.extend(argvals[1..].iter().map(|t| t + w));
+    v.extend_from_slice(&y[1..]);
+    NaturalSpline::new(&x, &v)
+}
+
 fn assemble(
     registered_data: FdMatrix,
     warps: FdMatrix,
@@ -948,7 +1081,7 @@ fn assemble(
     let n = fits.len();
     let mut w_coefficients = FdMatrix::zeros(n, setup.nb);
     for (i, f) in fits.iter().enumerate() {
-        for (k, &ck) in f.c.iter().enumerate() {
+        for (k, &ck) in f.c.iter().enumerate().skip(1) {
             w_coefficients[(i, k)] = ck;
         }
     }
@@ -965,6 +1098,7 @@ fn assemble(
         n_iter: fits.iter().map(|f| f.n_iter).collect(),
         converged: fits.iter().map(|f| f.converged).collect(),
         n_template_iter,
+        shift: fits.iter().map(|f| setup.shift(&f.c)).collect(),
     }
 }
 

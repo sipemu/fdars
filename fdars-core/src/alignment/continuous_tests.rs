@@ -700,3 +700,400 @@ fn rejects_invalid_input() {
     let small = FdMatrix::zeros(2, 3);
     assert!(continuous_registration(&small, &t[..3], None, &base).is_err());
 }
+
+// ---------------------------------------------------------------------------
+// Periodic registration and the R-default W basis (GH #72).
+// Golden values: R fda 6.3.0, script golden_register_fd_periodic.R in
+// .planning/quick/261126-m5e-aln-cav-missing-options-continuous-regis/:
+// yfd = smooth.basis(t, Y, create.fourier.basis(c(0,1), 21))$fd,
+// register.fd(mean.fd(yfd), yfd, NULL, conv = 1e-8, iterlim = 50, dbglev = 0,
+//             periodic = TRUE, crit), nfine = 211.
+// ---------------------------------------------------------------------------
+
+fn periodic_g(s: f64) -> f64 {
+    use std::f64::consts::PI;
+    (2.0 * PI * s).sin() + 0.5 * (4.0 * PI * s).cos() + 0.3 * (6.0 * PI * s).sin()
+}
+
+/// `yᵢ(t) = g(t + dᵢ + 0.3·bᵢ·sin(2πt)/(2π))` — periodic, shifted and warped.
+fn periodic_data() -> (FdMatrix, Vec<f64>) {
+    use std::f64::consts::PI;
+    let t = grid(101);
+    let d = [-0.06, -0.02, 0.03, 0.07];
+    let b = [0.25, -0.2, 0.1, -0.15];
+    let mut data = FdMatrix::zeros(4, 101);
+    for i in 0..4 {
+        for j in 0..101 {
+            let s = t[j] + d[i] + b[i] * (2.0 * PI * t[j]).sin() / (2.0 * PI) * 0.3;
+            data[(i, j)] = periodic_g(s);
+        }
+    }
+    (data, t)
+}
+
+struct RPeriodicCase {
+    crit: ContinuousRegistrationCriterion,
+    /// `r$Wfd$coefs[2, ]`.
+    c2: [f64; 4],
+    /// `r$shift`.
+    shift: [f64; 4],
+    /// `eval.fd(t[c(11,26,51,76,91)], r$regfd)`, 5 × 4 column-major.
+    reg: [f64; 20],
+}
+
+const R_PERIODIC: [RPeriodicCase; 2] = [
+    RPeriodicCase {
+        crit: ContinuousRegistrationCriterion::LeastSquares,
+        c2: [
+            -0.10066631459907341,
+            -0.01080554313155276,
+            -0.00944770489492076,
+            -0.08367422871830447,
+        ],
+        shift: [
+            0.0587547418660501,
+            0.0230967748649921,
+            -0.0254602123421473,
+            -0.0724340570922603,
+        ],
+        reg: [
+            0.978041064241725,
+            0.227155149919778,
+            0.424495119752945,
+            -1.199575316097089,
+            -0.713475968113454,
+            1.034759299763169,
+            0.202300680235376,
+            0.427974738097774,
+            -1.198716157072242,
+            -0.640815735302548,
+            1.004580018590876,
+            0.207881246670932,
+            0.421272423703043,
+            -1.199824735896626,
+            -0.703330511020780,
+            1.027127344788617,
+            0.200630790183120,
+            0.435107333015734,
+            -1.198808564104242,
+            -0.645223373454325,
+        ],
+    },
+    RPeriodicCase {
+        crit: ContinuousRegistrationCriterion::MinEigenvalue,
+        c2: [
+            -0.1026932574190101,
+            -0.0143151901606594,
+            -0.0161541461025375,
+            -0.0891580302998799,
+        ],
+        shift: [
+            0.0584047915807161,
+            0.0229388989635364,
+            -0.0258916965185344,
+            -0.0726147717138622,
+        ],
+        reg: [
+            0.979274556749657,
+            0.226710197235556,
+            0.425610840501757,
+            -1.199567741272651,
+            -0.716121421474605,
+            1.034715939054851,
+            0.202217358396455,
+            0.424268713295645,
+            -1.198675982192599,
+            -0.640797501206357,
+            1.005014995761218,
+            0.208235159682759,
+            0.416341135326355,
+            -1.199804577308455,
+            -0.704560987186977,
+            1.026913026792511,
+            0.200638556074814,
+            0.428650477923216,
+            -1.198744002666004,
+            -0.644646612010571,
+        ],
+    },
+];
+
+fn periodic_config(crit: ContinuousRegistrationCriterion) -> ContinuousRegistrationConfig {
+    let mut cfg = ContinuousRegistrationConfig::r_defaults();
+    cfg.criterion = crit;
+    cfg.periodic = true;
+    cfg.max_iter = 50;
+    cfg.n_fine = Some(211);
+    cfg
+}
+
+#[test]
+fn r_defaults_preset_matches_register_fd_defaults() {
+    let r = ContinuousRegistrationConfig::r_defaults();
+    let d = ContinuousRegistrationConfig::default();
+    assert_eq!((r.nbasis, r.norder, r.lfd_order, r.max_iter), (2, 2, 0, 20));
+    assert_eq!(r.lambda, 0.0);
+    assert_eq!(r.criterion, ContinuousRegistrationCriterion::MinEigenvalue);
+    assert!(!r.periodic);
+    // Everything else is the (unchanged) fdars default.
+    let mut r2 = r.clone();
+    r2.nbasis = d.nbasis;
+    r2.norder = d.norder;
+    r2.lfd_order = d.lfd_order;
+    r2.max_iter = d.max_iter;
+    assert_eq!(r2, d);
+    assert_eq!((d.nbasis, d.norder, d.lfd_order, d.max_iter), (6, 4, 2, 50));
+    assert!(!d.periodic);
+    assert!(r.validate().is_ok());
+}
+
+/// R `register.fd(mean.fd(yfd), yfd, NULL, conv = 1e-8, iterlim = 50, crit = 2)`
+/// on the #47 golden data (same script): `r$Wfd$coefs[2, ]`.
+const R_DEFAULT_C2: [f64; 4] = [
+    -0.630366069588282,
+    -0.223224215640469,
+    0.276333466582626,
+    0.562130195395612,
+];
+
+#[test]
+fn golden_r_register_fd_default_w_basis() {
+    let (data, t) = golden_data();
+    let mut cfg = ContinuousRegistrationConfig::r_defaults();
+    cfg.max_iter = 50;
+    cfg.n_fine = Some(431);
+    let res = continuous_registration(&data, &t, None, &cfg).unwrap();
+    assert_eq!(res.w_coefficients.ncols(), 2);
+    assert_eq!(res.w_knots, vec![0.0, 0.0, 1.0, 1.0]);
+    assert!(res.shift.iter().all(|&s| s == 0.0));
+    let setup = CcSetup::new(0.0, 1.0, 431, &cfg);
+    let y0f = fine_target(&setup, &t, &res.target);
+    for i in 0..4 {
+        assert!(res.converged[i]);
+        let sp = NaturalSpline::new(&t, &data.row(i));
+        let f_r = crit_eval(&setup, &sp, &y0f, &[0.0, R_DEFAULT_C2[i]], false).f;
+        let f = res.criterion[i];
+        assert!(f <= f_r + 1e-12, "curve {i}: fdars {f} > R {f_r}");
+        assert!((f_r - f) / f_r < 1e-2, "curve {i}: {f} vs {f_r}");
+        let c2 = res.w_coefficients[(i, 1)];
+        assert!((c2 - R_DEFAULT_C2[i]).abs() < 2e-2, "curve {i}: c2 {c2}");
+    }
+}
+
+#[test]
+fn golden_r_register_fd_periodic() {
+    let (data, t) = periodic_data();
+    for case in &R_PERIODIC {
+        let cfg = periodic_config(case.crit);
+        let res = continuous_registration(&data, &t, None, &cfg).unwrap();
+        let setup = CcSetup::new(0.0, 1.0, 211, &cfg);
+        let y0f = fine_target(&setup, &t, &res.target);
+        for i in 0..4 {
+            assert!(res.converged[i], "{:?} curve {i}", case.crit);
+            let sp = curve_spline(&t, &data.row(i), true);
+            let f_r = crit_eval(&setup, &sp, &y0f, &[case.shift[i], case.c2[i]], false).f;
+            let f = res.criterion[i];
+            assert!(
+                f <= f_r + 1e-12,
+                "{:?} curve {i}: fdars {f} > R {f_r}",
+                case.crit
+            );
+            assert!(
+                (f_r - f) / f_r < 1e-2,
+                "{:?} curve {i}: {f} vs {f_r}",
+                case.crit
+            );
+            let (s, c2) = (res.shift[i], res.w_coefficients[(i, 1)]);
+            assert!(
+                (s - case.shift[i]).abs() < 2e-3,
+                "{:?} curve {i}: shift {s} vs {}",
+                case.crit,
+                case.shift[i]
+            );
+            assert!(
+                (c2 - case.c2[i]).abs() < 1e-2,
+                "{:?} curve {i}: c2 {c2}",
+                case.crit
+            );
+            assert_eq!(res.w_coefficients[(i, 0)], 0.0);
+            for (q, &j) in R_IDX.iter().enumerate() {
+                let rw = case.reg[i * 5 + q];
+                assert!(
+                    (res.registered_data[(i, j)] - rw).abs() < 1e-2,
+                    "{:?} reg {i},{j}: {} vs {rw}",
+                    case.crit,
+                    res.registered_data[(i, j)]
+                );
+                // Returned warp is h + δ.
+                let h = res.warps[(i, j)] - res.shift[i];
+                assert!(h > 0.0 && h < 1.0);
+            }
+            assert!((res.warps[(i, 0)] - res.shift[i]).abs() < 1e-15);
+            assert!((res.warps[(i, 100)] - 1.0 - res.shift[i]).abs() < 1e-15);
+        }
+    }
+}
+
+#[test]
+fn periodic_recovers_pure_shifts_including_wraparound() {
+    // yᵢ(t) = g(t + dᵢ) against the explicit target g: the exact solution is
+    // δᵢ = −dᵢ (mod 1), W = 0. Shifts up to ±0.3 wrap far past the endpoints.
+    let t = grid(121);
+    let d = [-0.3, -0.11, 0.07, 0.24];
+    let mut data = FdMatrix::zeros(4, 121);
+    for i in 0..4 {
+        for j in 0..121 {
+            data[(i, j)] = periodic_g(t[j] + d[i]);
+        }
+    }
+    let target: Vec<f64> = t.iter().map(|&s| periodic_g(s)).collect();
+    for crit in [
+        ContinuousRegistrationCriterion::LeastSquares,
+        ContinuousRegistrationCriterion::MinEigenvalue,
+    ] {
+        let mut cfg = periodic_config(crit);
+        cfg.n_fine = None;
+        // Start inside the basin (the criterion is multi-modal in δ for a
+        // three-harmonic signal); R likewise relies on the initial value.
+        let mut init = FdMatrix::zeros(4, 2);
+        for i in 0..4 {
+            init[(i, 0)] = -d[i] + 0.04;
+        }
+        cfg.initial_coefficients = Some(init);
+        let res = continuous_registration(&data, &t, Some(&target), &cfg).unwrap();
+        for i in 0..4 {
+            assert!(
+                (res.shift[i] + d[i]).abs() < 1e-4,
+                "{crit:?} {i}: {}",
+                res.shift[i]
+            );
+            assert!(res.w_coefficients[(i, 1)].abs() < 1e-3);
+            for j in 0..121 {
+                assert!((res.registered_data[(i, j)] - target[j]).abs() < 1e-4);
+            }
+        }
+    }
+}
+
+#[test]
+fn periodic_spline_is_periodic_and_matches_samples() {
+    let t = grid(81);
+    let y: Vec<f64> = t.iter().map(|&s| periodic_g(s)).collect();
+    let sp = curve_spline(&t, &y, true);
+    for (j, &tj) in t.iter().enumerate() {
+        assert!((sp.eval(tj).0 - y[j]).abs() < 1e-12);
+    }
+    // Value and slope agree across the wrap point.
+    let (v0, d0) = sp.eval(0.0);
+    let (v1, d1) = sp.eval(1.0);
+    assert!((v0 - v1).abs() < 1e-12);
+    assert!((d0 - d1).abs() < 1e-6 * (1.0 + d0.abs()), "{d0} vs {d1}");
+    // Spline derivative ≈ analytic derivative of g (interpolation accuracy).
+    let ga = |s: f64| {
+        use std::f64::consts::PI;
+        2.0 * PI * (2.0 * PI * s).cos() - 2.0 * PI * (4.0 * PI * s).sin()
+            + 1.8 * PI * (6.0 * PI * s).cos()
+    };
+    assert!((d0 - ga(0.0)).abs() < 1e-2 * ga(0.0).abs());
+}
+
+#[test]
+fn periodic_gradient_matches_finite_differences() {
+    let (data, t) = periodic_data();
+    for crit in [
+        ContinuousRegistrationCriterion::LeastSquares,
+        ContinuousRegistrationCriterion::MinEigenvalue,
+    ] {
+        let mut cfg = golden_config(crit, 1e-3);
+        cfg.periodic = true;
+        let setup = CcSetup::new(0.0, 1.0, 301, &cfg);
+        let y0f = fine_target(&setup, &t, &crate::fdata::mean_1d(&data));
+        let sp = curve_spline(&t, &data.row(1), true);
+        // Includes a shift that wraps past b.
+        let c = [0.93, 0.3, -0.2, 0.5, -0.1, 0.25];
+        let g = crit_gradient(&setup, &sp, &y0f, &c);
+        assert_eq!(g.len(), 6);
+        for k in 0..6 {
+            let h = 1e-6;
+            let (mut cp, mut cm) = (c, c);
+            cp[k] += h;
+            cm[k] -= h;
+            let fd = (crit_eval(&setup, &sp, &y0f, &cp, false).f
+                - crit_eval(&setup, &sp, &y0f, &cm, false).f)
+                / (2.0 * h);
+            assert!(
+                (g[k] - fd).abs() < 1e-6 * (1.0 + fd.abs()),
+                "{crit:?} k={k}: {} vs {fd}",
+                g[k]
+            );
+        }
+        // Shifting by a full period leaves the criterion unchanged.
+        let mut c1 = c;
+        c1[0] -= 1.0;
+        let f0 = crit_eval(&setup, &sp, &y0f, &c, false).f;
+        let f1 = crit_eval(&setup, &sp, &y0f, &c1, false).f;
+        assert!((f0 - f1).abs() < 1e-10 * f0.abs().max(1e-12));
+    }
+}
+
+#[test]
+fn non_periodic_default_ignores_initial_shift_column() {
+    // Bit-identity guard: with periodic = false, column 0 of the initial
+    // coefficients stays ignored and `shift` is all zeros.
+    let (data, t) = golden_data();
+    let cfg = golden_config(ContinuousRegistrationCriterion::MinEigenvalue, 0.0);
+    let base = continuous_registration(&data, &t, None, &cfg).unwrap();
+    let mut cfg2 = cfg.clone();
+    let mut init = FdMatrix::zeros(4, 6);
+    for i in 0..4 {
+        init[(i, 0)] = 0.37;
+    }
+    cfg2.initial_coefficients = Some(init);
+    let res = continuous_registration(&data, &t, None, &cfg2).unwrap();
+    assert_eq!(res, base);
+    assert!(base.shift.iter().all(|&s| s == 0.0));
+}
+
+fn fnv(v: &[f64], h: &mut u64) {
+    for x in v {
+        for b in x.to_bits().to_le_bytes() {
+            *h ^= u64::from(b);
+            *h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+}
+
+/// Default (non-periodic) results are bit-identical to the pre-#72 code: FNV-1a hash
+/// of the full output pinned on commit 9c856e31 before `periodic` was added.
+#[test]
+fn default_results_bit_identical_to_pre_periodic_pin() {
+    let m = 41;
+    let t = grid(m);
+    let n = 30;
+    let mut data = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        let a = 0.8 + 0.4 * ((i * 13 % 7) as f64 / 6.0);
+        let sh = 0.1 * ((i * 7 % 5) as f64 / 4.0 - 0.5);
+        for j in 0..m {
+            data[(i, j)] = a * (-(t[j] - 0.5 - sh).powi(2) / 0.02).exp()
+                + 0.3 * a * (-(t[j] - 0.2).powi(2) / 0.01).exp();
+        }
+    }
+    let mut h = 0xcbf2_9ce4_8422_2325_u64;
+    for crit in [
+        ContinuousRegistrationCriterion::LeastSquares,
+        ContinuousRegistrationCriterion::MinEigenvalue,
+    ] {
+        let mut cfg = ContinuousRegistrationConfig::default();
+        cfg.criterion = crit;
+        cfg.lambda = 1e-3;
+        cfg.max_template_iter = 3;
+        let r = continuous_registration(&data, &t, None, &cfg).unwrap();
+        fnv(r.registered_data.as_slice(), &mut h);
+        fnv(r.warps.as_slice(), &mut h);
+        fnv(r.w_coefficients.as_slice(), &mut h);
+        fnv(&r.criterion, &mut h);
+        fnv(&r.target, &mut h);
+    }
+    assert_eq!(h, 0x4be7_1312_9bd8_42fb);
+}
