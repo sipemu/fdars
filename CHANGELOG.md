@@ -13,6 +13,20 @@ Changed below).
 
 ## [Unreleased]
 
+**fdasrvf golden values regenerated with 2.6.0 (GH #74 ALN-CAV).** Tests only; no
+library code or numeric change.
+
+### Changed
+
+- The R fdasrvf goldens of the curve-shape depth/box plot (#54) and SRSF smoothing (#56)
+  tests, first generated with fdasrvf 2.5.0, are regenerated with CRAN fdasrvf 2.6.0 (the
+  >= 2.5.1 pin). `curvebox_data` and `smooth.data` are bit-identical; `curve_depth` moved
+  (amplitude <= 3.5e-4, phase up to 1.2e-2) through 2.5.1's DP changes and unit-norm
+  `gam_to_psi`. Phase depths now agree with fdars to 1.0e-2 (was 2.2e-2), so a numeric phase
+  bound is added; the amplitude depth bound tightens 3e-3 -> 2.5e-3 and the box plot distance
+  bound 1e-12 -> 5e-14. `SrsfSmoothing::SmoothingSpline` is now compared pointwise with the
+  real 2.6.0 `f_to_srvf(smooth = TRUE)` (L2 distance 2.7e-3).
+
 **pmat version drift (GH #75 ALN-CAV).** Internal refactor + CI tooling only; no public API
 or numeric change.
 

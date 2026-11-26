@@ -5,9 +5,9 @@
 //!
 //! * [`SrsfSmoothing::BoxFilter`] — fdasrvf `smooth.data(f, sparam)`: `passes`
 //!   sweeps of the `(1, 2, 1)/4` filter over the interior points, endpoints
-//!   fixed. Matches fdasrvf 2.5.0 to round-off.
-//! * [`SrsfSmoothing::SmoothingSpline`] — the semantics of fdasrvf 2.5.1
-//!   `f_to_srvf(f, time, smooth = TRUE)`, which differentiates
+//!   fixed. Matches fdasrvf 2.6.0 (unchanged since 2.5.0) to round-off.
+//! * [`SrsfSmoothing::SmoothingSpline`] — the semantics of fdasrvf (≥ 2.5.1,
+//!   validated against 2.6.0) `f_to_srvf(f, time, smooth = TRUE)`, which differentiates
 //!   `stats::smooth.spline(time, f)` (a cubic smoothing spline with a GCV-chosen
 //!   penalty, chosen per curve). Here each curve is fitted with the crate's
 //!   penalised cubic B-spline smoother ([`crate::smooth_basis::smooth_basis`],
@@ -40,7 +40,7 @@ pub enum SrsfSmoothing {
         /// `time_warping` default is 25). `0` leaves the data unchanged.
         passes: usize,
     },
-    /// Per-curve GCV cubic smoothing spline, the semantics of fdasrvf 2.5.1
+    /// Per-curve GCV cubic smoothing spline, the semantics of fdasrvf (≥ 2.5.1)
     /// `f_to_srvf(smooth = TRUE)` (see the module docs). Needs `m >= 4`.
     SmoothingSpline,
 }
@@ -267,9 +267,10 @@ mod tests {
         (0..m).map(|j| j as f64 / (m - 1) as f64).collect()
     }
 
-    /// Golden values: R fdasrvf 2.5.0,
+    /// Golden values: R fdasrvf 2.6.0 (CRAN; bit-identical to the 2.5.0 output
+    /// first used, GH #74),
     /// `t <- seq(0, 1, length.out = 9); f <- cbind(sin(3*t) + t^2, cos(5*t));
-    ///  smooth.data(f, 3)`.
+    ///  smooth.data(f, 3)` (`.planning/quick/261126-mun-*/golden_srsf_smoothing_260.R`).
     #[test]
     #[allow(clippy::excessive_precision)] // R's %.17g output, verbatim
     fn box_filter_matches_fdasrvf_smooth_data() {
@@ -344,11 +345,119 @@ mod tests {
         }
     }
 
-    /// Reference: fdasrvf 2.5.1 `f_to_srvf(smooth = TRUE)` is
-    /// `predict(smooth.spline(t, f), t, deriv = 1)` then `g/sqrt(|g|+eps)`.
+    /// fdasrvf 2.6.0 `f_to_srvf(f, t, smooth = TRUE)` on the data of
+    /// [`smoothing_spline_denoises_like_fdasrvf`] (`golden_srsf_smoothing_260.R`).
+    #[allow(clippy::excessive_precision, clippy::unreadable_literal)] // R's %.17g output
+    const R_Q_SMOOTH: [f64; 101] = [
+        2.4335729219668845,
+        2.432608177479838,
+        2.4293233686795683,
+        2.422682082791531,
+        2.4122930688274371,
+        2.3972215674308304,
+        2.3768537545833195,
+        2.3510103572371679,
+        2.3194661667707108,
+        2.2817737695401328,
+        2.237815800284197,
+        2.1876324049908136,
+        2.1309155807089502,
+        2.0675397821480441,
+        1.9971571308282723,
+        1.9193865892239319,
+        1.8336961785455035,
+        1.7395429932032651,
+        1.6363196136203053,
+        1.5223821962274016,
+        1.3952738238349101,
+        1.252081732571896,
+        1.0875139213216756,
+        0.89057943384416782,
+        0.63281383851507522,
+        0.077554733356226743,
+        -0.62276292275147827,
+        -0.88323535472749726,
+        -1.0813755821993782,
+        -1.2466811206344375,
+        -1.3901915528584958,
+        -1.5172954382114612,
+        -1.6316932065655676,
+        -1.7358486472075447,
+        -1.8308936845356105,
+        -1.9176399200681911,
+        -1.9969357215061931,
+        -2.0694125097119427,
+        -2.1354873762855453,
+        -2.1954264784924575,
+        -2.249679100923947,
+        -2.298272684656848,
+        -2.341278827812006,
+        -2.3790867809548413,
+        -2.411661476396683,
+        -2.4389361829006808,
+        -2.4613104912547965,
+        -2.4787997434491187,
+        -2.491169377254971,
+        -2.4985449164465376,
+        -2.5010199797479733,
+        -2.4985205214773449,
+        -2.4910858031356105,
+        -2.4788152376671082,
+        -2.4614758077523886,
+        -2.4390468393952824,
+        -2.4116387858357453,
+        -2.3790829193120873,
+        -2.3411678997185255,
+        -2.2980256565134911,
+        -2.249647385947116,
+        -2.1955704148670114,
+        -2.1355023060547809,
+        -2.0693546662015221,
+        -1.9968221863845612,
+        -1.9175205985352468,
+        -1.8309267483864358,
+        -1.7360588606558773,
+        -1.6319627264920713,
+        -1.5171400579753622,
+        -1.3897471229355736,
+        -1.246706907365416,
+        -1.0816754065592189,
+        -0.88368584118082694,
+        -0.62384929146902302,
+        0.069910333640615455,
+        0.63182121970737415,
+        0.8898569776294698,
+        1.0867769870402066,
+        1.2510671422293618,
+        1.3940939869491364,
+        1.5211810963449668,
+        1.635595586730298,
+        1.7391457443209133,
+        1.83306631551688,
+        1.9188209464834785,
+        1.9968669546217173,
+        2.0675028750159732,
+        2.1314571309158352,
+        2.1888341621357661,
+        2.2396771430330511,
+        2.2843786044176739,
+        2.3230519306354847,
+        2.3557986565584947,
+        2.38296646059118,
+        2.4048468203086739,
+        2.4214327525745767,
+        2.433261444543112,
+        2.4409787603312032,
+        2.4453330210300774,
+        2.4470510700414958,
+    ];
+
+    /// Reference: fdasrvf 2.6.0 `f_to_srvf(f, t, smooth = TRUE)` (CRAN; it is
+    /// `predict(smooth.spline(t, f), t, deriv = 1)` then `g/sqrt(|g|+eps)`, equal
+    /// to 0 ulp to the hand-written route that stood in for it under 2.5.0, GH #74).
     /// For `t = seq(0,1,len=101)`, `f = sin(2πt) + 0.05 sin(1000·(j+1)·0.7071)`
     /// (j = 0..100), R 4.x gives an L2 error vs the noise-free SRSF of
-    /// 0.0236 (smoothed) and 1.0957 (unsmoothed `splinefun` derivative).
+    /// 0.0236 (smoothed) and 1.0957 (unsmoothed `f_to_srvf`, interpolating spline).
     #[test]
     #[allow(clippy::approx_constant)] // 0.7071 is the literal used in the R reference
     fn smoothing_spline_denoises_like_fdasrvf() {
@@ -384,6 +493,25 @@ mod tests {
             &srsf_transform_smoothed(&d, &t, &SrsfSmoothing::BoxFilter { passes: 25 }).unwrap(),
         );
         assert!(e_box < e_raw / 3.0, "box error {e_box} vs raw {e_raw}");
+        let q_spl = srsf_transform_smoothed(&d, &t, &SrsfSmoothing::SmoothingSpline).unwrap();
+        let dist: f64 = (0..m)
+            .map(|j| w[j] * (q_spl[(0, j)] - R_Q_SMOOTH[j]).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        let e_r: f64 = (0..m)
+            .map(|j| w[j] * (R_Q_SMOOTH[j] - q_true[j]).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        // Direct agreement with fdasrvf 2.6.0's smoothed SRSF (added in GH #74;
+        // before, only the accuracy against the truth was asserted): fdars'
+        // uniform-knot B-spline + GCV grid vs R's smooth.spline + Brent differ by
+        // an L2 distance of 2.7e-3 (max pointwise 9.6e-3), a ninth of either
+        // method's error against the noise-free SRSF (~0.024).
+        assert!(
+            dist < 4e-3,
+            "L2 distance to fdasrvf f_to_srvf(smooth=TRUE): {dist}"
+        );
+        assert!(e_r < 0.025, "R reference error {e_r} (Simpson weights)");
     }
 
     #[test]

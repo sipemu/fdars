@@ -234,7 +234,8 @@ fn outliers_and_extremes(
 }
 
 /// Elastic shape box plot from curves already aligned to a median shape — a
-/// port of fdasrvf 2.5.0 `curve_boxplot` (`curvebox_data`).
+/// port of fdasrvf `curve_boxplot` (`curvebox_data`; R source identical in 2.5.0
+/// and 2.6.0, golden-tested against 2.6.0).
 ///
 /// With `dᵢ` the shape distance of aligned SRVF `qᵢ` to the median SRVF
 /// (`arccos⟨q_med, qᵢ⟩` if `scale`, else `‖q_med − qᵢ‖`): the 50% and

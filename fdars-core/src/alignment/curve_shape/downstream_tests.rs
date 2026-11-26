@@ -2,7 +2,9 @@
 //! median, TSRVF, depth, outlier detection, box plot and bootstrap CI.
 //!
 //! Golden scripts: `.planning/quick/261126-43c-*/golden_curve_boxplot.R` and
-//! `golden_curve_depth.R` (fdasrvf 2.5.0, outputs in the matching `.out` files).
+//! `golden_curve_depth.R` (generated with fdasrvf 2.5.0); regenerated with CRAN
+//! fdasrvf 2.6.0 by `.planning/quick/261126-mun-*/golden_curve_{depth,boxplot}_260.R`
+//! (outputs in the matching `.out` files, GH #74).
 #![allow(clippy::field_reassign_with_default, clippy::excessive_precision)]
 
 use super::geometry::{self, Grid};
@@ -304,23 +306,29 @@ fn tsrvf_rejects_mismatched_input() {
 
 // ─── Depth ──────────────────────────────────────────────────────────────────
 
-/// fdasrvf 2.5.0 `curve_depth(beta, mode = "O", rotated = FALSE, scale = TRUE)`
-/// on the curves of `golden_curve_depth.R` at T = 480 (its finest resolution).
+/// fdasrvf 2.6.0 `curve_depth(beta, mode = "O", rotated = FALSE, scale = TRUE)`
+/// on the curves of `golden_curve_depth_260.R` at T = 480 (its finest resolution).
+/// Versus the 2.5.0 values these were regenerated from (GH #74), amplitude depths
+/// moved by <= 3.5e-4 and phase depths by up to 1.2e-2 (curve 5: 0.6760 -> 0.6640):
+/// fdasrvf 2.5.1 changed the DP (`DPQ`: 3x finer cost grid, linear `q2`
+/// interpolation; `DPQ2`: linear SRVF integration, `nbhd_dim` 7 -> 10) and made
+/// `gam_to_psi` rescale `psi` to unit norm with an `atan2` angle — the phase
+/// distance fdars already computed.
 const R_AMP_480: [f64; 6] = [
-    0.8092339249,
-    0.8163734744,
-    0.8591319212,
-    0.8328248666,
-    0.8283027796,
-    0.6454621310,
+    0.8094347050,
+    0.8167102739,
+    0.8594803978,
+    0.8330565900,
+    0.8286322343,
+    0.6454819257,
 ];
 const R_PHASE_480: [f64; 6] = [
-    0.8482157195,
-    0.8546421656,
-    0.8857884294,
-    0.8661167105,
-    0.8389484578,
-    0.6759792606,
+    0.8495692853,
+    0.8542704095,
+    0.8879148897,
+    0.8669575114,
+    0.8395181508,
+    0.6639614163,
 ];
 
 fn golden_depth_curves(m: usize) -> Vec<FdMatrix> {
@@ -342,21 +350,29 @@ fn golden_depth_fdasrvf() {
     cfg.rotation = false;
     let res = curve_shape_depth(&set(&golden_depth_curves(60)), &cfg).unwrap();
     // fdasrvf discretises differently (Riemann inner product Σ/T, its own SRVF
-    // gradient and DPQ2 grid) and its own depths drift with the resolution: from
-    // T = 60 to 480 by up to 9.2e-3 (amplitude) and 1.1e-2 (phase), from T = 240
-    // to 480 by 1.5e-3 / 3.5e-3. fdars at T = 60 is compared with fdasrvf at
-    // T = 480 within 3e-3 (amplitude); observed max deviation 2.1e-3.
+    // gradient and DP grid) and its own depths drift with the resolution: in
+    // 2.6.0 from T = 60 to 480 by up to 1.2e-2 (amplitude) and 1.6e-2 (phase),
+    // from T = 240 to 480 by 1.9e-3 / 2.3e-3. fdars at T = 60 is compared with
+    // fdasrvf at T = 480 within 2.5e-3 (amplitude; was 3e-3 against 2.5.0);
+    // observed max deviation 2.07e-3 (outlying curve 5; the others < 3e-4).
     for (ours, r) in res.amplitude_depth.iter().zip(R_AMP_480) {
         assert!(
-            (ours - r).abs() < 3e-3,
+            (ours - r).abs() < 2.5e-3,
             "amplitude depth {ours} vs fdasrvf {r}"
         );
     }
     assert_eq!(ranking(&res.amplitude_depth), ranking(&R_AMP_480));
-    // Phase: fdasrvf takes the norm of `log_1(√γ')` without renormalising √γ'
-    // and its DP warps differ in detail, so the phase depths agree only to
-    // ~2e-2 (observed: max deviation 2.2e-2, on the outlying curve 5 — twice
-    // fdasrvf's own T-drift). The ordering of all six curves agrees exactly.
+    // Phase: with fdasrvf >= 2.5.1 renormalising √γ' (and its new DP) the
+    // phase depths now agree to 1.01e-2 (outlying curve 5; was 2.2e-2 against
+    // 2.5.0, when only the ordering was asserted) — below fdasrvf's own
+    // T = 60 -> 480 drift of 1.6e-2, which is the bound used here. The
+    // ordering of all six curves agrees exactly.
+    for (ours, r) in res.phase_depth.iter().zip(R_PHASE_480) {
+        assert!(
+            (ours - r).abs() < 1.5e-2,
+            "phase depth {ours} vs fdasrvf {r}"
+        );
+    }
     assert_eq!(ranking(&res.phase_depth), ranking(&R_PHASE_480));
 }
 
@@ -553,8 +569,9 @@ fn golden_box_fields(m: usize) -> (FdMatrix, Vec<FdMatrix>) {
 
 #[test]
 fn golden_boxplot_fdasrvf_curvebox_data() {
-    // fdasrvf 2.5.0 fdasrvf:::curvebox_data(alpha = 0.05, ka = 1) with a trapezoidal
-    // innerprod_q2 (see golden_curve_boxplot.R / .out); indices converted to 0-based.
+    // fdasrvf 2.6.0 fdasrvf:::curvebox_data(alpha = 0.05, ka = 1) with a trapezoidal
+    // innerprod_q2 (see golden_curve_boxplot_260.R / .out); indices converted to
+    // 0-based. Bit-identical to the 2.5.0 output these were first generated with.
     const DIST_SCALE: [f64; 11] = [
         3.494052433263952e-02,
         7.664353833539146e-02,
@@ -593,8 +610,10 @@ fn golden_boxplot_fdasrvf_curvebox_data() {
             &CurveShapeBoxplotConfig::default(),
         )
         .unwrap();
+        // Observed max deviation 9.5e-15 (scale = TRUE, on the arccos of the
+        // far outlier) / 6.7e-16; bound tightened from 1e-12 (GH #74).
         for (ours, r) in bp.distances.iter().zip(golden) {
-            assert!((ours - r).abs() < 1e-12, "scale {scale}: {ours} vs {r}");
+            assert!((ours - r).abs() < 5e-14, "scale {scale}: {ours} vs {r}");
         }
         assert_eq!(
             [bp.q1_index, bp.q3_index, bp.q1a_index, bp.q3a_index],
