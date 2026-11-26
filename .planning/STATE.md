@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T01:00:15.135Z"
+last_updated: "2026-11-26T01:20:27.678Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: d81d167163055d3feade8bde50b1c169fca04e3a
+state_head: b94c249da5d44a7a5e6d337e9d132f843255bd98
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-2ez: ALN-DPACC (GH #49) configurable elastic DP (nbhd_dim, dp_scl refinement, DP2 piecewise-linear cost matching fdasrsf 2.7.5, exact candidate pruning ~1.6x)
+Last activity: 2026-11-26 - Completed quick task 261126-2z5: ALN-AFFINE (GH #50) shift/dilation/affine warp registration (fdacluster 0.4.2 golden) + selectable linear warp class in align_cluster_fd (default Elastic, bit-identical)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -183,6 +183,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-1a8 | ALN-CC (GH #47) Ramsay-Li continuous registration (register.fd crit 1/2, monotone B-spline warps) | 2026-11-26 | c0177212 | [261126-1a8-aln-cc-47-ramsay-li-continuous-registrat](./quick/261126-1a8-aln-cc-47-ramsay-li-continuous-registrat/) |
 | 261126-1n9 | ALN-CURVE (GH #48) R^d curve shape analysis: Procrustes rotation, scale, closed SRVF + seed search, Karcher mean/cov/PCA | 2026-11-26 | d446e4c5 | [261126-1n9-aln-curve-48-r-d-curve-shape-analysis-pr](./quick/261126-1n9-aln-curve-48-r-d-curve-shape-analysis-pr/) |
 | 261126-2ez | ALN-DPACC (GH #49) configurable DP neighbourhood (nbhd_dim), dp_scl cost refinement, DP2 piecewise-linear cost, exact candidate pruning | 2026-11-26 | d81d1671 | [261126-2ez-aln-dpacc-49-configurable-dp-neighbourho](./quick/261126-2ez-aln-dpacc-49-configurable-dp-neighbourho/) |
+| 261126-2z5 | ALN-AFFINE (#50) shift/dilation/affine warp registration + warp class in align_cluster_fd | 2026-11-26 | b94c249d | [261126-2z5-aln-affine-50-shift-dilation-affine-warp](./quick/261126-2z5-aln-affine-50-shift-dilation-affine-warp/) |
 
 ## Deferred Items
 
