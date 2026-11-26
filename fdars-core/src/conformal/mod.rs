@@ -12,6 +12,9 @@
 //! - [`cv_conformal_regression`] — Cross-conformal (CV+) with closure
 //! - [`jackknife_plus_regression`] — Jackknife+ with closure
 //!
+//! **Partially observed curves** (joint registration + amplitude / phase sets):
+//! - [`partial_conformal_fit`] / [`partial_conformal_predict`] — Wang, Kurtek & Zhang (2026)
+//!
 //! **Classification** (prediction sets):
 //! - [`conformal_classif`] — LDA / QDA / kNN classifiers
 //! - [`conformal_logistic`] — Functional logistic regression
@@ -26,6 +29,7 @@ pub mod classification;
 pub mod cv;
 pub mod elastic;
 pub mod generic;
+pub mod partial;
 pub mod regression;
 
 #[cfg(test)]
@@ -423,4 +427,9 @@ pub use elastic::{
     conformal_elastic_regression_with_config,
 };
 pub use generic::{conformal_generic_classification, conformal_generic_regression};
+pub use partial::{
+    partial_conformal_fit, partial_conformal_fit_with_template, partial_conformal_predict,
+    PartialConformalConfig, PartialConformalModel, PartialConformalPrediction,
+    PartialPredictorDistance,
+};
 pub use regression::{conformal_fregre_lm, conformal_fregre_np};

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Conformal prediction for partially observed curves (GH #51 ALN-CONFPART).** Additive and
+non-breaking: new `conformal::partial` module only; no existing code path changed; no new crate
+dependency.
+
+### Added
+
+- `conformal::partial_conformal_fit(data, argvals, &PartialConformalConfig)` /
+  `partial_conformal_fit_with_template` → `PartialConformalModel` — joint registration
+  + split-conformal model of Wang, Kurtek & Zhang (JCGS 2026): random training /
+  calibration split, Karcher-mean template on the training part, DP registration of
+  the calibration curves (amplitude responses `f_i ∘ γ_i*`, phase responses `γ_i*`).
+- `conformal::partial_conformal_predict(&model, observed_prefix, &cfg)` →
+  `PartialConformalPrediction` — for a curve observed on `[t_0, s]`: partial registration
+  onto the template (`elastic_partial_match`), a pointwise amplitude prediction band and a
+  phase (warp) prediction set with finite-sample coverage `1 − α`, using leave-self-out
+  Nadaraya–Watson neighbourhood smoothing over L² / SRSF / elastic prefix distances
+  (`PartialPredictorDistance`). The amplitude full-conformal interval is computed exactly
+  in closed form (affine scores) instead of a trial-value grid; the phase set is exact via
+  `PartialConformalPrediction::phase_set_contains`, with a geodesic trial-family envelope
+  and radius for display. Validated by the exact rotation (exchangeability) invariant and
+  Monte-Carlo coverage at α ∈ {0.1, 0.2, 0.3}. Not implemented: the paper's
+  efficiency-oriented bandwidth tuning and fragmented / sparse observation regimes.
+
 **R^d curve downstream analyses (GH #54 ALN-NDDOWN).** Additive and non-breaking: the
 `curve_shape` Karcher mean code path is unchanged (same alignment sweep, update and stopping
 rule); no new crate dependency.

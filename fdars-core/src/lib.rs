@@ -493,8 +493,10 @@ pub use conformal::{
     conformal_elastic_regression_with_config, conformal_fregre_lm, conformal_fregre_np,
     conformal_generic_classification, conformal_generic_regression, conformal_logistic,
     cv_conformal_classification, cv_conformal_regression, jackknife_plus_regression,
+    partial_conformal_fit, partial_conformal_fit_with_template, partial_conformal_predict,
     ClassificationScore, ConformalClassificationResult, ConformalConfig, ConformalMethod,
-    ConformalRegressionResult,
+    ConformalRegressionResult, PartialConformalConfig, PartialConformalModel,
+    PartialConformalPrediction, PartialPredictorDistance,
 };
 
 // Re-export GMM clustering types
