@@ -3,8 +3,8 @@
 
 use super::geometry::{self, Grid};
 use super::{
-    align_to_srvf, curve_from_set, prepare, srvf_distance, validate_curve, Candidate,
-    CurveShapeConfig, Prepared,
+    align_to_srvf, curve_from_set, prepare, srvf_distance, transform_to_curve, validate_curve,
+    Candidate, CurveShapeConfig, Prepared,
 };
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
@@ -259,6 +259,7 @@ fn karcher_inputs(
             actual: format!("{n} curves, d = {}", curves.ndim()),
         });
     }
+    config.check_dim(curves.ndim())?;
     if config.closed && curves.ndim() < 2 {
         return Err(FdarError::InvalidDimension {
             parameter: "curves",
@@ -454,7 +455,7 @@ fn karcher_impl(
     let lengths: Vec<f64> = prepared.iter().map(|p| p.length).collect();
     let mean_length = (lengths.iter().map(|l| l.ln()).sum::<f64>() / n as f64).exp();
     Ok(CurveShapeKarcherResult {
-        mean: geometry::center(&geometry::q_to_curve(&mu, &grid), &grid),
+        mean: geometry::center(&transform_to_curve(&mu, config, &grid), &grid),
         mean_srvf: mu,
         aligned_curves: super::curves_to_set(&aligned)?,
         aligned_srvfs: super::curves_to_set(&aligned_q)?,
@@ -710,6 +711,6 @@ impl CurveShapePcaResult {
         );
         let v = geometry::project_tangent(&v, &mean.mean_srvf, &grid, cfg.scale, cfg.closed);
         let q = exp_map(&mean.mean_srvf, &v, cfg, &grid);
-        Ok(geometry::center(&geometry::q_to_curve(&q, &grid), &grid))
+        Ok(geometry::center(&transform_to_curve(&q, cfg, &grid), &grid))
     }
 }

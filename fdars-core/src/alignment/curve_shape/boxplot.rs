@@ -5,8 +5,8 @@ use rand::Rng;
 use super::geometry::{self, Grid};
 use super::karcher::curve_shape_karcher_mean;
 use super::{
-    curve_from_set, curve_shape_align_pair, curves_to_set, validate_curve, CurveShapeConfig,
-    CurveShapeKarcherResult,
+    curve_from_set, curve_shape_align_pair, curves_to_set, transform_to_curve, validate_curve,
+    CurveShapeConfig, CurveShapeKarcherResult,
 };
 use crate::error::FdarError;
 use crate::helpers::{quantile_sorted, seed_for_thread};
@@ -286,7 +286,24 @@ pub fn curve_shape_boxplot_from_aligned(
     scale: bool,
     config: &CurveShapeBoxplotConfig,
 ) -> Result<CurveShapeBoxplot, FdarError> {
+    let shape = CurveShapeConfig {
+        scale,
+        ..CurveShapeConfig::default()
+    };
+    boxplot_impl(median_srvf, aligned_srvfs, aligned_curves, &shape, config)
+}
+
+/// Box plot body; `shape` supplies `scale` and the metric (for reconstructing
+/// curves from the median / whisker transforms).
+fn boxplot_impl(
+    median_srvf: &FdMatrix,
+    aligned_srvfs: &FdCurveSet,
+    aligned_curves: &FdCurveSet,
+    shape: &CurveShapeConfig,
+    config: &CurveShapeBoxplotConfig,
+) -> Result<CurveShapeBoxplot, FdarError> {
     validate_box_inputs(median_srvf, aligned_srvfs, aligned_curves, config)?;
+    let scale = shape.scale;
     let n = aligned_srvfs.ncurves();
     let grid = Grid::new(median_srvf.ncols());
     let qs: Vec<FdMatrix> = (0..n)
@@ -331,7 +348,7 @@ pub fn curve_shape_boxplot_from_aligned(
         &grid,
     );
     let (min_index, max_index) = extremes.unwrap_or((q1, q3));
-    let to_curve = |q: &FdMatrix| geometry::center(&geometry::q_to_curve(q, &grid), &grid);
+    let to_curve = |q: &FdMatrix| geometry::center(&transform_to_curve(q, shape, &grid), &grid);
     Ok(CurveShapeBoxplot {
         median: to_curve(median_srvf),
         median_srvf: median_srvf.clone(),
@@ -371,11 +388,11 @@ pub fn curve_shape_boxplot(
     median: &CurveShapeKarcherResult,
     config: &CurveShapeBoxplotConfig,
 ) -> Result<CurveShapeBoxplot, FdarError> {
-    curve_shape_boxplot_from_aligned(
+    boxplot_impl(
         &median.mean_srvf,
         &median.aligned_srvfs,
         &median.aligned_curves,
-        median.config.scale,
+        &median.config,
         config,
     )
 }

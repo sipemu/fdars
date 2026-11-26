@@ -71,6 +71,85 @@ pub(super) fn srvf_raw(beta: &FdMatrix, grid: &Grid) -> FdMatrix {
     q
 }
 
+/// Continuous lift of the polar angle of a planar (`2 × m`) vector field:
+/// `θ_0 = atan2(v_0) ∈ (−π, π]` and `θ_j = θ_{j−1} + ∠(v_{j−1}, v_j)` with the
+/// signed increment `∠ ∈ (−π, π]` (geomstats `FTransform._cartesian_to_polar`,
+/// computed here with `atan2(cross, dot)` instead of `sign(det)·arccos(cos)`).
+/// Zero vectors carry the previous angle forward.
+pub(super) fn unwrapped_angle(v: &FdMatrix) -> Vec<f64> {
+    let m = v.ncols();
+    let mut theta = Vec::with_capacity(m);
+    theta.push(v[(1, 0)].atan2(v[(0, 0)]));
+    for j in 1..m {
+        let (x0, y0, x1, y1) = (v[(0, j - 1)], v[(1, j - 1)], v[(0, j)], v[(1, j)]);
+        let cross = x0 * y1 - y0 * x1;
+        let dot = x0 * x1 + y0 * y1;
+        let inc = if cross == 0.0 && dot == 0.0 {
+            0.0
+        } else {
+            cross.atan2(dot)
+        };
+        theta.push(theta[j - 1] + inc);
+    }
+    theta
+}
+
+/// Kurtek–Needham F-transform of a planar velocity field:
+/// `F = 2b |v|^{1/2} (cos λθ, sin λθ)`, `λ = a/(2b)`, `θ` the continuous lift of
+/// [`unwrapped_angle`] (the `k = 0` branch of geomstats `FTransform`).
+pub(super) fn f_from_velocity(v: &FdMatrix, a: f64, b: f64) -> FdMatrix {
+    let m = v.ncols();
+    let lam = a / (2.0 * b);
+    let theta = unwrapped_angle(v);
+    let mut f = FdMatrix::zeros(2, m);
+    for (j, th) in theta.iter().enumerate() {
+        let r = 2.0 * b * col_norm(v, j).sqrt();
+        let (s, c) = (lam * th).sin_cos();
+        f[(0, j)] = r * c;
+        f[(1, j)] = r * s;
+    }
+    f
+}
+
+/// Velocity field of the inverse F-transform: speed `|F|²/(4b²)` along the
+/// angle `φ/λ`, `φ` the continuous lift of `arg F` (geomstats `FTransform.inverse`).
+pub(super) fn velocity_from_f(f: &FdMatrix, a: f64, b: f64) -> FdMatrix {
+    let m = f.ncols();
+    let inv_lam = 2.0 * b / a;
+    let phi = unwrapped_angle(f);
+    let mut v = FdMatrix::zeros(2, m);
+    for (j, ph) in phi.iter().enumerate() {
+        let nf = col_norm(f, j);
+        let speed = nf * nf / (4.0 * b * b);
+        let (s, c) = (inv_lam * ph).sin_cos();
+        v[(0, j)] = speed * c;
+        v[(1, j)] = speed * s;
+    }
+    v
+}
+
+/// F-transform of a planar `2 × m` curve (velocity by [`gradient`], as for the SRVF).
+pub(super) fn f_transform(beta: &FdMatrix, grid: &Grid, a: f64, b: f64) -> FdMatrix {
+    f_from_velocity(&gradient(beta, grid.h), a, b)
+}
+
+/// Integrate a sampled velocity field from the origin (cumulative trapezoid).
+fn integrate_velocity(v: &FdMatrix, grid: &Grid) -> FdMatrix {
+    let (d, m) = v.shape();
+    let mut beta = FdMatrix::zeros(d, m);
+    for j in 1..m {
+        for k in 0..d {
+            beta[(k, j)] = beta[(k, j - 1)] + 0.5 * grid.h * (v[(k, j - 1)] + v[(k, j)]);
+        }
+    }
+    beta
+}
+
+/// Reconstruct a planar curve from its F-transform, starting at the origin.
+pub(super) fn f_to_curve(f: &FdMatrix, grid: &Grid, a: f64, b: f64) -> FdMatrix {
+    integrate_velocity(&velocity_from_f(f, a, b), grid)
+}
+
 /// L² inner product `∫ ⟨a(t), b(t)⟩ dt` (trapezoidal).
 pub(super) fn inner(a: &FdMatrix, b: &FdMatrix, grid: &Grid) -> f64 {
     let d = a.nrows();

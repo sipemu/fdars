@@ -44,9 +44,24 @@
 //! contours are sampled with the last point repeating the first
 //! (`β(:, m−1) = β(:, 0)`), as in fdasrsf.
 //!
+//! **General (a,b) elastic metrics (planar curves).** With
+//! [`CurveShapeConfig::metric`] set to [`CurveShapeMetric::Elastic`] every
+//! function of this module works with the first-order elastic metric
+//! `g_c(h, k) = ∫ a²⟨D_s h, N⟩⟨D_s k, N⟩ + b²⟨D_s h, T⟩⟨D_s k, T⟩ ds`
+//! (`a` bending, `b` stretching) instead of the SRVF metric, through the
+//! Kurtek–Needham transform [`ab_transform`]
+//! `F_{a,b}(c) = 2b |c'|^{1/2} (c'/|c'|)^{a/(2b)}` that pulls the L² metric back
+//! to `g^{a,b}`. The SRVF is the case `a = 1, b = 1/2` (geomstats
+//! `ElasticMetric(a=1, b=0.5)`); see [`CurveShapeMetric`] for the conventions.
+//!
 //! Reference: Srivastava & Klassen, *Functional and Shape Data Analysis*
-//! (Springer 2016), ch. 5–6; fdasrsf 2.7.5 `curve_functions` / `curve_stats`.
+//! (Springer 2016), ch. 5–6; fdasrsf 2.7.5 `curve_functions` / `curve_stats`;
+//! Kurtek & Needham, "Simplifying transforms for general elastic metrics on the
+//! space of plane curves", SIAM J. Imaging Sci. 13 (2020); geomstats 2.8.0
+//! `discrete_curves.FTransform` / `ElasticMetric`.
 
+#[cfg(test)]
+mod ab_tests;
 mod boxplot;
 mod downstream;
 #[cfg(test)]
@@ -79,6 +94,116 @@ use crate::matrix::{FdCurveSet, FdMatrix};
 use rayon::iter::ParallelIterator;
 
 // ─── Configuration ──────────────────────────────────────────────────────────
+
+/// Riemannian metric of the elastic shape space.
+///
+/// * [`Srvf`](Self::Srvf) (default) — the square-root velocity (Fisher–Rao)
+///   metric, for curves in any R^d.
+/// * [`Elastic { a, b }`](Self::Elastic) — the general first-order elastic
+///   metric `g^{a,b}` for **open planar** curves (`d = 2`, `closed = false`),
+///   computed in the coordinates of the Kurtek–Needham transform
+///   `F(c) = 2b |c'|^{1/2} e^{iλθ}`, `λ = a/(2b)`, `θ` the continuous lift of the
+///   tangent angle (see [`ab_transform`]).
+///
+/// # Conventions
+/// * Parameters follow Kurtek–Needham and geomstats 2.8.0 `ElasticMetric(a, b)`:
+///   `a` weights bending (normal part of `D_s h`), `b` stretching (tangential
+///   part). The SRVF metric is `a = 1, b = 1/2` (`λ = 1`, `2b = 1`); the metric
+///   depends on the pair only up to an overall scale `2b` once `λ` is fixed.
+///   `Elastic { a: 1.0, b: 0.5 }` reproduces [`Srvf`](Self::Srvf) up to
+///   rounding.
+/// * Reparametrisation acts on `F` exactly as on SRVFs,
+///   `F(c∘γ) = (F(c)∘γ)·√γ'` (the direction factor is invariant under
+///   orientation-preserving `γ`), so the shared DP engine is used unchanged.
+/// * A rotation of the curve by `φ` multiplies `F` by `e^{iλφ}`; for non-integer
+///   `λ` the transform is multivalued (branches differ by `e^{2πiλk}`), and the
+///   code uses the `k = 0` branch `θ(0) = atan2 ∈ (−π, π]` like geomstats. With
+///   `rotation = true` the optimal F-space rotation `ψ` over all of SO(2) is used,
+///   which is the exact quotient over rotations **and** branches; the reported
+///   curve rotation is `ψ/λ`. With `rotation = false` the distance is the plain
+///   L² distance of the `k = 0` branches (geomstats `ElasticMetric.dist`).
+/// * Scale: `‖F(c)‖² = 4b²·length(c)`. With `scale = false` the distance is
+///   `‖F1 − F2*‖` (the geomstats pull-back distance). With `scale = true` the
+///   transforms are normalised to the unit sphere and the distance is the
+///   great-circle **angle** `θ ∈ [0, π]` (as for the SRVF); the `g^{a,b}`
+///   geodesic length on unit-length curves is `2b·θ`.
+/// * The trapezoidal rule on the full grid `t_j = j/(m−1)` with central
+///   differences is used (as for the SRVF), whereas geomstats uses forward
+///   differences and a left Riemann sum over `m − 1` segments; both are
+///   second-order consistent and agree to ~1e-6 at `m = 2001`.
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{curve_shape_distance, CurveShapeConfig, CurveShapeMetric};
+/// use fdars_core::matrix::FdMatrix;
+/// let m = 60;
+/// let mut b1 = FdMatrix::zeros(2, m);
+/// let mut b2 = FdMatrix::zeros(2, m);
+/// for j in 0..m {
+///     let t = j as f64 / (m - 1) as f64;
+///     b1[(0, j)] = t;
+///     b1[(1, j)] = 0.3 * (3.0 * t).sin();
+///     b2[(0, j)] = t;
+///     b2[(1, j)] = 0.2 * (5.0 * t).sin();
+/// }
+/// let mut cfg = CurveShapeConfig::default();
+/// let d_srvf = curve_shape_distance(&b1, &b2, &cfg).unwrap();
+/// cfg.metric = CurveShapeMetric::Elastic { a: 1.0, b: 0.5 }; // = SRVF
+/// let d_ab = curve_shape_distance(&b1, &b2, &cfg).unwrap();
+/// assert!((d_srvf - d_ab).abs() < 1e-9);
+/// cfg.metric = CurveShapeMetric::Elastic { a: 1.0, b: 1.0 }; // more stretch weight
+/// assert!(curve_shape_distance(&b1, &b2, &cfg).unwrap() > 0.0);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum CurveShapeMetric {
+    /// Square-root velocity (Fisher–Rao) metric, any dimension.
+    #[default]
+    Srvf,
+    /// General `(a, b)` elastic metric for open planar curves (`a, b > 0`).
+    Elastic {
+        /// Bending weight `a > 0`.
+        a: f64,
+        /// Stretching weight `b > 0`.
+        b: f64,
+    },
+}
+
+impl CurveShapeMetric {
+    /// The exponent `λ = a/(2b)` of the F-transform (1 for the SRVF).
+    #[must_use]
+    pub fn ratio(&self) -> f64 {
+        match *self {
+            Self::Srvf => 1.0,
+            Self::Elastic { a, b } => a / (2.0 * b),
+        }
+    }
+
+    /// Validate the metric parameters.
+    ///
+    /// # Errors
+    /// [`FdarError::InvalidParameter`] if `a` or `b` is not finite and positive.
+    pub fn validate(&self) -> Result<(), FdarError> {
+        if let Self::Elastic { a, b } = *self {
+            check_ab(a, b)?;
+        }
+        Ok(())
+    }
+}
+
+/// Check the `(a, b)` parameters of the elastic metric.
+fn check_ab(a: f64, b: f64) -> Result<(), FdarError> {
+    for (parameter, v) in [("a", a), ("b", b)] {
+        if !(v.is_finite() && v > 0.0) {
+            return Err(FdarError::InvalidParameter {
+                parameter,
+                message: format!("must be finite and > 0, got {v}"),
+            });
+        }
+    }
+    Ok(())
+}
 
 /// Configuration of the shape quotient for R^d curve shape analysis.
 ///
@@ -123,6 +248,9 @@ pub struct CurveShapeConfig {
     /// Rounds of the Procrustes ↔ DP alternation per seed candidate (≥ 1).
     /// Default 2.
     pub align_iter: usize,
+    /// Shape-space metric. Default [`CurveShapeMetric::Srvf`];
+    /// [`CurveShapeMetric::Elastic`] requires open planar curves.
+    pub metric: CurveShapeMetric,
 }
 
 impl Default for CurveShapeConfig {
@@ -138,6 +266,7 @@ impl Default for CurveShapeConfig {
             reparam: true,
             lambda: 0.0,
             align_iter: 2,
+            metric: CurveShapeMetric::Srvf,
         }
     }
 }
@@ -146,8 +275,9 @@ impl CurveShapeConfig {
     /// Validate the configuration.
     ///
     /// # Errors
-    /// [`FdarError::InvalidParameter`] if `seed_step == 0`, `align_iter == 0` or
-    /// `lambda` is negative / non-finite.
+    /// [`FdarError::InvalidParameter`] if `seed_step == 0`, `align_iter == 0`,
+    /// `lambda` is negative / non-finite, the metric parameters are invalid, or
+    /// the elastic `(a, b)` metric is combined with `closed = true`.
     pub fn validate(&self) -> Result<(), FdarError> {
         let bad = |parameter: &'static str, message: String| {
             Err(FdarError::InvalidParameter { parameter, message })
@@ -164,6 +294,25 @@ impl CurveShapeConfig {
                 format!("must be finite and >= 0, got {}", self.lambda),
             );
         }
+        self.metric.validate()?;
+        if self.closed && self.metric != CurveShapeMetric::Srvf {
+            return bad(
+                "metric",
+                "the (a,b) elastic metric supports open curves only (closed = false)".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    /// Check that curves of dimension `d` are supported by the metric.
+    fn check_dim(&self, d: usize) -> Result<(), FdarError> {
+        if self.metric != CurveShapeMetric::Srvf && d != 2 {
+            return Err(FdarError::InvalidDimension {
+                parameter: "curves",
+                expected: "planar curves (d = 2) for the (a,b) elastic metric".to_string(),
+                actual: format!("d = {d}"),
+            });
+        }
         Ok(())
     }
 }
@@ -179,11 +328,16 @@ pub struct CurveShapeAlignment {
     /// `β2` optimally aligned to `β1`: `R · β2(shifted)∘γ`, centred (unit
     /// length if `scale`), `d × m`.
     pub beta2_aligned: FdMatrix,
-    /// SRVF of the preprocessed target (closure-projected if `closed`), `d × m`.
+    /// SRVF of the preprocessed target (closure-projected if `closed`), `d × m`
+    /// — the F-transform under [`CurveShapeMetric::Elastic`] (unit norm if
+    /// `scale`).
     pub q1: FdMatrix,
-    /// SRVF of the aligned `β2` (closure-projected if `closed`), `d × m`.
+    /// SRVF (F-transform) of the aligned `β2` (closure-projected if `closed`),
+    /// `d × m`. Under the elastic metric it is `R_F·F(β2∘γ)`, a branch of the
+    /// transform of `beta2_aligned`.
     pub q2_aligned: FdMatrix,
-    /// Optimal rotation `R` (`d × d`), applied as `R · β2`.
+    /// Optimal rotation `R` (`d × d`), applied as `R · β2` (under the elastic
+    /// metric the curve rotation `Rot(ψ/λ)` of the F-space rotation `Rot(ψ)`).
     pub rotation: FdMatrix,
     /// Optimal warp `γ` on the grid `t_j = j/(m−1)` (identity if `reparam = false`).
     pub gamma: Vec<f64>,
@@ -317,6 +471,77 @@ pub fn srvf_to_curve(q: &FdMatrix) -> Result<FdMatrix, FdarError> {
     Ok(geometry::q_to_curve(q, &Grid::new(q.ncols())))
 }
 
+/// Validate a planar curve / transform and the `(a, b)` parameters.
+fn validate_planar(x: &FdMatrix, parameter: &'static str, a: f64, b: f64) -> Result<(), FdarError> {
+    validate_curve(x, parameter)?;
+    if x.nrows() != 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter,
+            expected: "2 x m (planar curve)".to_string(),
+            actual: format!("{} x {}", x.nrows(), x.ncols()),
+        });
+    }
+    check_ab(a, b)
+}
+
+/// Kurtek–Needham F-transform of a planar `2 × m` curve,
+/// `F_{a,b}(c) = 2b |c'|^{1/2} (c'/|c'|)^{a/(2b)}` (complex power), whose L²
+/// metric pulls back to the `(a, b)` elastic metric
+/// `∫ a²⟨D_s h, N⟩⟨D_s k, N⟩ + b²⟨D_s h, T⟩⟨D_s k, T⟩ ds`.
+///
+/// The power is taken on the continuous lift `θ(t)` of the tangent angle with
+/// `θ(0) = atan2(c'(0)) ∈ (−π, π]` — the `k = 0` branch of geomstats 2.8.0
+/// `FTransform`. `c'` is computed by central differences on the uniform grid
+/// of `[0, 1]` (as [`curve_srvf`]); `a = 1, b = 1/2` gives the SRVF. See
+/// [`CurveShapeMetric`] for the conventions.
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] unless `beta` is `2 × m` with `m ≥ 4`;
+/// [`FdarError::InvalidParameter`] for non-finite values or `a, b ≤ 0`.
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{ab_transform, ab_transform_inverse, curve_srvf};
+/// use fdars_core::matrix::FdMatrix;
+/// let m = 50;
+/// let mut beta = FdMatrix::zeros(2, m);
+/// for j in 0..m {
+///     let t = j as f64 / (m - 1) as f64;
+///     beta[(0, j)] = t;
+///     beta[(1, j)] = 0.4 * (4.0 * t).sin();
+/// }
+/// // a = 1, b = 1/2 is the square-root velocity function
+/// let f = ab_transform(&beta, 1.0, 0.5).unwrap();
+/// let q = curve_srvf(&beta, false).unwrap();
+/// assert!(f.as_slice().iter().zip(q.as_slice()).all(|(x, y)| (x - y).abs() < 1e-12));
+/// // the inverse recovers the curve (up to translation and quadrature error)
+/// let f = ab_transform(&beta, 1.0, 1.0).unwrap();
+/// let back = ab_transform_inverse(&f, 1.0, 1.0).unwrap();
+/// assert!((back[(1, m - 1)] - (beta[(1, m - 1)] - beta[(1, 0)])).abs() < 1e-2);
+/// ```
+pub fn ab_transform(beta: &FdMatrix, a: f64, b: f64) -> Result<FdMatrix, FdarError> {
+    validate_planar(beta, "beta", a, b)?;
+    Ok(geometry::f_transform(beta, &Grid::new(beta.ncols()), a, b))
+}
+
+/// Inverse of [`ab_transform`]: the planar curve starting at the origin with
+/// speed `|F|²/(4b²)` and tangent angle `φ(t)/λ`, `λ = a/(2b)`, where `φ` is the
+/// continuous lift of `arg F` with `φ(0) = atan2 ∈ (−π, π]` (geomstats 2.8.0
+/// `FTransform.inverse`; integrated by the cumulative trapezoid rule).
+///
+/// The F-transform is a bijection only for `λ = 1`. For `λ ≤ 1` this is a left
+/// inverse (`ab_transform_inverse(ab_transform(c)) = c − c(0)` up to
+/// quadrature error). For `λ ≥ 1` it is a right inverse: it returns one curve
+/// among the several with transform `f` (the one whose initial tangent angle
+/// lies in `(−π/λ, π/λ]`).
+///
+/// # Errors
+/// As [`ab_transform`].
+pub fn ab_transform_inverse(f: &FdMatrix, a: f64, b: f64) -> Result<FdMatrix, FdarError> {
+    validate_planar(f, "f", a, b)?;
+    Ok(geometry::f_to_curve(f, &Grid::new(f.ncols()), a, b))
+}
+
 /// Closure residual `∫ q(t)‖q(t)‖ dt ∈ R^d` of an SRVF — the displacement
 /// `β(1) − β(0)` of the curve it represents (zero for a closed curve).
 ///
@@ -438,7 +663,10 @@ struct Prepared {
 /// SRVF of an (already centred / scaled) curve under the configuration:
 /// renormalised to unit norm if `scale`, projected if `closed`.
 fn srvf_cfg(beta: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
-    let mut q = geometry::srvf_raw(beta, grid);
+    let mut q = match cfg.metric {
+        CurveShapeMetric::Srvf => geometry::srvf_raw(beta, grid),
+        CurveShapeMetric::Elastic { a, b } => geometry::f_transform(beta, grid, a, b),
+    };
     if cfg.scale {
         let nq = geometry::norm(&q, grid);
         if nq > 1e-300 {
@@ -449,6 +677,47 @@ fn srvf_cfg(beta: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
         q = geometry::project_closed(&q, grid).0;
     }
     q
+}
+
+/// Reconstruct a (non-centred) curve from a configured transform: the SRVF
+/// inverse, or the F-transform inverse rescaled so that a unit-norm transform
+/// gives a unit-length curve when `scale` (`‖F‖² = 4b²·length`).
+fn transform_to_curve(q: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
+    match cfg.metric {
+        CurveShapeMetric::Srvf => geometry::q_to_curve(q, grid),
+        CurveShapeMetric::Elastic { a, b } => {
+            let f = if cfg.scale {
+                geometry::scaled(q, 2.0 * b)
+            } else {
+                q.clone()
+            };
+            geometry::f_to_curve(&f, grid, a, b)
+        }
+    }
+}
+
+/// Map an optimal transform-space rotation `R_F` to the rotation of the curve:
+/// identity map for the SRVF; for the `(a, b)` metric `R_F = Rot(ψ)·S`
+/// (`S` = reflection or identity) corresponds to the curve map `Rot(ψ/λ)·S`.
+fn curve_rotation(r: FdMatrix, cfg: &CurveShapeConfig) -> FdMatrix {
+    match cfg.metric {
+        CurveShapeMetric::Srvf => r,
+        CurveShapeMetric::Elastic { .. } => {
+            let psi = r[(1, 0)].atan2(r[(0, 0)]);
+            let (s, c) = (psi / cfg.metric.ratio()).sin_cos();
+            let refl = if r[(0, 0)] * r[(1, 1)] - r[(0, 1)] * r[(1, 0)] < 0.0 {
+                -1.0
+            } else {
+                1.0
+            };
+            let mut out = FdMatrix::zeros(2, 2);
+            out[(0, 0)] = c;
+            out[(1, 0)] = s;
+            out[(0, 1)] = -s * refl;
+            out[(1, 1)] = c * refl;
+            out
+        }
+    }
 }
 
 /// Centre, scale and transform one curve.
@@ -507,10 +776,11 @@ fn make_candidate(
     grid: &Grid,
 ) -> Candidate {
     let q = geometry::rotate(&r, q_w);
-    let beta = geometry::rotate(&r, beta_w);
+    let rotation = curve_rotation(r, cfg);
+    let beta = geometry::rotate(&rotation, beta_w);
     let distance = srvf_distance(q1, &q, cfg, grid);
     Candidate {
-        rotation: r,
+        rotation,
         gamma,
         seed,
         beta,
@@ -621,6 +891,7 @@ fn validate_pair(
     validate_curve(beta1, "beta1")?;
     validate_curve(beta2, "beta2")?;
     check_same_shape(beta1, beta2)?;
+    cfg.check_dim(beta1.nrows())?;
     if cfg.closed && beta1.nrows() < 2 {
         return Err(FdarError::InvalidDimension {
             parameter: "beta1",

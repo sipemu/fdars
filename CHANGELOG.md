@@ -13,6 +13,26 @@ Changed below).
 
 ## [Unreleased]
 
+**General (a,b) elastic metrics for planar curves (GH #59 ALN-ABMETRIC).** Additive and
+non-breaking: new `CurveShapeConfig::metric` field (default `CurveShapeMetric::Srvf`, which keeps
+every existing result bit-identical); no new crate dependency.
+
+### Added
+
+- `alignment::CurveShapeMetric` (`Srvf` | `Elastic { a, b }`) and `CurveShapeConfig::metric` —
+  the Kurtek–Needham (SIAM J. Imaging Sci. 2020) first-order elastic metric
+  `∫ a²⟨D_s h,N⟩⟨D_s k,N⟩ + b²⟨D_s h,T⟩⟨D_s k,T⟩ ds` for open planar curves, through the
+  F-transform. All `curve_shape_*` functions (align/distance/distance matrix, Karcher
+  mean/median, covariance, PCA, TSRVF, depth, outliers, box plot, bootstrap CI) accept it:
+  reparametrisation by the shared DP (F transforms like an SRVF, `(F∘γ)√γ'`), rotation by
+  F-space Procrustes (exact quotient over rotations and branches; curve rotation `ψ/λ`),
+  scale on the unit sphere. Conventions follow geomstats 2.8.0 `ElasticMetric(a, b)`: SRVF is
+  `a = 1, b = 1/2`; `k = 0` branch `θ(0) = atan2 ∈ (−π, π]`. Closed contours are not supported
+  with the elastic metric (validated).
+- `alignment::ab_transform(beta, a, b)` / `ab_transform_inverse(f, a, b)` — the F-transform
+  `2b|c'|^{1/2}(c'/|c'|)^{a/(2b)}` and its inverse (left inverse for `a/(2b) ≤ 1`, right
+  inverse for `≥ 1`). Validated against geomstats 2.8.0 (`FTransform`, `ElasticMetric.dist`).
+
 **DTW lower bounds and exact 1-NN search (GH #58 ALN-LB).** Additive and non-breaking: new
 `metric::dtw_lb` module; existing DTW code paths and results unchanged; no new crate dependency.
 
