@@ -34,6 +34,8 @@
 //! - [`sparse_elastic_align_pair`] / [`sparse_elastic_mean`] — elastic alignment and
 //!   spline-SRV elastic means of curves observed at sparse, irregular, differing points
 //!   (polygon SRV, R `elasdics` `align_curves` / `compute_elastic_mean`)
+//! - [`pairwise_synchronization`] — Tang–Müller pairwise curve synchronisation: average
+//!   of penalised monotone pairwise warps to random partner subsets (R fdapace `WFDA`)
 
 mod affine;
 mod bayesian;
@@ -77,6 +79,7 @@ mod srsf_smoothing;
 mod transfer;
 mod tsrvf;
 mod warp_stats;
+mod wfda;
 
 #[cfg(test)]
 mod hygiene_tests;
@@ -211,6 +214,7 @@ pub use tsrvf::{
     tsrvf_transform_with_method, TransportMethod, TsrvfResult,
 };
 pub use warp_stats::{warp_statistics, WarpStatistics};
+pub use wfda::{pairwise_synchronization, WfdaChoice, WfdaConfig, WfdaCostMeasure, WfdaResult};
 
 // Re-export pub(crate) items so other crate modules can use them.
 pub(crate) use karcher::sqrt_mean_inverse;
