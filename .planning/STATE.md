@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T01:55:07.226Z"
+last_updated: "2026-11-26T02:11:05.162Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 84d513ce56d18d1beb6ecb06def9d51650d21154
+state_head: 21070abb34418492bbb96cdd34a7f45c8f560a15
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-3sq: ALN-BOX (GH #55) elastic amplitude/phase boxplots golden-matched to fdasrsf 2.7.5, classify for new functions (amplitude, phase, MBD phase_boxplot), elastic DP-means with learned K (labels/K match fdasrsf dpmeans_align)
+Last activity: 2026-11-26 - Completed quick task 261126-43c: ALN-NDDOWN (GH #54) R^d curve downstream analyses — Karcher median, TSRVF at the mean, curve depth (fdasrvf curve_depth), shape outlier detection, curve box plot (golden-matched to fdasrvf 2.5.0 curvebox_data), bootstrap shape CI
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -186,6 +186,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-2z5 | ALN-AFFINE (#50) shift/dilation/affine warp registration + warp class in align_cluster_fd | 2026-11-26 | b94c249d | [261126-2z5-aln-affine-50-shift-dilation-affine-warp](./quick/261126-2z5-aln-affine-50-shift-dilation-affine-warp/) |
 | 261126-3av | ALN-HYGIENE (GH #56): closed-curve SRSF/weight hoist + parallel rotation candidates, OutlierThreshold (Tukey default / quantile alpha), opt-in SRSF pre-smoothing (fdasrvf smooth.data / f_to_srvf(smooth=TRUE)), parallel elastic-FPCA loops; all defaults bit-identical | 2026-11-26 | ffd80f88 | [261126-3av-aln-hygiene-56-closed-curve-hoist-outlie](./quick/261126-3av-aln-hygiene-56-closed-curve-hoist-outlie/) |
 | 261126-3sq | ALN-BOX (GH #55): elastic amplitude/phase boxplots (fdasrsf golden) + classify for new functions (incl. MBD phase_boxplot), elastic DP-means (labels/K match fdasrsf) | 2026-11-26 | 84d513ce | [261126-3sq-aln-box-55-amplitude-boxplot-boxplot-cla](./quick/261126-3sq-aln-box-55-amplitude-boxplot-boxplot-cla/) |
+| 261126-43c | ALN-NDDOWN (#54): R^d curve TSRVF, depth, boxplot, outliers, shape CI | 2026-11-26 | 21070abb | [261126-43c-aln-nddown-54-r-d-curve-tsrvf-depth-boxp](./quick/261126-43c-aln-nddown-54-r-d-curve-tsrvf-depth-boxp/) |
 
 ## Deferred Items
 
