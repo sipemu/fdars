@@ -31,6 +31,15 @@ ones bit-for-bit, pinned by tests).
   sktime's `Paa`, `Dwt`, `Slope` and `Derivative` descriptors. Golden-tested against aeon
   1.6.0 (other descriptors via sktime 1.3.0 transformers fed to aeon as precomputed
   transformations).
+- **Exact DTW k-NN**: `dtw_k_nearest_neighbors(queries, references, k, p, window)` →
+  `DtwKNearestNeighbors` (per-query indices / distances ordered by `(distance, index)`), the
+  LB_Keogh → LB_Kim → LB_Webb → EAPrunedDTW cascade of `dtw_nearest_neighbor` with the k-th
+  best distance as cutoff; equals brute force exactly. `dtw_nearest_neighbor` is now its
+  `k = 1` case — indices, distance bits and pruning statistics pinned unchanged.
+- **DTW lower bounds** `lb_improved` (Lemire 2009, `p ≥ 1`) and `lb_enhanced` (Tan, Petitjean
+  & Webb 2019, `v` bands), for every `DtwWindow` and unequal lengths; validated against
+  Lemire's `lbimproved` C++ (p = 1) and Tan et al.'s `LbEnhanced` Java code (p = 2), and
+  `LB_Keogh ≤ LB_Improved ≤ DTW`, `LB_Enhanced ≤ DTW` on thousands of random pairs.
 
 **Bayesian group alignment band calibration (GH #64 ALN-CAV).** One fix to the posterior
 summaries of `bayesian_align_group`; the chains, warp / σ² summaries and every

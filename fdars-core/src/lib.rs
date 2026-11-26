@@ -696,8 +696,9 @@ pub use metric::{
 };
 // Re-export DTW lower bounds, EAPrunedDTW and exact 1-NN search (GH #58)
 pub use metric::{
-    dtw_distance_early_abandon, dtw_nearest_neighbor, lb_envelope, lb_envelope_windowed, lb_keogh,
-    lb_kim, lb_webb, DtwEnvelope, DtwNearestNeighbors, DtwSearchStats,
+    dtw_distance_early_abandon, dtw_k_nearest_neighbors, dtw_nearest_neighbor, lb_enhanced,
+    lb_envelope, lb_envelope_windowed, lb_improved, lb_keogh, lb_kim, lb_webb, DtwEnvelope,
+    DtwKNearestNeighbors, DtwNearestNeighbors, DtwSearchStats,
 };
 // Re-export the aeon elastic-distance family (GH #57)
 pub use metric::{

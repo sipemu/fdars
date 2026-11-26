@@ -192,8 +192,9 @@ pub use dtw::{
     dtw_pairwise_distance_multivariate, dtw_path, dtw_path_multivariate, dtw_self, DtwPath,
 };
 pub use dtw_lb::{
-    dtw_distance_early_abandon, dtw_nearest_neighbor, lb_envelope, lb_envelope_windowed, lb_keogh,
-    lb_kim, lb_webb, DtwEnvelope, DtwNearestNeighbors, DtwSearchStats,
+    dtw_distance_early_abandon, dtw_k_nearest_neighbors, dtw_nearest_neighbor, lb_enhanced,
+    lb_envelope, lb_envelope_windowed, lb_improved, lb_keogh, lb_kim, lb_webb, DtwEnvelope,
+    DtwKNearestNeighbors, DtwNearestNeighbors, DtwSearchStats,
 };
 pub use elastic_family::{
     adtw_alignment_path, adtw_alignment_path_multivariate, adtw_cost_matrix,

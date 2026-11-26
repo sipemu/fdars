@@ -16,9 +16,14 @@
 //!   (Keogh 2002) over envelopes computed with Lemire's (2009) streaming min/max;
 //! - [`lb_webb`] — LB_Webb (Webb & Petitjean 2021, *Tight lower bounds for
 //!   Dynamic Time Warping*, Pattern Recognition 115), always `≥ LB_Keogh`;
+//! - [`lb_improved`] — LB_Improved (Lemire 2009), the two-pass bound
+//!   `≥ LB_Keogh`;
+//! - [`lb_enhanced`] — LB_Enhanced (Tan, Petitjean & Webb 2019), elastic
+//!   bands at both path ends plus LB_Keogh in the middle;
 //! - [`dtw_distance_early_abandon`] — EAPrunedDTW (Herrmann & Webb 2021):
 //!   exact windowed DTW that abandons as soon as the cost must exceed a cutoff;
-//! - [`dtw_nearest_neighbor`] — exact 1-NN search cascading the bounds above.
+//! - [`dtw_nearest_neighbor`] / [`dtw_k_nearest_neighbors`] — exact 1-NN /
+//!   k-NN search cascading the bounds above.
 //!
 //! # Generalised windows
 //! The papers state LB_Keogh / LB_Webb for equal lengths and a Sakoe-Chiba
@@ -692,6 +697,181 @@ pub fn lb_webb(x: &[f64], y: &[f64], p: f64, window: DtwWindow) -> Result<f64, F
 }
 
 // ---------------------------------------------------------------------------
+// LB_Improved and LB_Enhanced
+// ---------------------------------------------------------------------------
+
+/// LB_Improved lower bound (Lemire 2009).
+///
+/// `LB_Keogh(x, env(y))` plus the LB_Keogh cost of `y` against the envelope of
+/// the projection `h` of `x` onto `y`'s envelope (`h_i = clamp(x_i, L^y_i,
+/// U^y_i)`):
+///
+/// ```text
+/// LB_Improved(x, y) = Σ_i c(x_i, [L^y_i, U^y_i]) + Σ_j c(y_j, [L^h_j, U^h_j])
+/// ```
+///
+/// with `c(v, [lo, up])` the cost `|v − up|^p` / `|lo − v|^p` of leaving the
+/// interval (Lemire, *Faster retrieval with a two-pass dynamic-time-warping
+/// lower bound*, Pattern Recognition 42(9), 2009). Since `h_i` lies between
+/// `x_i` and every admissible `y_j`, `|x_i − y_j|^p ≥ |x_i − h_i|^p +
+/// |h_i − y_j|^p` for `p ≥ 1`, which gives `LB_Keogh ≤ LB_Improved ≤ DTW`;
+/// `p ≥ 1` is therefore required. Envelopes follow the admissible rows /
+/// columns of `window` (see the module docs), so the bound holds for every
+/// window and for unequal lengths; for equal lengths and
+/// [`DtwWindow::SakoeChiba`] it is the published definition (validated against
+/// Lemire's `lbimproved` C++ code for `p = 1` and Tan et al.'s Java
+/// `LbImproved` for `p = 2`). The value has no root, like
+/// [`dtw_distance_windowed`](super::dtw::dtw_distance_windowed).
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `x` or `y` is empty.
+/// - [`FdarError::InvalidParameter`] if `p` is not finite and `≥ 1`, or the
+///   window is invalid / unfeasible for these lengths.
+///
+/// # Examples
+/// ```
+/// use fdars_core::{dtw_distance_windowed, lb_envelope, lb_improved, lb_keogh, DtwWindow};
+/// let x = [0.0, 1.0, 3.0, 2.0, 0.0, -1.0, -2.0, 0.0];
+/// let y = [0.0, -1.0, 0.5, 4.0, 3.0, 1.0, 0.0, 1.0];
+/// let w = DtwWindow::SakoeChiba { radius: 1 };
+/// let keogh = lb_keogh(&x, &lb_envelope(&y, 1).unwrap(), 2.0).unwrap();
+/// let improved = lb_improved(&x, &y, 2.0, w).unwrap();
+/// let dtw = dtw_distance_windowed(&x, &y, 2.0, w).unwrap();
+/// assert!(keogh <= improved && improved <= dtw);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn lb_improved(x: &[f64], y: &[f64], p: f64, window: DtwWindow) -> Result<f64, FdarError> {
+    validate_dtw_inputs(x, y, p)?;
+    if p < 1.0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "p",
+            message: format!(
+                "LB_Improved needs a convex local cost |a − b|^p, i.e. p >= 1, got {p}"
+            ),
+        });
+    }
+    let lat = Lattice::new(x.len(), y.len(), window)?;
+    let cost = LocalCost::new(p);
+    let (ly, uy) = sliding_extrema(y, &lat.rows);
+    let mut lb = 0.0;
+    let mut h = Vec::with_capacity(x.len());
+    for (i, &q) in x.iter().enumerate() {
+        if q < ly[i] {
+            lb += cost.eval(q, ly[i]);
+            h.push(ly[i]);
+        } else if q > uy[i] {
+            lb += cost.eval(q, uy[i]);
+            h.push(uy[i]);
+        } else {
+            h.push(q);
+        }
+    }
+    let (lh, uh) = sliding_extrema(&h, &lat.cols);
+    for (j, &v) in y.iter().enumerate() {
+        if v < lh[j] {
+            lb += cost.eval(v, lh[j]);
+        } else if v > uh[j] {
+            lb += cost.eval(v, uh[j]);
+        }
+    }
+    Ok(lb)
+}
+
+/// Minimum local cost over the admissible cells of the L-shaped band
+/// `{(a, b) : max(a, b) = i}` of the (optionally mirrored) lattice.
+fn band_min(x: &[f64], y: &[f64], lat: &Lattice, cost: LocalCost, i: usize, mirror: bool) -> f64 {
+    let (n, m) = (x.len(), y.len());
+    let cell = |a: usize, b: usize| {
+        let (a, b) = if mirror {
+            (n - 1 - a, m - 1 - b)
+        } else {
+            (a, b)
+        };
+        if lat.admissible(a, b) {
+            cost.eval(x[a], y[b])
+        } else {
+            f64::INFINITY
+        }
+    };
+    let mut best = cell(i, i);
+    for j in 0..i {
+        best = best.min(cell(i, j)).min(cell(j, i));
+    }
+    best
+}
+
+/// LB_Enhanced lower bound (Tan, Petitjean & Webb 2019).
+///
+/// Splits every warping path into `V` "bands" at each end plus the middle
+/// rows: the `k`-th left band is the L-shaped set of cells `{(a, b) :
+/// max(a, b) = k}`, the right bands are its mirror image at `(n − 1, m − 1)`.
+/// Every path crosses every band, so the minimum admissible cell cost of each
+/// band, plus LB_Keogh over the remaining middle rows `V ≤ i ≤ n − 1 − V`,
+/// lower-bounds the DTW (Tan, Petitjean & Webb, *Elastic bands across the path:
+/// A new framework and method to lower bound DTW*, SDM 2019):
+///
+/// ```text
+/// LB_Enhanced_V = Σ_{k<V} (min_{L_k} c + min_{R_k} c) + Σ_{i=V}^{n−1−V} c(x_i, [L^y_i, U^y_i])
+/// ```
+///
+/// The number of bands is capped like the reference implementation,
+/// `V_eff = min(v, ⌊(min(n, m) − 1) / 2⌋)`, so bands never overlap each other
+/// or the LB_Keogh rows; when `V_eff = 0` (series of length `≤ 2`) the bound
+/// reduces to LB_Keogh. Band cells and envelopes follow the admissibility of
+/// `window` (general windows and unequal lengths); for equal lengths and
+/// [`DtwWindow::SakoeChiba`] it is the published definition (validated against
+/// Tan et al.'s Java `LbEnhanced` for `p = 2`). Valid for every `p > 0`. It is
+/// usually tighter than LB_Keogh, but the two are not ordered in general (the
+/// end rows' LB_Keogh terms are traded for band minima). No root is taken.
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `x` or `y` is empty.
+/// - [`FdarError::InvalidParameter`] if `p` is not finite and `> 0`, `v == 0`,
+///   or the window is invalid / unfeasible for these lengths.
+///
+/// # Examples
+/// ```
+/// use fdars_core::{dtw_distance_windowed, lb_enhanced, DtwWindow};
+/// let x = [0.0, 1.0, 3.0, 2.0, 0.0, -1.0, -2.0, 0.0];
+/// let y = [2.0, -1.0, 0.5, 4.0, 3.0, 1.0, 0.0, 1.0];
+/// let w = DtwWindow::SakoeChiba { radius: 2 };
+/// let lb = lb_enhanced(&x, &y, 2.0, w, 3).unwrap();
+/// assert!(lb <= dtw_distance_windowed(&x, &y, 2.0, w).unwrap());
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn lb_enhanced(
+    x: &[f64],
+    y: &[f64],
+    p: f64,
+    window: DtwWindow,
+    v: usize,
+) -> Result<f64, FdarError> {
+    validate_dtw_inputs(x, y, p)?;
+    if v == 0 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "v",
+            message: "the number of bands must be at least 1".to_string(),
+        });
+    }
+    let (n, m) = (x.len(), y.len());
+    let lat = Lattice::new(n, m, window)?;
+    let cost = LocalCost::new(p);
+    let (ly, uy) = sliding_extrema(y, &lat.rows);
+    let bands = v.min((n.min(m) - 1) / 2);
+    if bands == 0 {
+        return Ok(keogh_sum(x, &ly, &uy, cost));
+    }
+    let mut lb = cost.eval(x[0], y[0]) + cost.eval(x[n - 1], y[m - 1]);
+    for k in 1..bands {
+        lb += band_min(x, y, &lat, cost, k, false) + band_min(x, y, &lat, cost, k, true);
+    }
+    for i in bands..n - bands {
+        lb += keogh_term(x[i], ly[i], uy[i], cost);
+    }
+    Ok(lb)
+}
+
+// ---------------------------------------------------------------------------
 // EAPrunedDTW
 // ---------------------------------------------------------------------------
 
@@ -823,7 +1003,8 @@ pub fn dtw_distance_early_abandon(
 // Exact 1-NN search
 // ---------------------------------------------------------------------------
 
-/// Pruning statistics of [`dtw_nearest_neighbor`], summed over all queries.
+/// Pruning statistics of [`dtw_nearest_neighbor`] / [`dtw_k_nearest_neighbors`],
+/// summed over all queries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
@@ -903,17 +1084,38 @@ fn keogh_suffix(a: &[f64], env: &WebbCandidate, cost: LocalCost) -> Vec<f64> {
     rest
 }
 
-/// Best-so-far state of one query.
-struct Best {
-    dist: f64,
-    idx: usize,
+/// Best-so-far state of one query: the `k` smallest `(distance, index)`
+/// pairs seen, sorted ascending (lowest index first on equal distances). For
+/// `k = 1` this is the classical best-so-far of the 1-NN search.
+struct TopK {
+    k: usize,
+    items: Vec<(f64, usize)>,
 }
 
-impl Best {
-    fn offer(&mut self, d: f64, k: usize) {
-        if d < self.dist || (d == self.dist && k < self.idx) {
-            self.dist = d;
-            self.idx = k;
+impl TopK {
+    fn new(k: usize) -> Self {
+        TopK {
+            k,
+            items: Vec::with_capacity(k + 1),
+        }
+    }
+
+    /// The pruning cutoff: the k-th best distance (`+inf` until `k` found).
+    fn threshold(&self) -> f64 {
+        if self.items.len() < self.k {
+            f64::INFINITY
+        } else {
+            self.items[self.k - 1].0
+        }
+    }
+
+    fn offer(&mut self, d: f64, idx: usize) {
+        let pos = self
+            .items
+            .partition_point(|&(e, j)| e < d || (e == d && j < idx));
+        if pos < self.k {
+            self.items.insert(pos, (d, idx));
+            self.items.truncate(self.k);
         }
     }
 }
@@ -940,8 +1142,8 @@ fn pruned_by_bounds(
     false
 }
 
-/// Exact 1-NN of one query.
-fn search_one(ctx: &SearchCtx, a: &[f64]) -> (usize, f64, DtwSearchStats) {
+/// Exact k-NN of one query (`(distance, index)` ascending).
+fn search_one(ctx: &SearchCtx, a: &[f64], k_nn: usize) -> (Vec<(f64, usize)>, DtwSearchStats) {
     let mut stats = DtwSearchStats::default();
     let q = (
         KimFeatures::new(a),
@@ -955,12 +1157,10 @@ fn search_one(ctx: &SearchCtx, a: &[f64]) -> (usize, f64, DtwSearchStats) {
         .collect();
     order.sort_by(|u, v| u.0.total_cmp(&v.0).then(u.1.cmp(&v.1)));
 
-    let mut best = Best {
-        dist: f64::INFINITY,
-        idx: usize::MAX,
-    };
+    let mut best = TopK::new(k_nn);
     for (pos, &(keogh, k)) in order.iter().enumerate() {
-        let thr = relax(best.dist, ctx.slack);
+        let cutoff = best.threshold();
+        let thr = relax(cutoff, ctx.slack);
         if keogh > thr {
             stats.pruned_lb_keogh += order.len() - pos;
             break;
@@ -975,7 +1175,7 @@ fn search_one(ctx: &SearchCtx, a: &[f64]) -> (usize, f64, DtwSearchStats) {
             &r.row,
             &ctx.lat.rows,
             ctx.cost,
-            best.dist,
+            cutoff,
             Some((&rest, thr)),
         ) {
             Some(d) => {
@@ -985,7 +1185,7 @@ fn search_one(ctx: &SearchCtx, a: &[f64]) -> (usize, f64, DtwSearchStats) {
             None => stats.early_abandoned += 1,
         }
     }
-    (best.idx, best.dist, stats)
+    (best.items, stats)
 }
 
 fn validate_search_matrix(data: &FdMatrix, parameter: &'static str) -> Result<(), FdarError> {
@@ -1057,14 +1257,116 @@ pub fn dtw_nearest_neighbor(
     p: f64,
     window: DtwWindow,
 ) -> Result<DtwNearestNeighbors, FdarError> {
+    let (results, stats) = knn_search(queries, references, 1, p, window)?;
+    let (indices, distances) = results.iter().map(|r| (r[0].1, r[0].0)).unzip();
+    Ok(DtwNearestNeighbors {
+        indices,
+        distances,
+        stats,
+    })
+}
+
+/// Result of [`dtw_k_nearest_neighbors`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct DtwKNearestNeighbors {
+    /// `indices[q]`: the `k` rows of `references` nearest to query row `q`,
+    /// by increasing distance (lowest index first on ties).
+    pub indices: Vec<Vec<usize>>,
+    /// `distances[q][r]`: windowed DTW cost (no root) of `indices[q][r]`,
+    /// bit-identical to `dtw_distance_windowed`; non-decreasing in `r`.
+    pub distances: Vec<Vec<f64>>,
+    /// Pruning statistics summed over all queries.
+    pub stats: DtwSearchStats,
+}
+
+/// Exact DTW k-nearest-neighbour search with cascading lower bounds.
+///
+/// For every row of `queries`, returns the `k` rows of `references` with the
+/// smallest [`dtw_distance_windowed`](super::dtw::dtw_distance_windowed)
+/// `(query, reference, p, window)`, ordered by `(distance, index)` — exactly
+/// the first `k` entries of a stable sort of the brute-force distances, with
+/// bit-identical distances. The search is that of [`dtw_nearest_neighbor`]
+/// with the best-so-far replaced by the **k-th** best distance so far: a
+/// candidate is discarded only when a lower bound (LB_Keogh, which also ends
+/// the scan; LB_Kim; LB_Webb for `p ≥ 1`) exceeds that cutoff, and
+/// EAPrunedDTW abandons only when the cost must exceed it. Since a candidate
+/// whose DTW exceeds the k-th best can never enter the top `k`, the result is
+/// exact. `k = 1` reproduces [`dtw_nearest_neighbor`] (same indices,
+/// distances and statistics).
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if either matrix has no rows or columns.
+/// - [`FdarError::InvalidParameter`] if `k` is not in `1..=references.nrows()`,
+///   `p` is not finite and `> 0`, a value is not finite, or the window is
+///   invalid / unfeasible for the lengths.
+///
+/// # Examples
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::{dtw_k_nearest_neighbors, DtwWindow};
+/// let (n_ref, m) = (6, 16);
+/// let mut data = vec![0.0; n_ref * m];
+/// for s in 0..n_ref {
+///     for k in 0..m {
+///         data[s + k * n_ref] = (k as f64 * 0.4 + s as f64 * 0.5).sin(); // column-major
+///     }
+/// }
+/// let references = FdMatrix::from_column_major(data, n_ref, m).unwrap();
+/// let q: Vec<f64> = (0..m).map(|k| (k as f64 * 0.4 + 1.0).sin()).collect();
+/// let queries = FdMatrix::from_column_major(q, 1, m).unwrap();
+/// let knn = dtw_k_nearest_neighbors(&queries, &references, 3, 2.0, DtwWindow::None).unwrap();
+/// assert_eq!(knn.indices[0].len(), 3);
+/// assert_eq!(knn.indices[0][0], 2); // reference 2 has the same phase
+/// assert_eq!(knn.distances[0][0], 0.0);
+/// assert!(knn.distances[0].windows(2).all(|w| w[0] <= w[1]));
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn dtw_k_nearest_neighbors(
+    queries: &FdMatrix,
+    references: &FdMatrix,
+    k: usize,
+    p: f64,
+    window: DtwWindow,
+) -> Result<DtwKNearestNeighbors, FdarError> {
+    if k == 0 || k > references.nrows() {
+        return Err(FdarError::InvalidParameter {
+            parameter: "k",
+            message: format!(
+                "must be in 1..={} (the number of references), got {k}",
+                references.nrows()
+            ),
+        });
+    }
+    let (results, stats) = knn_search(queries, references, k, p, window)?;
+    let (indices, distances) = results
+        .iter()
+        .map(|r| r.iter().map(|&(d, i)| (i, d)).unzip())
+        .unzip();
+    Ok(DtwKNearestNeighbors {
+        indices,
+        distances,
+        stats,
+    })
+}
+
+/// Shared exact k-NN search (validated inputs, `1 ≤ k ≤ references`).
+fn knn_search(
+    queries: &FdMatrix,
+    references: &FdMatrix,
+    k: usize,
+    p: f64,
+    window: DtwWindow,
+) -> Result<(Vec<Vec<(f64, usize)>>, DtwSearchStats), FdarError> {
     validate_search_matrix(queries, "queries")?;
     validate_search_matrix(references, "references")?;
     validate_p(p)?;
     let (n, m) = (queries.ncols(), references.ncols());
     let lat = Lattice::new(n, m, window)?;
     let refs: Vec<Reference> = iter_maybe_parallel!(0..references.nrows())
-        .map(|k| {
-            let row = references.row(k);
+        .map(|r| {
+            let row = references.row(r);
             Reference {
                 kim: KimFeatures::new(&row),
                 env: WebbCandidate::new(&row, &lat),
@@ -1079,22 +1381,17 @@ pub fn dtw_nearest_neighbor(
         use_webb: p >= 1.0,
         slack: (16.0 * (n + m) as f64 * f64::EPSILON).max(1e-10),
     };
-    let results: Vec<(usize, f64, DtwSearchStats)> = iter_maybe_parallel!(0..queries.nrows())
-        .map(|qi| search_one(&ctx, &queries.row(qi)))
-        .collect();
+    let results: Vec<(Vec<(f64, usize)>, DtwSearchStats)> =
+        iter_maybe_parallel!(0..queries.nrows())
+            .map(|qi| search_one(&ctx, &queries.row(qi), k))
+            .collect();
     let mut stats = DtwSearchStats::default();
-    let mut indices = Vec::with_capacity(results.len());
-    let mut distances = Vec::with_capacity(results.len());
-    for (idx, d, s) in &results {
-        indices.push(*idx);
-        distances.push(*d);
-        stats.add(s);
+    let mut out = Vec::with_capacity(results.len());
+    for (r, st) in results {
+        stats.add(&st);
+        out.push(r);
     }
-    Ok(DtwNearestNeighbors {
-        indices,
-        distances,
-        stats,
-    })
+    Ok((out, stats))
 }
 
 #[cfg(test)]
