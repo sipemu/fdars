@@ -14,11 +14,14 @@
 //! - [`reparameterize_curve`] / [`compose_warps`] — Warping utilities
 //! - [`iterative_shift_registration`] — iterative least-squares shift registration
 //!   with template re-estimation; [`landmark_shift_registration`] — landmark shift
+//! - [`continuous_registration`] — Ramsay–Li continuous registration (R `register.fd`,
+//!   least-squares and minimum-eigenvalue criteria) with monotone B-spline warps
 
 mod bayesian;
 mod closed;
 mod clustering;
 mod constrained;
+mod continuous;
 mod diagnostics;
 mod differentiable;
 mod elastic_depth;
@@ -64,6 +67,10 @@ pub use clustering::{
 };
 pub use constrained::{
     elastic_align_pair_constrained, elastic_align_pair_with_landmarks, ConstrainedAlignmentResult,
+};
+pub use continuous::{
+    continuous_registration, ContinuousRegistrationConfig, ContinuousRegistrationCriterion,
+    ContinuousRegistrationResult,
 };
 pub use diagnostics::{
     diagnose_alignment, diagnose_pairwise, AlignmentDiagnostic, AlignmentDiagnosticSummary,

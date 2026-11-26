@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Ramsay–Li continuous registration (GH #47 ALN-CC).** Additive and non-breaking;
+no existing code path changed; no new crate dependency.
+
+### Added
+
+- `continuous_registration(data, argvals, target, &ContinuousRegistrationConfig)` — port
+  of R `fda::register.fd` (non-periodic): monotone warps
+  `h(t) = a + (b−a)·∫exp W / ∫ₐᵇexp W` with `W` a clamped B-spline expansion (R
+  `create.bspline.basis` convention, first coefficient fixed at 0 as in R) and roughness
+  penalty `λ∫(DᴸW)²`. `ContinuousRegistrationCriterion { LeastSquares (crit = 1),
+  MinEigenvalue (crit = 2, default) }`; the minimum-eigenvalue criterion is solved by
+  variable projection with the exact (envelope-theorem) gradient, both criteria by
+  penalised Gauss–Newton with Levenberg–Marquardt step control (monotone criterion
+  decrease). Target defaults to the cross-sectional mean; `max_template_iter > 1`
+  re-estimates it Procrustes-style. Sealed `ContinuousRegistrationConfig { criterion,
+  nbasis = 6, norder = 4, lambda = 0, lfd_order = 2, max_iter = 50, tol = 1e-8, n_fine,
+  max_template_iter = 1, template_tol = 1e-4, initial_coefficients }`;
+  `ContinuousRegistrationResult { registered_data, warps, w_coefficients, w_knots,
+  criterion, target, n_iter, converged, n_template_iter }`. Validated against R fda 6.3.0
+  `register.fd` (crit 1 and 2, with and without penalty): fdars reaches a criterion ≤ R's
+  on every curve, warps within 1e-2 of R's basis-projected `warpfd`; W basis values and
+  penalty matrix match `eval.basis` / `getbasispenalty` to 1e-9.
+
 **Iterative least-squares shift registration + landmark shift registration (GH #46
 ALN-SHIFT).** Additive and non-breaking; the existing golden-section
 `least_squares_shift_registration` is unchanged; no new crate dependency.
