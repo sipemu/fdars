@@ -36,6 +36,14 @@ Changed below).
   (these types now also derive serde under the `serde` feature).
 
 ### Fixed
+- `wavelet::wcr` / `wavelet::wnet` (GH #82): `beta_t` is now the adjoint of the DWT
+  analysis operator applied to `coeff_weights`, so `intercept + Σ_t x(t)·β(t)`
+  reproduces `fitted_values` under every boundary mode. Previously β(t) was the
+  inverse DWT, which is only the adjoint when the transform is orthogonal; with
+  `BoundaryMode::Symmetric` β(t) was shrunk by ≈ 2⁻ˡᵉᵛᵉˡ (and periodic mode with odd
+  per-level lengths was slightly off). Fits, `fitted_values`, `coeff_weights`,
+  `intercept` and `predict` are unchanged; periodic even-length `beta_t` is
+  bit-identical.
 - `inference::itp_two_pop` permutation null relabelled only group B (group A kept
   its observed rows), inflating permutation statistics and destroying power; both
   groups are now relabelled as in `fdatest` (`coeff[sample(n), ]`). The B-spline
