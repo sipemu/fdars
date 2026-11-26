@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T00:40:57.998Z"
+last_updated: "2026-11-26T01:00:15.135Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: d446e4c57219e6cb71978598bdcc94729a700a94
+state_head: d81d167163055d3feade8bde50b1c169fca04e3a
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-1n9: ALN-CURVE (GH #48) R^d curve shape analysis (SVD Procrustes rotation, scale removal, closed-contour SRVF projection + seed search, Karcher mean/covariance/shape PCA)
+Last activity: 2026-11-26 - Completed quick task 261126-2ez: ALN-DPACC (GH #49) configurable elastic DP (nbhd_dim, dp_scl refinement, DP2 piecewise-linear cost matching fdasrsf 2.7.5, exact candidate pruning ~1.6x)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -182,6 +182,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-0tx | ALN-SHIFT (#46) iterative least-squares shift registration with template re-estimation + landmark shift registration | 2026-11-26 | 06c5c990 | [261126-0tx-aln-shift-46-iterative-least-squares-shi](./quick/261126-0tx-aln-shift-46-iterative-least-squares-shi/) |
 | 261126-1a8 | ALN-CC (GH #47) Ramsay-Li continuous registration (register.fd crit 1/2, monotone B-spline warps) | 2026-11-26 | c0177212 | [261126-1a8-aln-cc-47-ramsay-li-continuous-registrat](./quick/261126-1a8-aln-cc-47-ramsay-li-continuous-registrat/) |
 | 261126-1n9 | ALN-CURVE (GH #48) R^d curve shape analysis: Procrustes rotation, scale, closed SRVF + seed search, Karcher mean/cov/PCA | 2026-11-26 | d446e4c5 | [261126-1n9-aln-curve-48-r-d-curve-shape-analysis-pr](./quick/261126-1n9-aln-curve-48-r-d-curve-shape-analysis-pr/) |
+| 261126-2ez | ALN-DPACC (GH #49) configurable DP neighbourhood (nbhd_dim), dp_scl cost refinement, DP2 piecewise-linear cost, exact candidate pruning | 2026-11-26 | d81d1671 | [261126-2ez-aln-dpacc-49-configurable-dp-neighbourho](./quick/261126-2ez-aln-dpacc-49-configurable-dp-neighbourho/) |
 
 ## Deferred Items
 
