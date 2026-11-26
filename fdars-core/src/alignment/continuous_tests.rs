@@ -1137,3 +1137,82 @@ const PRE_PERIODIC_PIN: &[f64] = &[
     7.760969478359123,
     5.648777403140646,
 ];
+
+/// GH #83 repro: `yᵢ(t) = exp(−(t + aᵢ t(1−t) − ½)² / 0.02)`, `aᵢ ∈ {−0.2, 0, 0.2}`.
+fn gh83_data() -> (FdMatrix, Vec<f64>) {
+    let t = grid(51);
+    let a = [-0.2, 0.0, 0.2];
+    let mut data = FdMatrix::zeros(3, 51);
+    for (i, ai) in a.iter().enumerate() {
+        for j in 0..51 {
+            let s = t[j] + ai * t[j] * (1.0 - t[j]);
+            data[(i, j)] = (-(s - 0.5).powi(2) / 0.02).exp();
+        }
+    }
+    (data, t)
+}
+
+/// `tol = 0` can never be met (it needs an exactly zero decrease), so a fit
+/// that stops because the step search stalls must not report `converged`
+/// (GH #83: it used to report `true` for every curve).
+#[test]
+fn stall_is_not_reported_as_converged() {
+    let (data, t) = gh83_data();
+    let mut cfg = ContinuousRegistrationConfig::default();
+    cfg.tol = 0.0;
+    cfg.max_iter = 1000;
+    let res = continuous_registration(&data, &t, None, &cfg).unwrap();
+    for i in 0..3 {
+        assert!(res.n_iter[i] < 1000, "curve {i} used all iterations");
+        assert!(
+            matches!(
+                res.termination[i],
+                ContinuousRegistrationTermination::Stalled
+                    | ContinuousRegistrationTermination::CoefLimit
+                    | ContinuousRegistrationTermination::Converged
+            ),
+            "curve {i}: {:?}",
+            res.termination[i]
+        );
+        // Converged with tol = 0 is only possible at an exact stationary point.
+        assert_eq!(
+            res.converged[i],
+            res.termination[i] == ContinuousRegistrationTermination::Converged
+        );
+    }
+    assert!(
+        res.termination
+            .contains(&ContinuousRegistrationTermination::Stalled),
+        "expected at least one stalled curve, got {:?}",
+        res.termination
+    );
+    assert!(res.converged.iter().any(|c| !c));
+}
+
+/// With the default tolerance the same fit converges and says so; running out
+/// of iterations reports `MaxIter` / not converged (GH #83).
+#[test]
+fn termination_reason_converged_and_max_iter() {
+    let (data, t) = gh83_data();
+    let cfg = ContinuousRegistrationConfig::default();
+    let res = continuous_registration(&data, &t, None, &cfg).unwrap();
+    for i in 0..3 {
+        assert_eq!(
+            res.termination[i],
+            ContinuousRegistrationTermination::Converged
+        );
+        assert!(res.converged[i]);
+    }
+    let mut cfg = ContinuousRegistrationConfig::default();
+    cfg.tol = 0.0;
+    cfg.max_iter = 1;
+    let res = continuous_registration(&data, &t, None, &cfg).unwrap();
+    for i in [0, 2] {
+        assert_eq!(
+            res.termination[i],
+            ContinuousRegistrationTermination::MaxIter
+        );
+        assert!(!res.converged[i]);
+        assert_eq!(res.n_iter[i], 1);
+    }
+}

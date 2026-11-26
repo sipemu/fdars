@@ -1,6 +1,6 @@
 //! Gaussian generative model for random curve synthesis from aligned data.
 
-use super::srsf::{reparameterize_curve, srsf_inverse};
+use super::srsf::{invert_warp, reparameterize_curve, srsf_inverse};
 use super::KarcherMeanResult;
 use crate::elastic_fpca::{horiz_fpca, sphere_karcher_mean, vert_fpca, warps_to_normalized_psi};
 use crate::error::FdarError;
@@ -18,7 +18,9 @@ use rand_distr::StandardNormal;
 pub struct GenerativeModelResult {
     /// Generated function samples (n_samples x m).
     pub samples: FdMatrix,
-    /// Generated warping functions (n_samples x m).
+    /// Generated warping functions (n_samples x m), in the alignment convention
+    /// of [`KarcherMeanResult::gammas`]: `samples[i] ∘ warps[i]` is the sampled
+    /// amplitude (aligned) curve, i.e. `samples[i] = amplitude_i ∘ warps[i]⁻¹`.
     pub warps: FdMatrix,
     /// FPCA scores used for generation (n_samples x ncomp).
     pub scores: FdMatrix,
@@ -59,6 +61,22 @@ fn phase_shooting_to_warp(
     let mut gamma: Vec<f64> = gam_01.iter().map(|&g| t0 + g * domain).collect();
     normalize_warp(&mut gamma, argvals);
     gamma
+}
+
+/// Compose a sampled amplitude curve with a sampled phase.
+///
+/// `gamma` is drawn in the *alignment* convention of
+/// [`KarcherMeanResult::gammas`] (`aligned_i = f_i ∘ γ_i`), so an observed curve
+/// is recovered as `f_i = aligned_i ∘ γ_i⁻¹`. The synthetic curve is therefore
+/// `f_new ∘ γ⁻¹`; composing with `γ` itself mirrors the phase and reverses any
+/// amplitude–phase correlation (GH #80).
+fn warp_amplitude_sample(
+    f_new: &[f64],
+    argvals: &[f64],
+    gamma: &[f64],
+) -> Result<Vec<f64>, FdarError> {
+    let gamma_inv = invert_warp(gamma, argvals)?;
+    Ok(reparameterize_curve(f_new, argvals, &gamma_inv))
 }
 
 // ─── Gaussian Generative Model ──────────────────────────────────────────────
@@ -104,7 +122,10 @@ fn gauss_validate(
 ///
 /// Samples amplitude and phase components independently from their
 /// respective FPCA score distributions (Gaussian with covariance = diag(eigenvalues)),
-/// then combines them to produce synthetic functional data.
+/// then combines them to produce synthetic functional data: with a sampled
+/// amplitude curve `a` and warp `γ` (alignment convention, as
+/// [`KarcherMeanResult::gammas`]) the sample is `a ∘ γ⁻¹`, mirroring how an
+/// observed curve is recovered from its aligned version.
 ///
 /// # Arguments
 /// * `karcher` — Pre-computed Karcher mean result (with aligned data and gammas)
@@ -184,8 +205,8 @@ pub fn gauss_model(
 
         let gamma = phase_shooting_to_warp(&v, &mu_psi, &time, argvals, t0, domain);
 
-        // Apply warp to generate final sample
-        let sample = reparameterize_curve(&f_new, argvals, &gamma);
+        // Apply the inverse warp to generate the final sample
+        let sample = warp_amplitude_sample(&f_new, argvals, &gamma)?;
 
         for j in 0..m {
             samples[(i, j)] = sample[j];
@@ -224,46 +245,70 @@ fn build_joint_scores(
     joint
 }
 
-/// Estimate column means and variances of a joint score matrix.
-fn joint_score_mean_var(
+/// Estimate the column means and the full sample covariance of a joint score
+/// matrix, returned as `(mean, factor)` where `factor` (total_ncomp x
+/// total_ncomp, row-major) satisfies `factor * factor^T = Σ`.
+///
+/// The factor is the symmetric PSD square root `V diag(sqrt(max(λ, 0)))` from
+/// an eigendecomposition, so a rank-deficient covariance (e.g. `n` smaller than
+/// the joint dimension, or perfectly linked amplitude/phase scores) is handled
+/// without jitter. Keeping the off-diagonal amplitude–phase blocks is what
+/// makes the model *joint* (GH #80): sampling only the diagonal discards the
+/// amplitude–phase correlation.
+fn joint_score_mean_cov_factor(
     joint_scores: &FdMatrix,
     n: usize,
     total_ncomp: usize,
 ) -> (Vec<f64>, Vec<f64>) {
     let mut joint_mean = vec![0.0; total_ncomp];
     for k in 0..total_ncomp {
-        for i in 0..n {
-            joint_mean[k] += joint_scores[(i, k)];
-        }
-        joint_mean[k] /= n as f64;
+        joint_mean[k] = (0..n).map(|i| joint_scores[(i, k)]).sum::<f64>() / n as f64;
     }
-    let mut joint_var = vec![0.0; total_ncomp];
-    for k in 0..total_ncomp {
-        for i in 0..n {
-            let diff = joint_scores[(i, k)] - joint_mean[k];
-            joint_var[k] += diff * diff;
+    let denom = (n - 1).max(1) as f64;
+    let mut cov = nalgebra::DMatrix::<f64>::zeros(total_ncomp, total_ncomp);
+    for a in 0..total_ncomp {
+        for b in a..total_ncomp {
+            let c = (0..n)
+                .map(|i| {
+                    (joint_scores[(i, a)] - joint_mean[a]) * (joint_scores[(i, b)] - joint_mean[b])
+                })
+                .sum::<f64>()
+                / denom;
+            cov[(a, b)] = c;
+            cov[(b, a)] = c;
         }
-        joint_var[k] /= (n - 1).max(1) as f64;
     }
-    (joint_mean, joint_var)
+    let eig = nalgebra::SymmetricEigen::new(cov);
+    let mut factor = vec![0.0; total_ncomp * total_ncomp];
+    for r in 0..total_ncomp {
+        for c in 0..total_ncomp {
+            factor[r * total_ncomp + c] =
+                eig.eigenvectors[(r, c)] * eig.eigenvalues[c].max(0.0).sqrt();
+        }
+    }
+    (joint_mean, factor)
 }
 
-/// Sample one joint score vector from a diagonal Gaussian.
+/// Sample one joint score vector from the full-covariance Gaussian
+/// `N(mean, factor factor^T)`.
 ///
 /// Consumes one `rng.sample(StandardNormal)` per component.
 fn sample_joint_z(
     rng: &mut impl Rng,
     joint_mean: &[f64],
-    joint_var: &[f64],
+    factor: &[f64],
     total_ncomp: usize,
     scores_out: &mut FdMatrix,
     i: usize,
 ) -> Vec<f64> {
-    let mut joint_z = vec![0.0; total_ncomp];
-    for k in 0..total_ncomp {
-        let z: f64 = rng.sample(StandardNormal);
-        joint_z[k] = joint_mean[k] + z * joint_var[k].max(0.0).sqrt();
-        scores_out[(i, k)] = joint_z[k];
+    let z: Vec<f64> = (0..total_ncomp)
+        .map(|_| rng.sample(StandardNormal))
+        .collect();
+    let mut joint_z = joint_mean.to_vec();
+    for (r, jz) in joint_z.iter_mut().enumerate() {
+        let row = &factor[r * total_ncomp..(r + 1) * total_ncomp];
+        *jz += row.iter().zip(&z).map(|(l, zk)| l * zk).sum::<f64>();
+        scores_out[(i, r)] = *jz;
     }
     joint_z
 }
@@ -316,9 +361,12 @@ fn reconstruct_phase_shooting(
 /// correlation.
 ///
 /// Computes amplitude and phase FPCA separately, concatenates their scores to
-/// form a joint score vector, estimates the joint covariance, and samples from
-/// the joint distribution. This preserves cross-correlation between amplitude
-/// and phase variability.
+/// form a joint score vector, estimates the **full** joint covariance
+/// (including the amplitude–phase cross-covariance block), and samples from
+/// `N(mean, Σ)`. This preserves cross-correlation between amplitude and phase
+/// variability; it is distributionally equivalent to sampling independent
+/// scores in the joint-PCA basis of the score matrix, as in jfPCA
+/// (Lee & Jung 2017; fdasrsf/fdasrvf `joint_gauss_model`).
 ///
 /// # Arguments
 /// * `karcher` — Pre-computed Karcher mean result
@@ -361,7 +409,7 @@ pub fn joint_gauss_model(
         horiz_ncomp,
         balance_c,
     );
-    let (joint_mean, joint_var) = joint_score_mean_var(&joint_scores, n, total_ncomp);
+    let (joint_mean, joint_factor) = joint_score_mean_cov_factor(&joint_scores, n, total_ncomp);
 
     // Sphere/warping setup
     let t0 = argvals[0];
@@ -383,7 +431,7 @@ pub fn joint_gauss_model(
         let joint_z = sample_joint_z(
             &mut rng,
             &joint_mean,
-            &joint_var,
+            &joint_factor,
             total_ncomp,
             &mut scores_out,
             i,
@@ -410,7 +458,7 @@ pub fn joint_gauss_model(
 
         let gamma = phase_shooting_to_warp(&v, &mu_psi, &time, argvals, t0, domain);
 
-        let sample = reparameterize_curve(&f_new, argvals, &gamma);
+        let sample = warp_amplitude_sample(&f_new, argvals, &gamma)?;
         for j in 0..m {
             samples[(i, j)] = sample[j];
             warps_out[(i, j)] = gamma[j];
@@ -567,6 +615,146 @@ mod tests {
                     "sample ({i},{j}) is not finite"
                 );
             }
+        }
+    }
+
+    fn corr(a: &[f64], b: &[f64]) -> f64 {
+        let n = a.len() as f64;
+        let ma = a.iter().sum::<f64>() / n;
+        let mb = b.iter().sum::<f64>() / n;
+        let (mut sab, mut saa, mut sbb) = (0.0, 0.0, 0.0);
+        for (x, y) in a.iter().zip(b) {
+            sab += (x - ma) * (y - mb);
+            saa += (x - ma) * (x - ma);
+            sbb += (y - mb) * (y - mb);
+        }
+        sab / (saa * sbb).sqrt()
+    }
+
+    /// Peak height and peak location of each row.
+    fn peak_height_location(x: &FdMatrix, t: &[f64]) -> (Vec<f64>, Vec<f64>) {
+        let (mut h, mut l) = (Vec::new(), Vec::new());
+        for i in 0..x.nrows() {
+            let row = x.row(i);
+            let (jmax, vmax) =
+                row.iter()
+                    .enumerate()
+                    .fold(
+                        (0, f64::NEG_INFINITY),
+                        |acc, (j, &v)| {
+                            if v > acc.1 {
+                                (j, v)
+                            } else {
+                                acc
+                            }
+                        },
+                    );
+            h.push(vmax);
+            l.push(t[jmax]);
+        }
+        (h, l)
+    }
+
+    /// The covariance factor must reproduce the full sample covariance of the
+    /// joint scores, including off-diagonal (amplitude–phase) entries, and stay
+    /// valid for a rank-deficient covariance (GH #80).
+    #[test]
+    fn joint_cov_factor_reproduces_full_covariance() {
+        // n = 4 rows, 3 columns; column 2 = 2 * column 0 (rank deficient, strongly
+        // correlated across "blocks").
+        let rows = [
+            [1.0, 0.5, 2.0],
+            [2.0, -1.0, 4.0],
+            [0.0, 0.3, 0.0],
+            [-1.0, 2.0, -2.0],
+        ];
+        let mut s = FdMatrix::zeros(4, 3);
+        for (i, r) in rows.iter().enumerate() {
+            for (k, &v) in r.iter().enumerate() {
+                s[(i, k)] = v;
+            }
+        }
+        let (mean, f) = joint_score_mean_cov_factor(&s, 4, 3);
+        assert!((mean[0] - 0.5).abs() < 1e-14 && (mean[2] - 1.0).abs() < 1e-14);
+        for a in 0..3 {
+            for b in 0..3 {
+                let cov_ab: f64 = (0..4)
+                    .map(|i| (s[(i, a)] - mean[a]) * (s[(i, b)] - mean[b]))
+                    .sum::<f64>()
+                    / 3.0;
+                let ff: f64 = (0..3).map(|c| f[a * 3 + c] * f[b * 3 + c]).sum();
+                assert!(
+                    (ff - cov_ab).abs() < 1e-10,
+                    "factor*factor^T[{a},{b}] = {ff} != cov {cov_ab}"
+                );
+            }
+        }
+    }
+
+    /// GH #80 repro: peak height and peak location perfectly linked in the data
+    /// (corr ≈ 0.999). A joint amplitude–phase model must keep that link in its
+    /// samples; the old diagonal sampler gave corr ≈ 0.
+    #[test]
+    fn joint_gauss_model_preserves_amplitude_phase_correlation() {
+        let m = 101;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let n = 40;
+        let mut rng = StdRng::seed_from_u64(1);
+        let mut data = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            let z: f64 = rng.sample(StandardNormal);
+            let (amp, loc) = (1.0 + 0.25 * z, 0.5 + 0.08 * z);
+            for j in 0..m {
+                let u = (t[j] - loc) / 0.1;
+                data[(i, j)] = amp * (-u * u).exp();
+            }
+        }
+        let (dh, dl) = peak_height_location(&data, &t);
+        let data_corr = corr(&dh, &dl);
+        assert!(data_corr > 0.99, "data corr {data_corr}");
+
+        let km = karcher_mean(&data, &t, 20, 1e-4, 0.0);
+        let res = joint_gauss_model(&km, &t, 2, 2000, 1.0, 7).unwrap();
+        let (sh, sl) = peak_height_location(&res.samples, &t);
+        let sample_corr = corr(&sh, &sl);
+        assert!(
+            sample_corr > 0.8,
+            "samples lost the amplitude-phase correlation: corr = {sample_corr:.3} \
+             (data corr = {data_corr:.3})"
+        );
+    }
+
+    /// Composition convention (GH #80): the Karcher alignment has
+    /// `aligned_i = f_i ∘ γ_i`, so composing an aligned curve with its warp via
+    /// `warp_amplitude_sample` must give back the observed curve `f_i`.
+    #[test]
+    fn warp_amplitude_sample_inverts_alignment() {
+        let m = 101;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let mut data = FdMatrix::zeros(6, m);
+        for i in 0..6 {
+            let loc = 0.35 + 0.06 * i as f64;
+            for j in 0..m {
+                let u = (t[j] - loc) / 0.1;
+                data[(i, j)] = (-u * u).exp();
+            }
+        }
+        let km = karcher_mean(&data, &t, 20, 1e-4, 0.0);
+        for i in [0, 5] {
+            let back =
+                warp_amplitude_sample(&km.aligned_data.row(i), &t, &km.gammas.row(i)).unwrap();
+            let fwd = reparameterize_curve(&km.aligned_data.row(i), &t, &km.gammas.row(i));
+            let err = |x: &[f64]| {
+                (0..m)
+                    .map(|j| (x[j] - data[(i, j)]).abs())
+                    .fold(0.0, f64::max)
+            };
+            assert!(
+                err(&back) < 0.05,
+                "curve {i}: a∘γ⁻¹ misses f by {}",
+                err(&back)
+            );
+            assert!(err(&fwd) > 0.2, "curve {i}: test data not warped enough");
         }
     }
 }

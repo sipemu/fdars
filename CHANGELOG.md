@@ -72,6 +72,36 @@ Changed below).
   and diluted every interval containing them. `itp_two_pop` numeric results
   change accordingly (intentional; Fourier ITP is affected only by the
   permutation fix).
+- `alignment::joint_gauss_model` (GH #80) sampled the joint amplitude/phase
+  scores from a *diagonal* Gaussian, dropping the amplitude–phase
+  cross-covariance it is documented to preserve; it now samples
+  `N(mean, Σ)` with the full sample covariance of the joint score matrix (PSD
+  square root, robust to rank deficiency), equivalent in distribution to jfPCA
+  sampling. Both `joint_gauss_model` and `gauss_model` also composed the sampled
+  amplitude with the sampled alignment warp `γ` instead of `γ⁻¹`
+  (`aligned = f ∘ γ` ⇒ `f = aligned ∘ γ⁻¹`), mirroring the phase and reversing
+  any amplitude–phase correlation (fdasrsf 2.7.5 has the same flip: corr −0.99
+  on the issue's data, +0.99 with `γ⁻¹`). Samples now use `γ⁻¹`; the returned
+  `warps` are unchanged (alignment convention). Sampled curves change for both
+  functions (intentional).
+- `alignment::elastic_align_pair_multires` (GH #81): the gradient-refinement
+  stage took fixed-size finite-difference coordinate steps with no descent
+  check, so it *increased* the elastic distance of the coarse-DP warp (issue,
+  m = 400: 0.354 → 0.639 with defaults, ≈ 2.7 with 40 steps of 0.1), and it
+  ignored `lambda`. Refinement now minimises the penalised objective
+  `‖q₁ − SRSF(f₂∘γ)‖² + λ Σ (Δγ/Δt − 1)² Δt` with per-coordinate backtracking,
+  accepting only strict decreases, so it never worsens the coarse warp
+  (same example: 0.354 → 0.179). Results with `n_refine_steps > 0` change
+  (intentional).
+- `alignment::continuous_registration` (GH #83) reported `converged = true`
+  whenever the Levenberg–Marquardt step search stalled (including when
+  candidate steps were rejected by the coefficient limit), so `converged` did
+  not mean the tolerance was met (e.g. `tol = 0` reported convergence). A stall
+  now reports `converged = false` unless the criterion has been reduced to
+  `≤ tol ×` its starting value (zero-residual fits at round-off level). New
+  `ContinuousRegistrationResult::termination` gives the per-curve reason
+  (`ContinuousRegistrationTermination::{Converged, Stalled, CoefLimit,
+  MaxIter}`). Fitted warps, coefficients and criteria are unchanged.
 
 ## [0.48.0] - 2026-11-26
 
