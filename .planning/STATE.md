@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T02:23:18.513Z"
+last_updated: "2026-11-26T02:58:14.315Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: cf1ec2a5190d4b89cfb2e50aa8feee792d8168e9
+state_head: 065279f0d5ca7b2ae317a452fd380c8afeacfe94
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-4i2: ALN-CONFPART (GH #51) joint registration + split-conformal amplitude/phase prediction sets for partially observed curves (Wang–Kurtek–Zhang 2026; exact closed-form amplitude band, exact phase-set membership, MC coverage validated)
+Last activity: 2026-11-26 - Completed quick task 261126-4r5: ALN-BAYESGRP (GH #52, partial: pCN done, infHMC open) Bayesian group alignment with joint warp/template/noise draws via Z-mixture pCN, multi-chain (seed+k), centred posterior summaries, split-R̂; validated vs fdasrsf 2.7.5 time_warping_bayes
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -188,6 +188,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-3sq | ALN-BOX (GH #55): elastic amplitude/phase boxplots (fdasrsf golden) + classify for new functions (incl. MBD phase_boxplot), elastic DP-means (labels/K match fdasrsf) | 2026-11-26 | 84d513ce | [261126-3sq-aln-box-55-amplitude-boxplot-boxplot-cla](./quick/261126-3sq-aln-box-55-amplitude-boxplot-boxplot-cla/) |
 | 261126-43c | ALN-NDDOWN (#54): R^d curve TSRVF, depth, boxplot, outliers, shape CI | 2026-11-26 | 21070abb | [261126-43c-aln-nddown-54-r-d-curve-tsrvf-depth-boxp](./quick/261126-43c-aln-nddown-54-r-d-curve-tsrvf-depth-boxp/) |
 | 261126-4i2 | ALN-CONFPART (#51) joint registration + split-conformal amplitude/phase sets for partial curves | 2026-11-26 | cf1ec2a5 | [261126-4i2-aln-confpart-51-joint-registration-split](./quick/261126-4i2-aln-confpart-51-joint-registration-split/) |
+| 261126-4r5 | ALN-BAYESGRP Bayesian group alignment pCN multi-chain (#52) | 2026-11-26 | 065279f0 | [261126-4r5-aln-bayesgrp-bayesian-group-alignment-pc](./quick/261126-4r5-aln-bayesgrp-bayesian-group-alignment-pc/) |
 
 ## Deferred Items
 
