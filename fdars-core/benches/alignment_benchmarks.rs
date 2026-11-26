@@ -4,11 +4,14 @@
 //! - Pairwise elastic alignment with varying curve length m
 //! - Self-distance matrix with varying n and m
 //! - Karcher mean computation
+//! - DP engine options (`WarpOptimConfig` neighbourhood / `dp_scl` / edge cost /
+//!   pruning, ALN-DPACC #49)
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use fdars_core::alignment::{
-    elastic_align_pair, elastic_align_pair_banded, elastic_self_distance_matrix,
-    elastic_self_distance_matrix_banded, karcher_mean, karcher_mean_with_band,
+    elastic_align_pair, elastic_align_pair_banded, elastic_align_pair_with_config,
+    elastic_self_distance_matrix, elastic_self_distance_matrix_banded, karcher_mean,
+    karcher_mean_with_band, DpEdgeCost, WarpOptimConfig,
 };
 use fdars_core::matrix::FdMatrix;
 use std::f64::consts::PI;
@@ -190,11 +193,61 @@ fn bench_karcher_mean_with_band(c: &mut Criterion) {
     group.finish();
 }
 
+/// DP engine options on one pair (ALN-DPACC #49). `default` is the classic
+/// 35-move piecewise-constant engine; the others trade time for accuracy
+/// (`nbhd10_linear` = fdasrsf `DP2`) or, with pruning, save edge evaluations
+/// without changing the result.
+// Sealed config: external construction is `default()` + field assignment.
+#[allow(clippy::field_reassign_with_default)]
+fn bench_dp_options(c: &mut Criterion) {
+    let mut group = c.benchmark_group("dp_options");
+    let variants: [(&str, usize, usize, DpEdgeCost, bool); 7] = [
+        ("default", 7, 1, DpEdgeCost::PiecewiseConstant, false),
+        ("default_pruned", 7, 1, DpEdgeCost::PiecewiseConstant, true),
+        ("linear7", 7, 1, DpEdgeCost::PiecewiseLinear, false),
+        ("nbhd10_linear", 10, 1, DpEdgeCost::PiecewiseLinear, false),
+        (
+            "nbhd10_linear_pruned",
+            10,
+            1,
+            DpEdgeCost::PiecewiseLinear,
+            true,
+        ),
+        ("scl3", 7, 3, DpEdgeCost::PiecewiseConstant, false),
+        ("scl3_pruned", 7, 3, DpEdgeCost::PiecewiseConstant, true),
+    ];
+    for &m in &[100, 200] {
+        let (mat, argvals) = generate_curves(2, m);
+        let f1 = mat.row(0);
+        let f2 = mat.row(1);
+        for &(name, nbhd, scl, cost, prune) in &variants {
+            let mut cfg = WarpOptimConfig::default();
+            cfg.nbhd_dim = nbhd;
+            cfg.dp_scl = scl;
+            cfg.dp_cost = cost;
+            cfg.dp_prune = prune;
+            group.bench_with_input(BenchmarkId::new(name, m), &m, |b, _| {
+                b.iter(|| {
+                    elastic_align_pair_with_config(
+                        black_box(&f1),
+                        black_box(&f2),
+                        black_box(&argvals),
+                        &cfg,
+                    )
+                    .unwrap()
+                });
+            });
+        }
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_elastic_align_pair,
     bench_self_distance_matrix,
     bench_karcher_mean,
     bench_karcher_mean_with_band,
+    bench_dp_options,
 );
 criterion_main!(benches);

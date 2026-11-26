@@ -6,6 +6,7 @@
 
 use super::golden::*;
 use super::*;
+use crate::alignment::dp_alignment_core_banded;
 use crate::alignment::rbfgs::rbfgs_data_cost;
 use crate::alignment::{
     elastic_align_pair, elastic_align_pair_penalized, elastic_align_pair_with_config,

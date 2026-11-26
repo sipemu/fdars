@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Configurable elastic DP: neighbourhood, `dp_scl` refinement, DP2 cost, pruning (GH #49
+ALN-DPACC).** Additive and non-breaking; defaults are bit-identical (existing FNV hash tests
+unchanged); no new crate dependency.
+
+### Added
+
+- `WarpOptimConfig` (sealed; `default()` + field assignment) gains DP-only fields:
+  - `nbhd_dim` (default `7`, the classic 35-move set; `1..=64`) — coprime move set
+    `{(dr, dc) : 1 ≤ dr, dc ≤ nbhd_dim, gcd = 1}` (fdasrvf `nbhd_dim`, fdasrsf `grid_dim`;
+    `10` = fdasrsf `DP2`'s 63 moves). A larger set never increases the DP's own optimum.
+  - `dp_scl` (default `1`; `1..=64`) — fdasrsf ≥ 2.7.4 `DP` `scl`: SRSFs linearly
+    resampled `dp_scl`× finer to evaluate each edge cost; the warp path stays on the input
+    grid and `lambda` keeps its scale.
+  - `dp_cost: DpEdgeCost` — `PiecewiseConstant` (default, classic) or `PiecewiseLinear`
+    (fdasrsf ≥ 2.7.4 `DP2`: exact integral of the linearly interpolated SRSFs per edge).
+    With `nbhd_dim = 10` it reproduces fdasrsf 2.7.5 `optimum_reparam(method="DP2")` warps
+    to ≤ 2.3e-16 (golden tests, `l2gam` penalty included).
+  - `dp_prune` (default `false`) — fdasrsf ≥ 2.7.4 candidate pruning: skip predecessors
+    whose cost already reaches the target's best. Exact (bit-identical warps, proved by
+    tests) since edge costs are non-negative; ≈ 1.55–1.75× faster DP.
+- New public enum `DpEdgeCost` (re-exported from `alignment` and the crate root).
+- Bench group `dp_options` in `benches/alignment_benchmarks.rs` (default vs pruned / linear
+  / `nbhd_dim = 10` / `dp_scl = 3`).
+
 **R^d curve shape analysis (GH #48 ALN-CURVE).** Additive and non-breaking; no
 existing code path changed (the shared DP engine is reused, not modified); no new crate
 dependency.

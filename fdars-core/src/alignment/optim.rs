@@ -10,7 +10,10 @@
 //! (`Dp` + `L2Gam`) reproduces the classic functions bit-for-bit.
 
 use super::rbfgs::{rbfgs_warp, RbfgsParams};
-use super::{dp_alignment_core_banded, dp_alignment_core_with_penalty, dp_l2psi_penalty};
+use super::{
+    coprime_nbhd, dp_alignment_core_opts, dp_l2psi_penalty, dp_lambda_penalty, DpEngineOptions,
+    DpMoves,
+};
 use crate::error::FdarError;
 
 /// Which optimiser computes the optimal warp γ (fdasrvf `optim_method` /
@@ -18,8 +21,11 @@ use crate::error::FdarError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum WarpOptimMethod {
-    /// Exact dynamic programming over fdars's 35-move coprime neighbourhood
-    /// (the classic engine; default and exactness reference).
+    /// Exact dynamic programming over a coprime move neighbourhood (by default
+    /// the classic 35-move `nbhd_dim = 7` engine; default and exactness
+    /// reference). Tunable via [`WarpOptimConfig::nbhd_dim`],
+    /// [`dp_scl`](WarpOptimConfig::dp_scl), [`dp_cost`](WarpOptimConfig::dp_cost)
+    /// and [`dp_prune`](WarpOptimConfig::dp_prune).
     #[default]
     Dp,
     /// Riemannian limited-memory BFGS over `l = √γ̇` on the unit Hilbert
@@ -70,6 +76,27 @@ pub enum WarpObjectivePenalty {
     Geodesic,
 }
 
+/// Edge-cost model of the dynamic-programming optimiser
+/// ([`WarpOptimConfig::dp_cost`]).
+///
+/// Both integrate `(q1 − √γ'·q2∘γ)²` along each piecewise-linear DP edge by
+/// walking the merged breakpoints of the two SRSF grids; they differ in how
+/// the SRSFs are taken between their samples.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum DpEdgeCost {
+    /// SRSFs constant on each grid interval (left sample) — the classic fdars /
+    /// pre-2.5 fdasrvf `dp_edge_weight` (default).
+    #[default]
+    PiecewiseConstant,
+    /// SRSFs linear between samples, squared residual integrated exactly
+    /// (`dt·(f0² + f0·f1 + f1²)/3` per sub-interval) — fdasrsf ≥ 2.7.4 `DP2`
+    /// (`DynamicProgrammingQ2`). Exact on uniform grids; on a non-uniform grid
+    /// the sub-interval split uses the same index-space approximation as the
+    /// piecewise-constant model.
+    PiecewiseLinear,
+}
+
 /// Options for warp optimisation in elastic alignment.
 ///
 /// Sealed (`#[non_exhaustive]`): construct with [`WarpOptimConfig::default`]
@@ -89,6 +116,26 @@ pub enum WarpObjectivePenalty {
 /// cfg.lambda = 0.01;
 /// assert!(cfg.validate().is_ok());
 /// ```
+///
+/// A more accurate dynamic program — fdasrsf `DP2`'s 63-move `grid_dim = 10`
+/// neighbourhood with the exact piecewise-linear cost, plus exact pruning:
+///
+/// ```
+/// use fdars_core::alignment::{elastic_align_pair_with_config, DpEdgeCost, WarpOptimConfig};
+///
+/// let t: Vec<f64> = (0..61).map(|i| i as f64 / 60.0).collect();
+/// let f1: Vec<f64> = t.iter().map(|&s| (-(s - 0.4).powi(2) / 0.01).exp()).collect();
+/// let f2: Vec<f64> = t.iter().map(|&s| (-(s - 0.55).powi(2) / 0.01).exp()).collect();
+///
+/// let mut cfg = WarpOptimConfig::default();
+/// cfg.nbhd_dim = 10;
+/// cfg.dp_cost = DpEdgeCost::PiecewiseLinear;
+/// cfg.dp_prune = true;
+/// let fine = elastic_align_pair_with_config(&f1, &f2, &t, &cfg).unwrap();
+/// let classic = elastic_align_pair_with_config(&f1, &f2, &t, &WarpOptimConfig::default()).unwrap();
+/// assert!(fine.gamma.windows(2).all(|w| w[1] >= w[0]));
+/// assert!(fine.distance.is_finite() && classic.distance.is_finite());
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct WarpOptimConfig {
@@ -102,8 +149,34 @@ pub struct WarpOptimConfig {
     pub max_iter: usize,
     /// RBFGS fine-grid refinement factor: the SRSFs are linearly resampled
     /// `scl` times finer to evaluate the cost (default `3`, fdasrsf's value;
-    /// must be ≥ 1). Ignored by DP.
+    /// must be ≥ 1). Ignored by DP (see [`dp_scl`](Self::dp_scl)).
     pub scl: usize,
+    /// DP neighbourhood size (fdasrvf `nbhd_dim`, fdasrsf `grid_dim`): the DP
+    /// moves are all `(dr, dc)` with `1 ≤ dr, dc ≤ nbhd_dim`, `gcd(dr, dc) = 1`,
+    /// so warp slopes range over `{dr/dc}`. Default `7` (35 moves, the classic
+    /// engine); fdasrsf `DP2` uses `10` (63 moves). Cost grows with the number
+    /// of moves (`≈ 0.61·nbhd_dim²`) and the edge length; a larger
+    /// neighbourhood contains the smaller one's moves, so the DP optimum of
+    /// its own objective can only decrease. Must be in `1..=64`; `1` allows
+    /// only the identity warp. DP only.
+    pub nbhd_dim: usize,
+    /// DP cost refinement (fdasrsf ≥ 2.7.4 `DP` `scl`): the SRSFs are linearly
+    /// resampled `dp_scl` times finer to evaluate every edge cost, while the
+    /// warp path stays on the input grid. Default `1` (off, classic). Improves
+    /// the piecewise-constant cost towards the exact integral of the linearly
+    /// interpolated SRSFs at `O(dp_scl)` cost per edge; the cost keeps its
+    /// integral scale, so `lambda` means the same for every `dp_scl`. Has no
+    /// effect beyond rounding with [`DpEdgeCost::PiecewiseLinear`] (linear
+    /// resampling of a linear interpolant is exact). Must be in `1..=64`. DP only.
+    pub dp_scl: usize,
+    /// DP edge-cost model (default [`DpEdgeCost::PiecewiseConstant`]). DP only.
+    pub dp_cost: DpEdgeCost,
+    /// DP candidate pruning (fdasrsf ≥ 2.7.4): skip a predecessor whose
+    /// accumulated cost already reaches the target cell's best, without
+    /// evaluating its edge. Exact — bit-identical warps — because every edge
+    /// cost is non-negative under a validated config (`lambda ≥ 0`). Default
+    /// `false`. DP only.
+    pub dp_prune: bool,
 }
 
 impl Default for WarpOptimConfig {
@@ -114,6 +187,10 @@ impl Default for WarpOptimConfig {
             penalty: WarpObjectivePenalty::L2Gam,
             max_iter: 30,
             scl: 3,
+            nbhd_dim: 7,
+            dp_scl: 1,
+            dp_cost: DpEdgeCost::PiecewiseConstant,
+            dp_prune: false,
         }
     }
 }
@@ -123,7 +200,7 @@ impl WarpOptimConfig {
     ///
     /// # Errors
     /// [`FdarError::InvalidParameter`] if `lambda` is negative or non-finite,
-    /// `scl == 0`, or a `Roughness`/`Geodesic` penalty with `lambda > 0` is
+    /// `scl == 0`, `nbhd_dim` or `dp_scl` is outside `1..=64`, or a `Roughness`/`Geodesic` penalty with `lambda > 0` is
     /// requested from the DP optimiser (it cannot express them).
     pub fn validate(&self) -> Result<(), FdarError> {
         if !self.lambda.is_finite() || self.lambda < 0.0 {
@@ -137,6 +214,14 @@ impl WarpOptimConfig {
                 parameter: "scl",
                 message: "must be >= 1".to_string(),
             });
+        }
+        for (parameter, v) in [("nbhd_dim", self.nbhd_dim), ("dp_scl", self.dp_scl)] {
+            if !(1..=64).contains(&v) {
+                return Err(FdarError::InvalidParameter {
+                    parameter,
+                    message: format!("must be in 1..=64, got {v}"),
+                });
+            }
         }
         let dp_inexpressible = matches!(
             self.penalty,
@@ -167,8 +252,9 @@ impl WarpOptimConfig {
 /// Optimal warp aligning SRSF `q2` to `q1` under `cfg` (assumed validated).
 ///
 /// `band` is the Sakoe–Chiba radius for the DP optimiser (ignored by RBFGS).
-/// `Dp` + `L2Gam` calls [`dp_alignment_core_banded`] exactly as the classic
-/// functions do, so it is bit-identical to them.
+/// `Dp` + `L2Gam` with the default DP options runs exactly the arithmetic of
+/// [`dp_alignment_core_banded`](super::dp_alignment_core_banded) the classic
+/// functions use, so it is bit-identical to them.
 pub(super) fn optimal_warp(
     q1: &[f64],
     q2: &[f64],
@@ -177,18 +263,7 @@ pub(super) fn optimal_warp(
     band: Option<usize>,
 ) -> Vec<f64> {
     match cfg.method {
-        WarpOptimMethod::Dp => match cfg.penalty {
-            WarpObjectivePenalty::L2Psi if cfg.lambda > 0.0 => {
-                dp_alignment_core_with_penalty(q1, q2, argvals, band, |sc, tc, sr, tr| {
-                    dp_l2psi_penalty(argvals, sc, tc, sr, tr, cfg.lambda)
-                })
-            }
-            WarpObjectivePenalty::L2Gam => {
-                dp_alignment_core_banded(q1, q2, argvals, cfg.lambda, band)
-            }
-            // lambda == 0 (validated): no penalty.
-            _ => dp_alignment_core_banded(q1, q2, argvals, 0.0, band),
-        },
+        WarpOptimMethod::Dp => dp_warp(q1, q2, argvals, cfg, band),
         WarpOptimMethod::Rbfgs => rbfgs_warp(
             q1,
             q2,
@@ -200,6 +275,42 @@ pub(super) fn optimal_warp(
                 scl: cfg.scl,
             },
         ),
+    }
+}
+
+/// DP branch of [`optimal_warp`]: builds the engine options from `cfg`.
+fn dp_warp(
+    q1: &[f64],
+    q2: &[f64],
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+    band: Option<usize>,
+) -> Vec<f64> {
+    let nbhd = coprime_nbhd(cfg.nbhd_dim);
+    let opts = DpEngineOptions {
+        moves: DpMoves {
+            nbhd: &nbhd,
+            prune: cfg.dp_prune,
+        },
+        scl: cfg.dp_scl.max(1),
+        cost: cfg.dp_cost,
+    };
+    let lambda = cfg.lambda;
+    match cfg.penalty {
+        WarpObjectivePenalty::L2Psi if lambda > 0.0 => {
+            dp_alignment_core_opts(q1, q2, argvals, band, &opts, |sc, tc, sr, tr| {
+                dp_l2psi_penalty(argvals, sc, tc, sr, tr, lambda)
+            })
+        }
+        WarpObjectivePenalty::L2Gam => {
+            dp_alignment_core_opts(q1, q2, argvals, band, &opts, |sc, tc, sr, tr| {
+                dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
+            })
+        }
+        // lambda == 0 (validated): no penalty.
+        _ => dp_alignment_core_opts(q1, q2, argvals, band, &opts, |sc, tc, sr, tr| {
+            dp_lambda_penalty(argvals, sc, tc, sr, tr, 0.0)
+        }),
     }
 }
 
@@ -238,3 +349,11 @@ mod golden;
 #[cfg(test)]
 #[path = "optim_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "dp_options_golden.rs"]
+mod dp_golden;
+
+#[cfg(test)]
+#[path = "dp_options_tests.rs"]
+mod dp_tests;

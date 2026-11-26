@@ -106,7 +106,7 @@ pub use nd::{
     AlignmentResultNd,
 };
 pub use nd::{karcher_covariance_nd, karcher_mean_nd, pca_nd, KarcherMeanResultNd, PcaNdResult};
-pub use optim::{WarpObjectivePenalty, WarpOptimConfig, WarpOptimMethod};
+pub use optim::{DpEdgeCost, WarpObjectivePenalty, WarpOptimConfig, WarpOptimMethod};
 pub use outlier::{elastic_outlier_detection, ElasticOutlierConfig, ElasticOutlierResult};
 pub use pairwise::{
     amplitude_distance, amplitude_self_distance_matrix, elastic_align_pair,
@@ -345,9 +345,18 @@ pub(super) fn dp_edge_weight(
         return f64::INFINITY;
     }
     // General (possibly non-uniform grid) path: slope and span come from argvals.
+    let (rslope, span) = dp_edge_rslope_span(argvals, sc, tc, sr, tr);
+    dp_edge_weight_core(q1, q2, sc, tc, sr, tr, rslope, span)
+}
+
+/// `(√γ', span)` of the edge `(sr, sc) → (tr, tc)` on a general grid:
+/// `γ' = (argvals[tr] − argvals[sr]) / (argvals[tc] − argvals[sc])` and
+/// `span = argvals[tc] − argvals[sc]` (the q1-direction interval length).
+#[inline]
+fn dp_edge_rslope_span(argvals: &[f64], sc: usize, tc: usize, sr: usize, tr: usize) -> (f64, f64) {
     let rslope = ((argvals[tr] - argvals[sr]) / (argvals[tc] - argvals[sc])).sqrt();
     let span = argvals[tc] - argvals[sc];
-    dp_edge_weight_core(q1, q2, sc, tc, sr, tr, rslope, span)
+    (rslope, span)
 }
 
 /// Core edge-weight integer walk, shared by the general and uniform-grid paths.
@@ -410,6 +419,62 @@ pub(super) fn dp_edge_weight_core(
     weight_scaled / (n1 * n2) as f64 * span
 }
 
+/// Piecewise-**linear** edge weight (fdasrsf ≥ 2.7.4 `DP2` cost model).
+///
+/// Same merged-breakpoint integer walk as [`dp_edge_weight_core`], but both
+/// SRSFs are taken as linear between their grid samples instead of constant,
+/// so on every merged sub-interval the residual `q1 − √γ'·(q2∘γ)` is linear
+/// and its square integrates exactly to `dt·(f0² + f0·f1 + f1²)/3` (`f0`, `f1`
+/// the residual at the sub-interval ends). On a uniform grid this is the exact
+/// `∫ (q1 − √γ'·q2∘γ)²` of the linearly interpolated SRSFs along the edge —
+/// the quantity fdasrsf's `dp_edge_weight` (`DynamicProgrammingQ2`) computes.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn dp_edge_weight_linear_core(
+    q1: &[f64],
+    q2: &[f64],
+    sc: usize,
+    tc: usize,
+    sr: usize,
+    tr: usize,
+    rslope: f64,
+    span: f64,
+) -> f64 {
+    let n1 = tc - sc;
+    let n2 = tr - sr;
+    if n1 == 0 || n2 == 0 {
+        return f64::INFINITY;
+    }
+    let (inv1, inv2) = (1.0 / n2 as f64, 1.0 / n1 as f64);
+    let mut weight_scaled = 0.0;
+    let (mut i1, mut i2) = (0usize, 0usize);
+    while i1 < n1 && i2 < n2 {
+        let (base1, base2) = (i1 * n2, i2 * n1);
+        let left = base1.max(base2);
+        let right1 = base1 + n2;
+        let right2 = base2 + n1;
+        let right = right1.min(right2);
+        if right > left {
+            let (a1, b1) = (q1[sc + i1], q1[sc + i1 + 1]);
+            let (a2, b2) = (q2[sr + i2], q2[sr + i2 + 1]);
+            let w10 = (left - base1) as f64 * inv1;
+            let w11 = (right - base1) as f64 * inv1;
+            let w20 = (left - base2) as f64 * inv2;
+            let w21 = (right - base2) as f64 * inv2;
+            let f0 = a1 + w10 * (b1 - a1) - rslope * (a2 + w20 * (b2 - a2));
+            let f1 = a1 + w11 * (b1 - a1) - rslope * (a2 + w21 * (b2 - a2));
+            weight_scaled += (f0 * f0 + f0 * f1 + f1 * f1) / 3.0 * (right - left) as f64;
+        }
+        if right1 <= right2 {
+            i1 += 1;
+        }
+        if right2 <= right1 {
+            i2 += 1;
+        }
+    }
+    weight_scaled / (n1 * n2) as f64 * span
+}
+
 /// Return the uniform grid spacing `h` if `argvals` is (numerically) uniform.
 ///
 /// Used to enable the fast edge-weight path in [`dp_alignment_core`]: on a
@@ -469,20 +534,43 @@ fn dp_traceback(parent: &[u32], nrows: usize, ncols: usize) -> Vec<(usize, usize
     path
 }
 
-/// Try to relax cell `(tr, tc)` from each coprime neighbor, updating cost and parent.
+/// Move set and pruning switch of one DP grid fill.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct DpMoves<'a> {
+    /// `(dr, dc)` moves, relaxed in this order (ties keep the first).
+    pub nbhd: &'a [(usize, usize)],
+    /// Skip a source whose accumulated cost already reaches the target's
+    /// current best. Exact (bit-identical paths) whenever every edge cost is
+    /// `≥ 0`: then `e[src] + w ≥ e[src] ≥ e[target]` can never win the strict
+    /// `<` comparison, so only edge evaluations that could not change the
+    /// result are skipped.
+    pub prune: bool,
+}
+
+/// The classic engine: fdasrvf's 35-move `nbhd_dim = 7` set, no pruning.
+pub(super) const DP_MOVES_CLASSIC: DpMoves<'static> = DpMoves {
+    nbhd: &COPRIME_NBHD_7,
+    prune: false,
+};
+
+/// Try to relax cell `(tr, tc)` from each neighbourhood move, updating cost and parent.
 #[inline]
-fn dp_relax_cell<F>(
+///
+/// `PRUNE` is a const parameter so the classic (unpruned) fill carries no
+/// extra branch in its innermost loop.
+fn dp_relax_cell<const PRUNE: bool, F>(
     e: &mut [f64],
     parent: &mut [u32],
     ncols: usize,
     tr: usize,
     tc: usize,
+    nbhd: &[(usize, usize)],
     edge_cost: &F,
 ) where
     F: Fn(usize, usize, usize, usize) -> f64,
 {
     let idx = tr * ncols + tc;
-    for &(dr, dc) in &COPRIME_NBHD_7 {
+    for &(dr, dc) in nbhd {
         if dr > tr || dc > tc {
             continue;
         }
@@ -490,6 +578,9 @@ fn dp_relax_cell<F>(
         let sc = tc - dc;
         let src_idx = sr * ncols + sc;
         if e[src_idx] == f64::INFINITY {
+            continue;
+        }
+        if PRUNE && e[src_idx] >= e[idx] {
             continue;
         }
         let cost = e[src_idx] + edge_cost(sr, sc, tr, tc);
@@ -542,6 +633,20 @@ pub(super) fn dp_grid_solve_banded<F>(
 where
     F: Fn(usize, usize, usize, usize) -> f64,
 {
+    dp_grid_solve_moves(nrows, ncols, band, DP_MOVES_CLASSIC, edge_cost)
+}
+
+/// [`dp_grid_solve_banded`] with an explicit move set / pruning switch.
+pub(super) fn dp_grid_solve_moves<F>(
+    nrows: usize,
+    ncols: usize,
+    band: Option<usize>,
+    moves: DpMoves<'_>,
+    edge_cost: F,
+) -> Vec<(usize, usize)>
+where
+    F: Fn(usize, usize, usize, usize) -> f64,
+{
     // Precondition: the DP grid is at least 1×1. All callers pass nrows = ncols = m
     // with m >= 2 (dp_alignment_core_banded early-returns for m < 2). The banded arm
     // of dp_fill_grid computes `ncols - 1`, so ncols == 0 would underflow; this guards
@@ -560,7 +665,7 @@ where
         parent.resize(size, u32::MAX);
         e[0] = 0.0;
 
-        dp_fill_grid(e, parent, nrows, ncols, band, &edge_cost);
+        dp_fill_grid(e, parent, nrows, ncols, band, moves, &edge_cost);
 
         dp_traceback(parent, nrows, ncols)
     })
@@ -600,6 +705,26 @@ fn dp_fill_grid<F>(
     nrows: usize,
     ncols: usize,
     band: Option<usize>,
+    moves: DpMoves<'_>,
+    edge_cost: &F,
+) where
+    F: Fn(usize, usize, usize, usize) -> f64,
+{
+    if moves.prune {
+        dp_fill_grid_impl::<true, F>(e, parent, nrows, ncols, band, moves.nbhd, edge_cost);
+    } else {
+        dp_fill_grid_impl::<false, F>(e, parent, nrows, ncols, band, moves.nbhd, edge_cost);
+    }
+}
+
+/// Row-major grid fill of [`dp_fill_grid`], monomorphised on pruning.
+fn dp_fill_grid_impl<const PRUNE: bool, F>(
+    e: &mut [f64],
+    parent: &mut [u32],
+    nrows: usize,
+    ncols: usize,
+    band: Option<usize>,
+    nbhd: &[(usize, usize)],
     edge_cost: &F,
 ) where
     F: Fn(usize, usize, usize, usize) -> f64,
@@ -609,7 +734,7 @@ fn dp_fill_grid<F>(
             if tr == 0 && tc == 0 {
                 continue;
             }
-            dp_relax_cell(e, parent, ncols, tr, tc, edge_cost);
+            dp_relax_cell::<PRUNE, F>(e, parent, ncols, tr, tc, nbhd, edge_cost);
         }
     }
 }
@@ -707,52 +832,221 @@ pub(crate) fn dp_alignment_core_with_penalty<P>(
 where
     P: Fn(usize, usize, usize, usize) -> f64,
 {
-    let m = argvals.len();
-    if m < 2 {
+    dp_alignment_core_opts(q1, q2, argvals, band, &DpEngineOptions::CLASSIC, penalty)
+}
+
+/// Full option set of the 1-D elastic DP (see [`WarpOptimConfig`]'s
+/// `nbhd_dim` / `dp_scl` / `dp_cost` / `dp_prune`).
+#[derive(Debug, Clone, Copy)]
+pub(super) struct DpEngineOptions<'a> {
+    /// Move set and pruning.
+    pub moves: DpMoves<'a>,
+    /// Cost refinement factor (≥ 1): SRSFs linearly resampled `scl` times finer.
+    pub scl: usize,
+    /// Edge-cost model.
+    pub cost: DpEdgeCost,
+}
+
+impl DpEngineOptions<'static> {
+    /// The classic engine (35 moves, original grid, piecewise-constant cost).
+    pub(super) const CLASSIC: Self = Self {
+        moves: DP_MOVES_CLASSIC,
+        scl: 1,
+        cost: DpEdgeCost::PiecewiseConstant,
+    };
+}
+
+/// Linearly resample `q` at `scl` equally spaced points inside every grid
+/// interval (index-uniform), giving `(m − 1)·scl + 1` samples; every
+/// `scl`-th sample is an original one.
+fn refine_srsf_linear(q: &[f64], scl: usize) -> Vec<f64> {
+    let m = q.len();
+    let mut out = Vec::with_capacity((m - 1) * scl + 1);
+    for k in 0..m - 1 {
+        let (a, b) = (q[k], q[k + 1]);
+        for j in 0..scl {
+            out.push(a + (j as f64 / scl as f64) * (b - a));
+        }
+    }
+    out.push(q[m - 1]);
+    out
+}
+
+/// Data edge weight of the coarse edge `(sr, sc) → (tr, tc)` under `opts`,
+/// evaluated on the (possibly `scl`-refined) normalised SRSFs `q1e`, `q2e`
+/// (reference form of the monomorphised weights in [`dp_path_opts`]).
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+fn dp_edge_weight_opts(
+    q1e: &[f64],
+    q2e: &[f64],
+    opts: &DpEngineOptions<'_>,
+    sc: usize,
+    tc: usize,
+    sr: usize,
+    tr: usize,
+    rslope: f64,
+    span: f64,
+) -> f64 {
+    let s = opts.scl;
+    let (fsc, ftc, fsr, ftr) = (sc * s, tc * s, sr * s, tr * s);
+    match opts.cost {
+        DpEdgeCost::PiecewiseConstant => {
+            dp_edge_weight_core(q1e, q2e, fsc, ftc, fsr, ftr, rslope, span)
+        }
+        DpEdgeCost::PiecewiseLinear => {
+            dp_edge_weight_linear_core(q1e, q2e, fsc, ftc, fsr, ftr, rslope, span)
+        }
+    }
+}
+
+/// Core DP alignment with an arbitrary additive edge penalty and explicit
+/// engine options. [`DpEngineOptions::CLASSIC`] reproduces
+/// [`dp_alignment_core_with_penalty`] bit-for-bit (same arithmetic, same
+/// move order).
+pub(super) fn dp_alignment_core_opts<P>(
+    q1: &[f64],
+    q2: &[f64],
+    argvals: &[f64],
+    band: Option<usize>,
+    opts: &DpEngineOptions<'_>,
+    penalty: P,
+) -> Vec<f64>
+where
+    P: Fn(usize, usize, usize, usize) -> f64,
+{
+    if argvals.len() < 2 {
         return argvals.to_vec();
     }
+    let path = dp_path_opts(q1, q2, argvals, band, opts, penalty);
+    dp_path_to_gamma(&path, argvals)
+}
 
+/// L²-normalise both SRSFs (as fdasrvf's `optimum.reparam`) and, for
+/// `scl > 1`, resample them `scl` times finer.
+fn dp_prepare_srsfs(q1: &[f64], q2: &[f64], scl: usize) -> (Vec<f64>, Vec<f64>) {
     let norm1 = q1.iter().map(|&v| v * v).sum::<f64>().sqrt().max(1e-10);
     let norm2 = q2.iter().map(|&v| v * v).sum::<f64>().sqrt().max(1e-10);
     let q1n: Vec<f64> = q1.iter().map(|&v| v / norm1).collect();
     let q2n: Vec<f64> = q2.iter().map(|&v| v / norm2).collect();
+    if scl > 1 {
+        (refine_srsf_linear(&q1n, scl), refine_srsf_linear(&q2n, scl))
+    } else {
+        (q1n, q2n)
+    }
+}
 
-    let path = if let Some(h) = uniform_spacing(argvals) {
+/// Optimal DP path (local `(row, col)` indices) under `opts`; `argvals.len() ≥ 2`.
+fn dp_path_opts<P>(
+    q1: &[f64],
+    q2: &[f64],
+    argvals: &[f64],
+    band: Option<usize>,
+    opts: &DpEngineOptions<'_>,
+    penalty: P,
+) -> Vec<(usize, usize)>
+where
+    P: Fn(usize, usize, usize, usize) -> f64,
+{
+    let (q1n, q2n) = dp_prepare_srsfs(q1, q2, opts.scl);
+    let s = opts.scl;
+    // Dispatch once on the cost model / refinement so each edge-weight closure
+    // is monomorphic (the classic engine runs exactly its original code).
+    match (opts.cost, s) {
+        (DpEdgeCost::PiecewiseConstant, 1) => dp_path_weighted(
+            &q1n,
+            &q2n,
+            argvals,
+            band,
+            opts.moves,
+            dp_edge_weight_core,
+            penalty,
+        ),
+        (DpEdgeCost::PiecewiseLinear, 1) => dp_path_weighted(
+            &q1n,
+            &q2n,
+            argvals,
+            band,
+            opts.moves,
+            dp_edge_weight_linear_core,
+            penalty,
+        ),
+        (DpEdgeCost::PiecewiseConstant, _) => dp_path_weighted(
+            &q1n,
+            &q2n,
+            argvals,
+            band,
+            opts.moves,
+            |a: &[f64], b: &[f64], sc, tc, sr, tr, rs, span| {
+                dp_edge_weight_core(a, b, sc * s, tc * s, sr * s, tr * s, rs, span)
+            },
+            penalty,
+        ),
+        (DpEdgeCost::PiecewiseLinear, _) => dp_path_weighted(
+            &q1n,
+            &q2n,
+            argvals,
+            band,
+            opts.moves,
+            |a: &[f64], b: &[f64], sc, tc, sr, tr, rs, span| {
+                dp_edge_weight_linear_core(a, b, sc * s, tc * s, sr * s, tr * s, rs, span)
+            },
+            penalty,
+        ),
+    }
+}
+
+/// DP path for a given data edge weight `weight(q1, q2, sc, tc, sr, tr, √γ', span)`
+/// on the prepared SRSFs (see [`dp_path_opts`]).
+fn dp_path_weighted<W, P>(
+    q1n: &[f64],
+    q2n: &[f64],
+    argvals: &[f64],
+    band: Option<usize>,
+    moves: DpMoves<'_>,
+    weight: W,
+    penalty: P,
+) -> Vec<(usize, usize)>
+where
+    W: Fn(&[f64], &[f64], usize, usize, usize, usize, f64, f64) -> f64,
+    P: Fn(usize, usize, usize, usize) -> f64,
+{
+    let m = argvals.len();
+    if let Some(h) = uniform_spacing(argvals) {
         // Uniform-grid fast path: the DP slope is exactly dr/dc, so precompute
-        // the 35 possible √(dr/dc) values (indices 1..=7) once instead of a
-        // sqrt + division on every one of the m²·35 edge evaluations. The span
-        // is dc·h. Both are independent of absolute position.
-        let mut rslope_tab = [[0.0f64; 8]; 8];
-        for (dr, row) in rslope_tab.iter_mut().enumerate().skip(1) {
-            for (dc, cell) in row.iter_mut().enumerate().skip(1) {
+        // the √(dr/dc) values once instead of a sqrt + division on every one
+        // of the m²·|nbhd| edge evaluations. The span is dc·h. Both are
+        // independent of absolute position.
+        let w = moves
+            .nbhd
+            .iter()
+            .map(|&(dr, dc)| dr.max(dc))
+            .max()
+            .unwrap_or(1)
+            + 1;
+        // Fixed-size stack table (nbhd_dim ≤ 64 is validated); only the used
+        // `w × w` corner is filled.
+        let mut rslope_tab = [[0.0f64; 65]; 65];
+        for (dr, row) in rslope_tab.iter_mut().enumerate().take(w).skip(1) {
+            for (dc, cell) in row.iter_mut().enumerate().take(w).skip(1) {
                 *cell = (dr as f64 / dc as f64).sqrt();
             }
         }
-        dp_grid_solve_banded(m, m, band, |sr, sc, tr, tc| {
+        dp_grid_solve_moves(m, m, band, moves, |sr, sc, tr, tc| {
             let dr = tr - sr;
             let dc = tc - sc;
-            dp_edge_weight_core(
-                &q1n,
-                &q2n,
-                sc,
-                tc,
-                sr,
-                tr,
-                rslope_tab[dr][dc],
-                dc as f64 * h,
-            ) + penalty(sc, tc, sr, tr)
+            weight(q1n, q2n, sc, tc, sr, tr, rslope_tab[dr][dc], dc as f64 * h)
+                + penalty(sc, tc, sr, tr)
         })
     } else {
-        dp_grid_solve_banded(m, m, band, |sr, sc, tr, tc| {
-            dp_edge_weight(&q1n, &q2n, argvals, sc, tc, sr, tr) + penalty(sc, tc, sr, tr)
+        dp_grid_solve_moves(m, m, band, moves, |sr, sc, tr, tc| {
+            let (rslope, span) = dp_edge_rslope_span(argvals, sc, tc, sr, tr);
+            weight(q1n, q2n, sc, tc, sr, tr, rslope, span) + penalty(sc, tc, sr, tr)
         })
-    };
-
-    dp_path_to_gamma(&path, argvals)
+    }
 }
 
-/// Greatest common divisor (Euclidean algorithm). Used only in tests.
-#[cfg(test)]
+/// Greatest common divisor (Euclidean algorithm).
 pub(super) fn gcd(a: usize, b: usize) -> usize {
     if b == 0 {
         a
@@ -762,8 +1056,9 @@ pub(super) fn gcd(a: usize, b: usize) -> usize {
 }
 
 /// Generate coprime neighborhood: all (i,j) with 1 ≤ i,j ≤ nbhd_dim, gcd(i,j) = 1.
-/// With nbhd_dim=7 this produces 35 pairs, matching fdasrvf's default.
-#[cfg(test)]
+/// With nbhd_dim=7 this produces 35 pairs, matching fdasrvf's default; the
+/// order (`i` = row delta outer, `j` = column delta inner) is fdasrvf's
+/// `dp_generate_nbhd` order, which fixes DP tie-breaking.
 pub(super) fn generate_coprime_nbhd(nbhd_dim: usize) -> Vec<(usize, usize)> {
     let mut pairs = Vec::new();
     for i in 1..=nbhd_dim {
@@ -774,4 +1069,14 @@ pub(super) fn generate_coprime_nbhd(nbhd_dim: usize) -> Vec<(usize, usize)> {
         }
     }
     pairs
+}
+
+/// Coprime move set for `nbhd_dim`: the `COPRIME_NBHD_7` constant for the
+/// default 7, otherwise generated (fdasrvf/fdasrsf `dp_generate_nbhd`).
+pub(super) fn coprime_nbhd(nbhd_dim: usize) -> std::borrow::Cow<'static, [(usize, usize)]> {
+    if nbhd_dim == 7 {
+        std::borrow::Cow::Borrowed(&COPRIME_NBHD_7)
+    } else {
+        std::borrow::Cow::Owned(generate_coprime_nbhd(nbhd_dim))
+    }
 }
