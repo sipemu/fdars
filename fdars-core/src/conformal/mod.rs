@@ -14,6 +14,9 @@
 //!
 //! **Partially observed curves** (joint registration + amplitude / phase sets):
 //! - [`partial_conformal_fit`] / [`partial_conformal_predict`] — Wang, Kurtek & Zhang (2026)
+//!   (pointwise or simultaneous bands, held-out bandwidth tuning via
+//!   [`partial_conformal_select_bandwidth`], fragmented / sparse observation via
+//!   [`partial_conformal_predict_observed`])
 //!
 //! **Classification** (prediction sets):
 //! - [`conformal_classif`] — LDA / QDA / kNN classifiers
@@ -429,7 +432,8 @@ pub use elastic::{
 pub use generic::{conformal_generic_classification, conformal_generic_regression};
 pub use partial::{
     partial_conformal_fit, partial_conformal_fit_with_template, partial_conformal_predict,
-    PartialConformalConfig, PartialConformalModel, PartialConformalPrediction,
-    PartialPredictorDistance,
+    partial_conformal_predict_observed, partial_conformal_select_bandwidth, PartialAmplitudeBand,
+    PartialBandScale, PartialBandwidthSelection, PartialConformalConfig, PartialConformalModel,
+    PartialConformalPrediction, PartialObservation, PartialPredictorDistance,
 };
 pub use regression::{conformal_fregre_lm, conformal_fregre_np};

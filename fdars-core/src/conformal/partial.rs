@@ -46,10 +46,47 @@
 //!   carries the accepted members of a deterministic trial family (geodesics on the
 //!   Hilbert sphere from the predicted centre toward each calibration warp), their
 //!   pointwise envelope and the largest accepted distance from the centre.
-//! * Bandwidth: fixed (user supplied) or the median of all pairwise predictor distances
-//!   among the `n_2 + 1` points (a symmetric function, so validity is kept). The paper's
-//!   efficiency-oriented bandwidth tuning (Liang, Zhu & Foygel Barber 2024) and its
-//!   fragmented / sparse observation regimes are **not** implemented.
+//! * Bandwidth: fixed (user supplied), the median of all pairwise predictor distances
+//!   among the `n_2 + 1` points (a symmetric function, so validity is kept; the
+//!   default), or **data-driven tuning** (see below).
+//!
+//! # Options beyond the pointwise prefix setting (GH #72)
+//!
+//! * **Simultaneous bands** ([`PartialAmplitudeBand::Simultaneous`]): max-type scores
+//!   `S_i = sup_t |Y_i(t) − Ŷ_i(t)| / σ(t)` with a modulation `σ` fixed independently of
+//!   the calibration / test curves ([`PartialBandScale`]). With the leave-self-out NW fit
+//!   on the augmented set, `Y_i − Ŷ_i = a_i − b_i y` for the trial curve `y`, and every
+//!   `y` in the full-conformal set satisfies `sup |y − ĉ|/σ ≤ R`, where `R` is the `k`-th
+//!   smallest of `A_i / (1 − b_i)`, `A_i = sup_t |a_i(t) − b_i ĉ(t)| / σ(t)` (triangle
+//!   inequality on `S_i ≤ A_i + b_i S_{n+1}`). The reported band `ĉ ± R σ` contains the
+//!   conformal set, hence `P(Y_{n+1}(t) ∈ band ∀t) ≥ 1 − α` in finite samples. With
+//!   `b_i = 0` it is exactly the split-conformal sup-norm band.
+//! * **Bandwidth tuning** ([`PartialConformalConfig::tuning_fraction`],
+//!   [`partial_conformal_select_bandwidth`]). The paper adapts Liang, Zhu & Foygel Barber
+//!   (2024) and picks `h` minimising the average interval length on the *same augmented
+//!   data*. Their ModSel-CP guarantee needs the selection to be re-run for every trial
+//!   response (a symmetric function of the augmented set), which has no closed form for
+//!   our affine full-conformal scores. fdars therefore uses the validity-preserving
+//!   **held-out** form: a seeded part `T` of the calibration curves is reserved, and
+//!   `h* = argmin_h` of the mean band width over the leave-one-out rotations *within `T`*
+//!   (each tuning curve in turn predicted from the other tuning curves, under the new
+//!   curve's observation pattern). `h*` is a function of `T` (and of the observation
+//!   pattern, assumed independent of the curves) only, so the remaining calibration
+//!   curves and the new curve stay exchangeable given `h*` and the finite-sample coverage
+//!   of every set is exact. The price is the `|T|` curves not used for calibration.
+//!   Candidates are user-supplied or lower quantiles of the pairwise predictor distances
+//!   within `T`; the same `h*` is used for the phase set.
+//! * **Fragmented / sparse observation** ([`PartialObservation`],
+//!   [`partial_conformal_predict_observed`]; the paper's fragmented and sparse
+//!   settings). Fragments `J = ∪_j [U_{j1}, U_{j2}]` (grid index ranges) use
+//!   `d_prod(X, X′) = Σ_j λ_j d(f|J_j, f′|J_j)` with `λ_j ∝ |J_j|` (`Σ λ_j = 1`) and the
+//!   configured per-fragment distance; sparse observation at arbitrary times
+//!   `t_1 < … < t_N` uses the Euclidean distance of the values in `ℝ^N` (calibration
+//!   curves linearly interpolated at those times). Responses are unchanged (registration
+//!   of the complete calibration curves to the template), so all guarantees carry over
+//!   provided the observation pattern is independent of the curves. Each fragment (or the
+//!   sparse point set) is located in the template by [`elastic_partial_match`], for
+//!   information only.
 //! * The partial registration of the new prefix onto the template (an estimate of the
 //!   observed part of `γ_{n+1}*`) is reported via
 //!   [`elastic_partial_match`]; it is
@@ -84,6 +121,67 @@ pub enum PartialPredictorDistance {
     /// Elastic (amplitude) distance between the prefixes, after DP alignment on the
     /// observed window. Costs `O(n_2²)` pairwise alignments per prediction.
     Elastic,
+}
+
+/// Type of the amplitude prediction band.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum PartialAmplitudeBand {
+    /// Pointwise intervals: `P(Y(t) ∈ I_t) ≥ 1 − α` for every `t` separately (the
+    /// paper's SFCP; exact closed-form full-conformal intervals).
+    #[default]
+    Pointwise,
+    /// Simultaneous band from the max-type score `sup_t |Y − Ŷ| / σ(t)`:
+    /// `P(Y(t) ∈ band for all t) ≥ 1 − α` (see the module docs).
+    Simultaneous,
+}
+
+/// Modulation `σ(t)` of the simultaneous band `ĉ(t) ± R·σ(t)`.
+///
+/// It must not depend on the calibration or new curves (validity); every option
+/// below satisfies this.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[non_exhaustive]
+pub enum PartialBandScale {
+    /// `σ ≡ 1` (constant-width band).
+    #[default]
+    Constant,
+    /// Pointwise standard deviation of the aligned *training* curves (independent of
+    /// the calibration split), floored at `0.05 · max_t sd(t)`. Only available for
+    /// models from [`partial_conformal_fit`].
+    TrainingSd,
+    /// User-supplied positive modulation on `argvals` (length m).
+    Custom(Vec<f64>),
+}
+
+/// How a new curve is observed (for [`partial_conformal_predict_observed`]).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum PartialObservation {
+    /// The grid prefix `argvals[0..n]` (the setting of [`partial_conformal_predict`]).
+    Prefix(usize),
+    /// Disjoint fragments given as inclusive grid index ranges `(start, end)`,
+    /// strictly increasing, each with at least 2 points (3 for the elastic distance).
+    /// Values are passed concatenated in fragment order.
+    Fragments(Vec<(usize, usize)>),
+    /// Sparse observation at arbitrary strictly increasing times inside the domain
+    /// (at least 2). Calibration curves are linearly interpolated at these times.
+    Sparse(Vec<f64>),
+}
+
+/// Outcome of held-out bandwidth tuning ([`partial_conformal_select_bandwidth`]).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct PartialBandwidthSelection {
+    /// Selected bandwidth `h*`.
+    pub bandwidth: f64,
+    /// Candidate bandwidths that were compared.
+    pub candidates: Vec<f64>,
+    /// Mean amplitude band width over the leave-one-out tuning rotations, per
+    /// candidate (`∞` if a band is unbounded).
+    pub mean_width: Vec<f64>,
+    /// Number of tuning curves.
+    pub n_tuning: usize,
 }
 
 /// Configuration for [`partial_conformal_fit`] / [`partial_conformal_predict`].
@@ -125,6 +223,19 @@ pub struct PartialConformalConfig {
     pub karcher_tol: f64,
     /// Number of radii per geodesic direction in the phase trial family (default 25).
     pub n_phase_radii: usize,
+    /// Amplitude band type (default [`PartialAmplitudeBand::Pointwise`]).
+    pub band: PartialAmplitudeBand,
+    /// Modulation of the simultaneous band (default [`PartialBandScale::Constant`]);
+    /// ignored for pointwise bands.
+    pub band_scale: PartialBandScale,
+    /// Held-out bandwidth tuning (default `None` = off). `Some(f)` makes the fit
+    /// functions reserve a seeded fraction `f ∈ (0, 1)` of the calibration curves as
+    /// a tuning set, on which [`partial_conformal_predict`] selects `h` (unless
+    /// `bandwidth` is set, which takes precedence). See the module docs.
+    pub tuning_fraction: Option<f64>,
+    /// Candidate bandwidths for tuning (default empty = the 5, 10, 20, 30, 50, 70 and
+    /// 100 % quantiles of the pairwise predictor distances among the tuning curves).
+    pub bandwidth_candidates: Vec<f64>,
 }
 
 impl Default for PartialConformalConfig {
@@ -139,6 +250,10 @@ impl Default for PartialConformalConfig {
             karcher_max_iter: 20,
             karcher_tol: 1e-3,
             n_phase_radii: 25,
+            band: PartialAmplitudeBand::Pointwise,
+            band_scale: PartialBandScale::Constant,
+            tuning_fraction: None,
+            bandwidth_candidates: Vec::new(),
         }
     }
 }
@@ -162,6 +277,16 @@ pub struct PartialConformalModel {
     pub calibration_gammas: FdMatrix,
     /// Aligned calibration curves `f_i ∘ γ_i*` (n_2 × m).
     pub calibration_aligned: FdMatrix,
+    /// Row indices (into the input data) of the held-out bandwidth-tuning curves
+    /// (empty unless `tuning_fraction` was set).
+    pub tuning_indices: Vec<usize>,
+    /// Raw tuning curves (`n_T × m`, `0 × m` without tuning).
+    pub tuning_data: FdMatrix,
+    /// Tuning curves aligned to the template (`n_T × m`).
+    pub tuning_aligned: FdMatrix,
+    /// Pointwise standard deviation of the aligned training curves (`Some` only for
+    /// [`partial_conformal_fit`]); used by [`PartialBandScale::TrainingSd`].
+    pub training_sd: Option<Vec<f64>>,
 }
 
 /// Prediction sets for one partially observed curve.
@@ -183,11 +308,21 @@ pub struct PartialConformalPrediction {
     /// Full registration to the template; `Some` only when the curve is fully observed
     /// (`n_observed == m`) — then its `gamma` / `f_aligned` are the conformal targets.
     pub full_registration: Option<AlignmentResult>,
+    /// Registration of every fragment within the template (one per fragment for
+    /// [`PartialObservation::Fragments`], empty otherwise); `registration` is the one
+    /// of the longest fragment.
+    pub fragment_registrations: Vec<PartialMatchResult>,
+    /// Band type of `amplitude_lower` / `amplitude_upper`.
+    pub band: PartialAmplitudeBand,
+    /// Simultaneous band radius `R` (band = centre ± `R·σ`); `None` for pointwise bands.
+    pub amplitude_radius: Option<f64>,
+    /// Bandwidth tuning outcome when `h` was selected on the model's tuning set.
+    pub bandwidth_selection: Option<PartialBandwidthSelection>,
     /// Point prediction of the aligned curve `f ∘ γ*` (length m).
     pub amplitude_center: Vec<f64>,
-    /// Lower end of the pointwise amplitude prediction band (length m).
+    /// Lower end of the amplitude prediction band (length m).
     pub amplitude_lower: Vec<f64>,
-    /// Upper end of the pointwise amplitude prediction band (length m).
+    /// Upper end of the amplitude prediction band (length m).
     pub amplitude_upper: Vec<f64>,
     /// Point prediction of the warp `γ*` (length m, on the `argvals` domain).
     pub phase_center: Vec<f64>,
@@ -316,10 +451,51 @@ pub fn partial_conformal_fit(
         config.lambda,
     );
     let cal = select_rows(data, &cal_idx);
+    let training_sd = pointwise_sd(&km.aligned_data);
     let mut model = register_calibration(cal, argvals, km.mean, config.lambda);
     model.training_indices = train_idx;
     model.calibration_indices = cal_idx;
+    model.training_sd = Some(training_sd);
+    if let Some(f) = config.tuning_fraction {
+        split_tuning(&mut model, f, config.seed)?;
+    }
     Ok(model)
+}
+
+/// Pointwise sample standard deviation of the rows (0 for a single row).
+fn pointwise_sd(x: &FdMatrix) -> Vec<f64> {
+    let (n, m) = x.shape();
+    (0..m)
+        .map(|j| {
+            if n < 2 {
+                return 0.0;
+            }
+            let col = x.column(j);
+            let mean = col.iter().sum::<f64>() / n as f64;
+            (col.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1) as f64).sqrt()
+        })
+        .collect()
+}
+
+/// Move a seeded fraction `f` of the calibration curves into the tuning set.
+fn split_tuning(model: &mut PartialConformalModel, f: f64, seed: u64) -> Result<(), FdarError> {
+    let n = model.calibration_data.nrows();
+    if n < 4 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "calibration",
+            expected: "at least 4 calibration curves for tuning_fraction".to_string(),
+            actual: format!("{n}"),
+        });
+    }
+    let (tune, conf) = conformal_split(n, 1.0 - f, seed.wrapping_add(1));
+    model.tuning_indices = tune.iter().map(|&i| model.calibration_indices[i]).collect();
+    model.tuning_data = select_rows(&model.calibration_data, &tune);
+    model.tuning_aligned = select_rows(&model.calibration_aligned, &tune);
+    model.calibration_indices = conf.iter().map(|&i| model.calibration_indices[i]).collect();
+    model.calibration_data = select_rows(&model.calibration_data, &conf);
+    model.calibration_gammas = select_rows(&model.calibration_gammas, &conf);
+    model.calibration_aligned = select_rows(&model.calibration_aligned, &conf);
+    Ok(())
 }
 
 /// Fit the model with a user-supplied template that is independent of the
@@ -382,6 +558,9 @@ pub fn partial_conformal_fit_with_template(
         config.lambda,
     );
     model.calibration_indices = (0..n).collect();
+    if let Some(f) = config.tuning_fraction {
+        split_tuning(&mut model, f, config.seed)?;
+    }
     Ok(model)
 }
 
@@ -414,6 +593,10 @@ fn register_calibration(
         calibration_data: cal,
         calibration_gammas: gammas,
         calibration_aligned: f_al,
+        tuning_indices: Vec::new(),
+        tuning_data: FdMatrix::zeros(0, m),
+        tuning_aligned: FdMatrix::zeros(0, m),
+        training_sd: None,
     }
 }
 
@@ -440,33 +623,151 @@ pub fn partial_conformal_predict(
     observed: &[f64],
     config: &PartialConformalConfig,
 ) -> Result<PartialConformalPrediction, FdarError> {
+    predict_impl(
+        model,
+        &PartialObservation::Prefix(observed.len()),
+        observed,
+        config,
+    )
+}
+
+/// Split-conformal amplitude band and phase set for a curve observed on fragments or
+/// at sparse points (paper's fragmented / sparse settings).
+///
+/// `values` are the observed values in the order of `observation` (fragments
+/// concatenated). [`PartialObservation::Prefix`] reproduces
+/// [`partial_conformal_predict`] exactly. The observation pattern must be independent
+/// of the curves for the coverage guarantee.
+///
+/// # Errors
+/// As [`partial_conformal_predict`]; additionally [`FdarError::InvalidDimension`] /
+/// [`FdarError::InvalidParameter`] for empty, overlapping, out-of-range or too short
+/// fragments, non-increasing or out-of-domain sparse times, or a `values` length that
+/// does not match the pattern.
+///
+/// # Example
+/// ```
+/// use fdars_core::conformal::{
+///     partial_conformal_fit, partial_conformal_predict_observed, PartialConformalConfig,
+///     PartialObservation,
+/// };
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let m = 21;
+/// let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+/// let n = 24;
+/// let mut data = FdMatrix::zeros(n, m);
+/// for i in 0..n {
+///     let a = 0.8 + 0.4 * (i as f64 / n as f64);
+///     for j in 0..m {
+///         data[(i, j)] = a * (-(t[j] - 0.5).powi(2) / 0.02).exp();
+///     }
+/// }
+/// let mut cfg = PartialConformalConfig::default();
+/// cfg.alpha = 0.25;
+/// let model = partial_conformal_fit(&data, &t, &cfg).unwrap();
+/// let curve = data.row(0);
+/// // Two fragments: grid points 2..=6 and 12..=16.
+/// let obs = PartialObservation::Fragments(vec![(2, 6), (12, 16)]);
+/// let values: Vec<f64> = curve[2..=6].iter().chain(&curve[12..=16]).copied().collect();
+/// let pred = partial_conformal_predict_observed(&model, &obs, &values, &cfg).unwrap();
+/// assert_eq!(pred.fragment_registrations.len(), 2);
+/// // Sparse observation at three arbitrary times.
+/// let sparse = PartialObservation::Sparse(vec![0.13, 0.42, 0.77]);
+/// let pred = partial_conformal_predict_observed(&model, &sparse, &[0.1, 0.6, 0.3], &cfg).unwrap();
+/// assert_eq!(pred.n_observed, 3);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn partial_conformal_predict_observed(
+    model: &PartialConformalModel,
+    observation: &PartialObservation,
+    values: &[f64],
+    config: &PartialConformalConfig,
+) -> Result<PartialConformalPrediction, FdarError> {
+    predict_impl(model, observation, values, config)
+}
+
+/// Held-out bandwidth selection on the calibration curves of `tuning_model`.
+///
+/// Each of the `n_T` calibration curves of `tuning_model` is in turn treated as the new
+/// curve (observed under `observation`) and predicted from the other `n_T − 1`; the
+/// selected bandwidth minimises the mean amplitude band width (of type `config.band`)
+/// over these rotations. Ties go to the first candidate. Because the result depends
+/// only on the tuning curves, using it as `config.bandwidth` for a model fitted on
+/// *other* curves keeps exact finite-sample coverage; this is what
+/// [`PartialConformalConfig::tuning_fraction`] does automatically.
+///
+/// # Errors
+/// [`FdarError::InvalidParameter`] for an invalid configuration, observation or
+/// candidate list, or if `α` needs more than `n_T − 1` tuning curves;
+/// [`FdarError::ComputationFailed`] if every candidate gives an unbounded band.
+///
+/// # Example
+/// ```
+/// use fdars_core::conformal::{
+///     partial_conformal_fit_with_template, partial_conformal_select_bandwidth,
+///     PartialConformalConfig, PartialObservation,
+/// };
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let m = 21;
+/// let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+/// let template: Vec<f64> = t.iter().map(|&x| (-(x - 0.5).powi(2) / 0.02).exp()).collect();
+/// let mut tune = FdMatrix::zeros(12, m);
+/// for i in 0..12 {
+///     for j in 0..m {
+///         tune[(i, j)] = (0.7 + 0.05 * i as f64) * template[j];
+///     }
+/// }
+/// let mut cfg = PartialConformalConfig::default();
+/// cfg.alpha = 0.25;
+/// let tm = partial_conformal_fit_with_template(&tune, &t, &template, &cfg).unwrap();
+/// let sel = partial_conformal_select_bandwidth(&tm, &PartialObservation::Prefix(8), &cfg)
+///     .unwrap();
+/// assert!(sel.candidates.contains(&sel.bandwidth));
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn partial_conformal_select_bandwidth(
+    tuning_model: &PartialConformalModel,
+    observation: &PartialObservation,
+    config: &PartialConformalConfig,
+) -> Result<PartialBandwidthSelection, FdarError> {
+    validate_config(config)?;
+    validate_pattern(observation, None, &tuning_model.argvals, config.distance)?;
+    let sigma = band_sigma(tuning_model, config)?;
+    select_bandwidth_on(
+        &tuning_model.calibration_data,
+        &tuning_model.calibration_aligned,
+        &tuning_model.argvals,
+        observation,
+        config,
+        &sigma,
+    )
+}
+
+fn predict_impl(
+    model: &PartialConformalModel,
+    obs: &PartialObservation,
+    values: &[f64],
+    config: &PartialConformalConfig,
+) -> Result<PartialConformalPrediction, FdarError> {
     validate_config(config)?;
     let m = model.argvals.len();
     let n2 = model.calibration_data.nrows();
-    let m_obs = observed.len();
-    if !(2..=m).contains(&m_obs) {
-        return Err(FdarError::InvalidDimension {
-            parameter: "observed",
-            expected: format!("between 2 and {m} values"),
-            actual: format!("{m_obs}"),
-        });
-    }
-    if observed.iter().any(|v| !v.is_finite()) {
-        return Err(FdarError::InvalidParameter {
-            parameter: "observed",
-            message: "values must be finite".to_string(),
-        });
-    }
+    validate_pattern(obs, Some(values), &model.argvals, config.distance)?;
     let k = rank_threshold(n2, config.alpha)?;
+    let sigma = band_sigma(model, config)?;
 
-    let dist = predictor_distances(model, observed, config);
-    let h = resolve_bandwidth(&dist, n2 + 1, config.bandwidth)?;
+    let preds = augmented_predictors(&model.calibration_data, &model.argvals, obs, Some(values));
+    let dist = pattern_distances(obs, &model.argvals, &preds, config);
+    let (h, bandwidth_selection) = choose_bandwidth(model, obs, config, &dist, &sigma)?;
     let nw = NwWeights::new(&dist, n2, h);
 
-    let (amp_c, amp_lo, amp_hi) = amplitude_band(&model.calibration_aligned, &nw, k);
+    let amp = amplitude_sets(&model.calibration_aligned, &nw, k, config.band, &sigma);
     let state = phase_state(model, &nw, k);
     let (accepted, radius) = phase_trials(&state, config.n_phase_radii);
-    let (registration, full_registration) = register_prefix(model, observed, config.lambda)?;
+    let (registration, full_registration, fragment_registrations) =
+        register_observation(model, obs, values, config.lambda)?;
 
     let to_dom = |v: f64| state.t0 + state.span * v;
     let (ph_lo, ph_hi) = envelope(&accepted, m);
@@ -477,16 +778,20 @@ pub fn partial_conformal_predict(
         }
     }
     Ok(PartialConformalPrediction {
-        n_observed: m_obs,
-        observed_end: model.argvals[m_obs - 1],
+        n_observed: values.len(),
+        observed_end: observation_end(obs, &model.argvals),
         alpha: config.alpha,
         bandwidth: h,
         weights: nw.test.clone(),
         registration,
         full_registration,
-        amplitude_center: amp_c,
-        amplitude_lower: amp_lo,
-        amplitude_upper: amp_hi,
+        fragment_registrations,
+        band: config.band,
+        amplitude_radius: amp.radius,
+        bandwidth_selection,
+        amplitude_center: amp.center,
+        amplitude_lower: amp.lower,
+        amplitude_upper: amp.upper,
         phase_center: state.center.iter().map(|&v| to_dom(v)).collect(),
         phase_lower: ph_lo.into_iter().map(to_dom).collect(),
         phase_upper: ph_hi.into_iter().map(to_dom).collect(),
@@ -494,6 +799,40 @@ pub fn partial_conformal_predict(
         phase_accepted: acc,
         state,
     })
+}
+
+fn observation_end(obs: &PartialObservation, argvals: &[f64]) -> f64 {
+    match obs {
+        PartialObservation::Prefix(n) => argvals[n - 1],
+        PartialObservation::Fragments(f) => argvals[f[f.len() - 1].1],
+        PartialObservation::Sparse(times) => times[times.len() - 1],
+    }
+}
+
+/// Fixed bandwidth, held-out tuning on the model's tuning set, or the median rule.
+fn choose_bandwidth(
+    model: &PartialConformalModel,
+    obs: &PartialObservation,
+    config: &PartialConformalConfig,
+    dist: &[f64],
+    sigma: &[f64],
+) -> Result<(f64, Option<PartialBandwidthSelection>), FdarError> {
+    if let Some(h) = config.bandwidth {
+        return Ok((h, None));
+    }
+    if model.tuning_data.nrows() > 0 {
+        let sel = select_bandwidth_on(
+            &model.tuning_data,
+            &model.tuning_aligned,
+            &model.argvals,
+            obs,
+            config,
+            sigma,
+        )?;
+        return Ok((sel.bandwidth, Some(sel)));
+    }
+    let n2 = model.calibration_data.nrows();
+    Ok((resolve_bandwidth(dist, n2 + 1, None)?, None))
 }
 
 // ─── Validation helpers ─────────────────────────────────────────────────────
@@ -519,7 +858,164 @@ fn validate_config(config: &PartialConformalConfig) -> Result<(), FdarError> {
             message: format!("must be finite and >= 0, got {}", config.lambda),
         });
     }
+    validate_tuning(config)
+}
+
+fn validate_tuning(config: &PartialConformalConfig) -> Result<(), FdarError> {
+    if let Some(f) = config.tuning_fraction {
+        if !(f > 0.0 && f < 1.0) {
+            return Err(FdarError::InvalidParameter {
+                parameter: "tuning_fraction",
+                message: format!("must be in (0, 1), got {f}"),
+            });
+        }
+    }
+    if config
+        .bandwidth_candidates
+        .iter()
+        .any(|h| !(h.is_finite() && *h > 0.0))
+    {
+        return Err(FdarError::InvalidParameter {
+            parameter: "bandwidth_candidates",
+            message: "must all be finite and > 0".to_string(),
+        });
+    }
     Ok(())
+}
+
+fn bad_obs(message: String) -> FdarError {
+    FdarError::InvalidParameter {
+        parameter: "observation",
+        message,
+    }
+}
+
+/// Number of observed values implied by a pattern (after validating its structure).
+fn pattern_len(
+    obs: &PartialObservation,
+    argvals: &[f64],
+    distance: PartialPredictorDistance,
+) -> Result<usize, FdarError> {
+    match obs {
+        PartialObservation::Prefix(n) => Ok(*n),
+        PartialObservation::Fragments(frags) => fragments_len(frags, argvals.len(), distance),
+        PartialObservation::Sparse(times) => sparse_len(times, argvals),
+    }
+}
+
+fn fragments_len(
+    frags: &[(usize, usize)],
+    m: usize,
+    distance: PartialPredictorDistance,
+) -> Result<usize, FdarError> {
+    let min_pts = if distance == PartialPredictorDistance::Elastic {
+        3
+    } else {
+        2
+    };
+    if frags.is_empty() {
+        return Err(bad_obs("at least one fragment is required".to_string()));
+    }
+    let mut prev_end: Option<usize> = None;
+    let mut total = 0;
+    for &(a, b) in frags {
+        let ok_order = prev_end.map_or(true, |e| a > e);
+        if b >= m || b + 1 < a + min_pts || !ok_order {
+            return Err(bad_obs(format!(
+                "fragment ({a}, {b}) must lie in 0..{m}, have >= {min_pts} points and \
+                 start after the previous fragment"
+            )));
+        }
+        prev_end = Some(b);
+        total += b - a + 1;
+    }
+    Ok(total)
+}
+
+fn sparse_len(times: &[f64], argvals: &[f64]) -> Result<usize, FdarError> {
+    let (lo, hi) = (argvals[0], argvals[argvals.len() - 1]);
+    let inside = times.iter().all(|t| t.is_finite() && *t >= lo && *t <= hi);
+    if times.len() < 2 || !inside || times.windows(2).any(|w| w[1] <= w[0]) {
+        return Err(bad_obs(format!(
+            "sparse times must be >= 2 strictly increasing points in [{lo}, {hi}]"
+        )));
+    }
+    Ok(times.len())
+}
+
+/// Validate an observation pattern and (optionally) the observed values.
+fn validate_pattern(
+    obs: &PartialObservation,
+    values: Option<&[f64]>,
+    argvals: &[f64],
+    distance: PartialPredictorDistance,
+) -> Result<(), FdarError> {
+    let m = argvals.len();
+    let need = pattern_len(obs, argvals, distance)?;
+    let prefix_bad = matches!(obs, PartialObservation::Prefix(n) if !(2..=m).contains(n));
+    let len_bad = values.is_some_and(|v| v.len() != need);
+    if prefix_bad || len_bad {
+        return Err(FdarError::InvalidDimension {
+            parameter: "observed",
+            expected: match obs {
+                PartialObservation::Prefix(_) => format!("between 2 and {m} values"),
+                _ => format!("{need} values"),
+            },
+            actual: format!("{}", values.map_or(need, <[f64]>::len)),
+        });
+    }
+    if values.is_some_and(|v| v.iter().any(|x| !x.is_finite())) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "observed",
+            message: "values must be finite".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Modulation `σ` of the simultaneous band (all ones for pointwise bands).
+fn band_sigma(
+    model: &PartialConformalModel,
+    config: &PartialConformalConfig,
+) -> Result<Vec<f64>, FdarError> {
+    let m = model.argvals.len();
+    if config.band == PartialAmplitudeBand::Pointwise {
+        return Ok(vec![1.0; m]);
+    }
+    match &config.band_scale {
+        PartialBandScale::Constant => Ok(vec![1.0; m]),
+        PartialBandScale::TrainingSd => {
+            let sd = model
+                .training_sd
+                .as_ref()
+                .ok_or_else(|| FdarError::InvalidParameter {
+                    parameter: "band_scale",
+                    message: "TrainingSd needs a model from partial_conformal_fit".to_string(),
+                })?;
+            let max = sd.iter().copied().fold(0.0_f64, f64::max);
+            Ok(if max > 0.0 {
+                sd.iter().map(|&v| v.max(0.05 * max)).collect()
+            } else {
+                vec![1.0; m]
+            })
+        }
+        PartialBandScale::Custom(v) => {
+            if v.len() != m {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "band_scale",
+                    expected: format!("{m}"),
+                    actual: format!("{}", v.len()),
+                });
+            }
+            if v.iter().any(|x| !(x.is_finite() && *x > 0.0)) {
+                return Err(FdarError::InvalidParameter {
+                    parameter: "band_scale",
+                    message: "custom scale must be finite and > 0".to_string(),
+                });
+            }
+            Ok(v.clone())
+        }
+    }
 }
 
 fn validate_grid(data: &FdMatrix, argvals: &[f64]) -> Result<(), FdarError> {
@@ -568,25 +1064,99 @@ fn select_rows(data: &FdMatrix, idx: &[usize]) -> FdMatrix {
 
 // ─── Predictor distances and NW weights ─────────────────────────────────────
 
-/// Symmetric (n_2+1)² distance matrix (row-major); index n_2 is the new curve.
-fn predictor_distances(
-    model: &PartialConformalModel,
-    observed: &[f64],
+/// Observed part of a full grid curve under `obs`.
+fn extract_observed(obs: &PartialObservation, argvals: &[f64], row: &[f64]) -> Vec<f64> {
+    match obs {
+        PartialObservation::Prefix(n) => row[..*n].to_vec(),
+        PartialObservation::Fragments(frags) => frags
+            .iter()
+            .flat_map(|&(a, b)| row[a..=b].iter().copied())
+            .collect(),
+        PartialObservation::Sparse(times) => {
+            times.iter().map(|&t| lin_interp(argvals, row, t)).collect()
+        }
+    }
+}
+
+/// Linear interpolation of `(x, y)` at `t ∈ [x_0, x_last]`.
+fn lin_interp(x: &[f64], y: &[f64], t: f64) -> f64 {
+    let j = x.partition_point(|&v| v <= t).clamp(1, x.len() - 1);
+    let w = (t - x[j - 1]) / (x[j] - x[j - 1]);
+    (1.0 - w) * y[j - 1] + w * y[j]
+}
+
+/// Predictors of the rows of `curves` (plus the new curve's `extra` values, if any).
+fn augmented_predictors(
+    curves: &FdMatrix,
+    argvals: &[f64],
+    obs: &PartialObservation,
+    extra: Option<&[f64]>,
+) -> Vec<Vec<f64>> {
+    let mut preds: Vec<Vec<f64>> = (0..curves.nrows())
+        .map(|i| extract_observed(obs, argvals, &curves.row(i)))
+        .collect();
+    if let Some(v) = extra {
+        preds.push(v.to_vec());
+    }
+    preds
+}
+
+/// Symmetric `np × np` distance matrix (row-major) of the predictors under `obs`.
+fn pattern_distances(
+    obs: &PartialObservation,
+    argvals: &[f64],
+    preds: &[Vec<f64>],
     config: &PartialConformalConfig,
 ) -> Vec<f64> {
-    let n2 = model.calibration_data.nrows();
-    let m_obs = observed.len();
-    let sub_t = &model.argvals[..m_obs];
-    let mut prefixes: Vec<Vec<f64>> = (0..n2)
-        .map(|i| (0..m_obs).map(|j| model.calibration_data[(i, j)]).collect())
-        .collect();
-    prefixes.push(observed.to_vec());
+    match obs {
+        PartialObservation::Prefix(n) => segment_distances(preds, &argvals[..*n], config),
+        PartialObservation::Fragments(frags) => {
+            let np = preds.len();
+            let total: f64 = frags.iter().map(|&(a, b)| argvals[b] - argvals[a]).sum();
+            let mut d = vec![0.0; np * np];
+            let mut off = 0;
+            for &(a, b) in frags {
+                let len = b - a + 1;
+                let seg: Vec<Vec<f64>> = preds.iter().map(|p| p[off..off + len].to_vec()).collect();
+                let lam = (argvals[b] - argvals[a]) / total;
+                let dj = segment_distances(&seg, &argvals[a..=b], config);
+                d.iter_mut().zip(&dj).for_each(|(x, y)| *x += lam * y);
+                off += len;
+            }
+            d
+        }
+        PartialObservation::Sparse(_) => {
+            let np = preds.len();
+            let mut d = vec![0.0; np * np];
+            for i in 0..np {
+                for j in (i + 1)..np {
+                    let v = preds[i]
+                        .iter()
+                        .zip(&preds[j])
+                        .map(|(x, y)| (x - y) * (x - y))
+                        .sum::<f64>()
+                        .sqrt();
+                    d[i * np + j] = v;
+                    d[j * np + i] = v;
+                }
+            }
+            d
+        }
+    }
+}
+
+/// Distance matrix of curve segments observed on `sub_t` with the configured distance.
+fn segment_distances(
+    prefixes: &[Vec<f64>],
+    sub_t: &[f64],
+    config: &PartialConformalConfig,
+) -> Vec<f64> {
     let w = simpsons_weights(sub_t);
     let reps: Vec<Vec<f64>> = match config.distance {
         PartialPredictorDistance::Srsf => prefixes.iter().map(|p| srsf_of(p, sub_t)).collect(),
-        _ => prefixes.clone(),
+        _ => prefixes.to_vec(),
     };
-    let np = n2 + 1;
+    let np = prefixes.len();
     let pairs: Vec<(usize, usize)> = (0..np)
         .flat_map(|i| ((i + 1)..np).map(move |j| (i, j)))
         .collect();
@@ -782,6 +1352,171 @@ pub(super) fn affine_conformal_interval(a: &[f64], b: &[f64], c: f64, k: usize) 
     (lo, hi)
 }
 
+/// Amplitude centre and band (pointwise or simultaneous).
+struct AmpSets {
+    center: Vec<f64>,
+    lower: Vec<f64>,
+    upper: Vec<f64>,
+    radius: Option<f64>,
+}
+
+fn amplitude_sets(
+    resp: &FdMatrix,
+    nw: &NwWeights,
+    k: usize,
+    band: PartialAmplitudeBand,
+    sigma: &[f64],
+) -> AmpSets {
+    match band {
+        PartialAmplitudeBand::Simultaneous => simultaneous_band(resp, nw, k, sigma),
+        _ => {
+            let (center, lower, upper) = amplitude_band(resp, nw, k);
+            AmpSets {
+                center,
+                lower,
+                upper,
+                radius: None,
+            }
+        }
+    }
+}
+
+/// Simultaneous band `ĉ ± R σ` containing the full-conformal set of the max-type
+/// score `sup_t |a_i(t) − b_i y(t)| / σ(t)` (see the module docs for the bound).
+fn simultaneous_band(resp: &FdMatrix, nw: &NwWeights, k: usize, sigma: &[f64]) -> AmpSets {
+    let (n2, m) = resp.shape();
+    let center: Vec<f64> = (0..m)
+        .map(|j| (0..n2).map(|l| nw.test[l] * resp[(l, j)]).sum())
+        .collect();
+    let mut bound: Vec<f64> = (0..n2)
+        .map(|i| {
+            let bi = nw.b[i];
+            let a_sup = (0..m)
+                .map(|j| {
+                    let ai = resp[(i, j)] - (1.0 - bi) * nw.center_of(i, resp, j);
+                    (ai - bi * center[j]).abs() / sigma[j]
+                })
+                .fold(0.0_f64, f64::max);
+            if bi < 1.0 {
+                a_sup / (1.0 - bi)
+            } else {
+                f64::INFINITY
+            }
+        })
+        .collect();
+    crate::helpers::sort_nan_safe(&mut bound);
+    let r = bound[k - 1];
+    AmpSets {
+        lower: center.iter().zip(sigma).map(|(c, s)| c - r * s).collect(),
+        upper: center.iter().zip(sigma).map(|(c, s)| c + r * s).collect(),
+        center,
+        radius: Some(r),
+    }
+}
+
+// ─── Held-out bandwidth tuning ──────────────────────────────────────────────
+
+fn select_bandwidth_on(
+    raw: &FdMatrix,
+    aligned: &FdMatrix,
+    argvals: &[f64],
+    obs: &PartialObservation,
+    config: &PartialConformalConfig,
+    sigma: &[f64],
+) -> Result<PartialBandwidthSelection, FdarError> {
+    let nt = raw.nrows();
+    let k = rank_threshold(nt.saturating_sub(1), config.alpha).map_err(|_| {
+        FdarError::InvalidParameter {
+            parameter: "tuning_fraction",
+            message: format!(
+                "alpha = {} needs more tuning curves (have {nt})",
+                config.alpha
+            ),
+        }
+    })?;
+    let preds = augmented_predictors(raw, argvals, obs, None);
+    let d = pattern_distances(obs, argvals, &preds, config);
+    let candidates = if config.bandwidth_candidates.is_empty() {
+        default_candidates(&d, nt)?
+    } else {
+        config.bandwidth_candidates.clone()
+    };
+    let mean_width: Vec<f64> = candidates
+        .iter()
+        .map(|&h| loo_mean_width(&d, aligned, h, k, config.band, sigma))
+        .collect();
+    let best = mean_width
+        .iter()
+        .enumerate()
+        .filter(|(_, w)| w.is_finite())
+        .fold(None, |acc: Option<(usize, f64)>, (i, &w)| match acc {
+            Some((_, bw)) if bw <= w => acc,
+            _ => Some((i, w)),
+        })
+        .ok_or_else(|| FdarError::ComputationFailed {
+            operation: "partial_conformal_select_bandwidth",
+            detail: "every candidate bandwidth gives an unbounded band".to_string(),
+        })?;
+    Ok(PartialBandwidthSelection {
+        bandwidth: candidates[best.0],
+        candidates,
+        mean_width,
+        n_tuning: nt,
+    })
+}
+
+/// Lower quantiles of the positive pairwise distances among the tuning curves.
+fn default_candidates(d: &[f64], nt: usize) -> Result<Vec<f64>, FdarError> {
+    let mut v: Vec<f64> = (0..nt)
+        .flat_map(|i| ((i + 1)..nt).map(move |j| d[i * nt + j]))
+        .filter(|x| x.is_finite() && *x > 0.0)
+        .collect();
+    if v.is_empty() {
+        return Err(FdarError::ComputationFailed {
+            operation: "partial_conformal_select_bandwidth",
+            detail: "no positive predictor distances among the tuning curves".to_string(),
+        });
+    }
+    crate::helpers::sort_nan_safe(&mut v);
+    let mut c: Vec<f64> = [0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0]
+        .iter()
+        .map(|q| v[((q * (v.len() - 1) as f64).round() as usize).min(v.len() - 1)])
+        .collect();
+    c.dedup();
+    Ok(c)
+}
+
+/// Mean band width when each tuning curve in turn is predicted from the others.
+fn loo_mean_width(
+    d: &[f64],
+    aligned: &FdMatrix,
+    h: f64,
+    k: usize,
+    band: PartialAmplitudeBand,
+    sigma: &[f64],
+) -> f64 {
+    let nt = aligned.nrows();
+    let widths: Vec<f64> = iter_maybe_parallel!(0..nt)
+        .map(|tau| {
+            let order: Vec<usize> = (0..nt).filter(|&i| i != tau).chain([tau]).collect();
+            let dperm: Vec<f64> = order
+                .iter()
+                .flat_map(|&a| order.iter().map(move |&b| d[a * nt + b]))
+                .collect();
+            let resp = select_rows(aligned, &order[..nt - 1]);
+            let nw = NwWeights::new(&dperm, nt - 1, h);
+            let amp = amplitude_sets(&resp, &nw, k, band, sigma);
+            amp.upper
+                .iter()
+                .zip(&amp.lower)
+                .map(|(u, l)| u - l)
+                .sum::<f64>()
+                / amp.upper.len() as f64
+        })
+        .collect();
+    widths.iter().sum::<f64>() / nt as f64
+}
+
 // ─── Phase set ──────────────────────────────────────────────────────────────
 
 fn phase_state(model: &PartialConformalModel, nw: &NwWeights, k: usize) -> PhaseState {
@@ -920,27 +1655,83 @@ fn envelope(rows: &[Vec<f64>], m: usize) -> (Vec<f64>, Vec<f64>) {
 
 // ─── Partial registration ───────────────────────────────────────────────────
 
-fn register_prefix(
+/// Partial match of the segment `argvals[a..=b]` (values `vals`) within the template.
+fn register_segment(
     model: &PartialConformalModel,
-    observed: &[f64],
+    vals: &[f64],
+    a: usize,
+    b: usize,
     lambda: f64,
-) -> Result<(PartialMatchResult, Option<AlignmentResult>), FdarError> {
+) -> Result<PartialMatchResult, FdarError> {
     let m = model.argvals.len();
-    let m_obs = observed.len();
-    let sub_t = &model.argvals[..m_obs];
+    let sub_t = &model.argvals[a..=b];
     let t0 = model.argvals[0];
-    let frac = (sub_t[m_obs - 1] - t0) / (model.argvals[m - 1] - t0);
-    let min_span = if m_obs == m {
+    let frac = (model.argvals[b] - model.argvals[a]) / (model.argvals[m - 1] - t0);
+    let min_span = if a == 0 && b == m - 1 {
         1.0
     } else {
         (0.5 * frac).max(2.0 / m as f64).min(1.0)
     };
     // Same-crate struct literal (the config is only sealed for external crates).
     let pm = PartialMatchConfig { lambda, min_span };
-    let reg = elastic_partial_match(observed, &model.template, sub_t, &model.argvals, &pm)?;
-    let full =
-        (m_obs == m).then(|| elastic_align_pair(&model.template, observed, &model.argvals, lambda));
-    Ok((reg, full))
+    elastic_partial_match(vals, &model.template, sub_t, &model.argvals, &pm)
+}
+
+type Registrations = (
+    PartialMatchResult,
+    Option<AlignmentResult>,
+    Vec<PartialMatchResult>,
+);
+
+fn register_observation(
+    model: &PartialConformalModel,
+    obs: &PartialObservation,
+    values: &[f64],
+    lambda: f64,
+) -> Result<Registrations, FdarError> {
+    let m = model.argvals.len();
+    let full_curve = |covers: bool| {
+        covers.then(|| elastic_align_pair(&model.template, values, &model.argvals, lambda))
+    };
+    match obs {
+        PartialObservation::Prefix(n) => {
+            let reg = register_segment(model, values, 0, n - 1, lambda)?;
+            Ok((reg, full_curve(*n == m), Vec::new()))
+        }
+        PartialObservation::Fragments(frags) => {
+            let mut regs = Vec::with_capacity(frags.len());
+            let mut off = 0;
+            for &(a, b) in frags {
+                let len = b - a + 1;
+                regs.push(register_segment(
+                    model,
+                    &values[off..off + len],
+                    a,
+                    b,
+                    lambda,
+                )?);
+                off += len;
+            }
+            let longest = (0..frags.len()).fold(0, |best, j| {
+                let w = |i: usize| model.argvals[frags[i].1] - model.argvals[frags[i].0];
+                if w(j) > w(best) {
+                    j
+                } else {
+                    best
+                }
+            });
+            let covers = frags.len() == 1 && frags[0] == (0, m - 1);
+            Ok((regs[longest].clone(), full_curve(covers), regs))
+        }
+        PartialObservation::Sparse(times) => {
+            let t0 = model.argvals[0];
+            let frac = (times[times.len() - 1] - times[0]) / (model.argvals[m - 1] - t0);
+            let min_span = (0.5 * frac).max(2.0 / m as f64).min(1.0);
+            let pm = PartialMatchConfig { lambda, min_span };
+            let reg = elastic_partial_match(values, &model.template, times, &model.argvals, &pm)?;
+            Ok((reg, None, Vec::new()))
+        }
+    }
 }
 
 #[cfg(test)]

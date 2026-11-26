@@ -22,6 +22,26 @@ Opt-in; default results are bit-identical (FNV-hash tests pinned before the chan
 - `ContinuousRegistrationConfig::r_defaults()`: R's default W basis (2 linear B-splines,
   `lfd_order = 0`, `iterlim = 20`, `crit = 2`); golden-tested against
   `register.fd(..., WfdParobj = NULL)`. `ContinuousRegistrationConfig::default()` is unchanged.
+- Partial-curve conformal (`conformal::partial`): **simultaneous amplitude bands**
+  (`PartialConformalConfig::band = PartialAmplitudeBand::Simultaneous`) from the max-type score
+  `sup_t |Y − Ŷ|/σ(t)` with `σ` from `PartialBandScale::{Constant, TrainingSd, Custom}`; the band
+  `ĉ ± Rσ` provably contains the full-conformal set, so `P(Y(t) ∈ band ∀t) ≥ 1 − α` in finite
+  samples (`PartialConformalPrediction::amplitude_radius`). Pointwise stays the default.
+- **Held-out bandwidth tuning**: `PartialConformalConfig::tuning_fraction` reserves a seeded part of
+  the calibration curves, on which `h` minimising the mean leave-one-out band width is selected
+  (candidates `bandwidth_candidates` or distance quantiles); `partial_conformal_select_bandwidth`
+  exposes the selector and `PartialBandwidthSelection` reports it. Since `h` depends on the tuning
+  curves only, coverage stays exact (the paper's same-data Liang–Zhu–Foygel Barber rule has no
+  closed form for the affine full-conformal scores). On the simulation model it roughly halves the
+  band width (0.30 → 0.16 at α = 0.2, n = 60) at nominal coverage.
+- **Fragmented / sparse observation**: `partial_conformal_predict_observed` with
+  `PartialObservation::{Prefix, Fragments, Sparse}` — fragments use the paper's length-weighted
+  product distance, sparse points the Euclidean distance of (interpolated) values; every fragment
+  is located in the template with `elastic_partial_match` (`fragment_registrations`).
+- New model fields `tuning_indices`, `tuning_data`, `tuning_aligned`, `training_sd`. Validated by
+  exact leave-one-out rotation counts (simultaneous, fragments, sparse), a brute-force containment
+  check of the simultaneous bound, a public-API recomputation of the tuning criterion and seeded
+  Monte-Carlo coverage (simultaneous 0.81–0.87, sparse/tuned pointwise 0.81–0.83 at 1 − α = 0.8).
 
 **Parallel tempering for Bayesian group alignment (GH #69 ALN-CAV).** Opt-in; default pCN
 and infHMC results are bit-identical (FNV-hash tests pinned before the change).

@@ -393,3 +393,690 @@ fn input_validation() {
     badc.cal_fraction = 1.0;
     assert!(partial_conformal_fit(&cal, &t, &badc).is_err());
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GH #72: simultaneous bands, held-out bandwidth tuning, fragments / sparse
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn fnv(v: &[f64], h: &mut u64) {
+    for x in v {
+        for b in x.to_bits().to_le_bytes() {
+            *h ^= u64::from(b);
+            *h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+}
+
+/// Defaults are bit-identical to the pre-#72 code: FNV-1a hash of the full output
+/// pinned on commit 9c856e31 before the new options were added.
+#[test]
+fn default_results_bit_identical_to_pre_72_pin() {
+    let m = 41;
+    let t = grid(m);
+    let n = 30;
+    let mut data = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        let a = 0.8 + 0.4 * ((i * 13 % 7) as f64 / 6.0);
+        let sh = 0.1 * ((i * 7 % 5) as f64 / 4.0 - 0.5);
+        for j in 0..m {
+            data[(i, j)] = a * (-(t[j] - 0.5 - sh).powi(2) / 0.02).exp()
+                + 0.3 * a * (-(t[j] - 0.2).powi(2) / 0.01).exp();
+        }
+    }
+    let mut h = 0xcbf2_9ce4_8422_2325_u64;
+    for dist in [
+        PartialPredictorDistance::L2,
+        PartialPredictorDistance::Srsf,
+        PartialPredictorDistance::Elastic,
+    ] {
+        let mut cfg = PartialConformalConfig::default();
+        cfg.distance = dist;
+        cfg.alpha = 0.2;
+        cfg.n_phase_radii = 3;
+        let model = partial_conformal_fit(&data, &t, &cfg).unwrap();
+        for mo in [10, 25, 41] {
+            let p = partial_conformal_predict(&model, &data.row(3)[..mo], &cfg).unwrap();
+            fnv(&p.amplitude_center, &mut h);
+            fnv(&p.amplitude_lower, &mut h);
+            fnv(&p.amplitude_upper, &mut h);
+            fnv(&p.phase_center, &mut h);
+            fnv(&p.phase_lower, &mut h);
+            fnv(&p.phase_upper, &mut h);
+            fnv(&[p.phase_radius, p.bandwidth], &mut h);
+            fnv(&p.weights, &mut h);
+            fnv(p.phase_accepted.as_slice(), &mut h);
+            fnv(&p.registration.gamma, &mut h);
+            assert!(p.amplitude_radius.is_none() && p.bandwidth_selection.is_none());
+        }
+    }
+    assert_eq!(h, 0x2d35_858d_07e5_6e48);
+}
+
+// ─── Simultaneous band ──────────────────────────────────────────────────────
+
+/// Full-conformal acceptance of a trial curve `y` under the max-type score.
+fn sup_accept(resp: &FdMatrix, nw: &NwWeights, k: usize, sigma: &[f64], y: &[f64]) -> bool {
+    let (n2, m) = resp.shape();
+    let c: Vec<f64> = (0..m)
+        .map(|j| (0..n2).map(|l| nw.test[l] * resp[(l, j)]).sum())
+        .collect();
+    let s_new = (0..m)
+        .map(|j| (y[j] - c[j]).abs() / sigma[j])
+        .fold(0.0_f64, f64::max);
+    let below = (0..n2)
+        .filter(|&i| {
+            let bi = nw.b[i];
+            let si = (0..m)
+                .map(|j| {
+                    let fit = (1.0 - bi) * nw.center_of(i, resp, j) + bi * y[j];
+                    (resp[(i, j)] - fit).abs() / sigma[j]
+                })
+                .fold(0.0_f64, f64::max);
+            si < s_new
+        })
+        .count();
+    below < k
+}
+
+#[test]
+fn simultaneous_band_contains_every_accepted_trial_curve() {
+    // Independent brute force: random trial curves around the centre; every one the
+    // full-conformal rule accepts must lie inside centre ± R σ, and the band must be
+    // reached (some accepted trial has sup-score close to R).
+    let t = grid(13);
+    let m = t.len();
+    let mut rng = StdRng::seed_from_u64(72);
+    let cal = simulate(12, &t, &mut rng);
+    let resp = cal.clone();
+    let n2 = 11;
+    let dist: Vec<f64> = (0..=n2)
+        .flat_map(|i| {
+            (0..=n2).map(move |j| {
+                if i == j {
+                    0.0
+                } else {
+                    0.2 + 0.07 * ((i * 5 + j * 5) % 7) as f64
+                }
+            })
+        })
+        .collect();
+    let nw = NwWeights::new(&dist, n2, 0.3);
+    let resp = select_rows(&resp, &(0..n2).collect::<Vec<_>>());
+    let sigma: Vec<f64> = t.iter().map(|&s| 0.5 + s).collect();
+    let k = rank_threshold(n2, 0.25).unwrap();
+    let amp = simultaneous_band(&resp, &nw, k, &sigma);
+    let r = amp.radius.unwrap();
+    assert!(r.is_finite() && r > 0.0);
+    let mut max_accepted = 0.0_f64;
+    for trial in 0..4000 {
+        let scale = 1.6 * r * (trial as f64 / 4000.0);
+        let y: Vec<f64> = (0..m)
+            .map(|j| amp.center[j] + scale * sigma[j] * rng.gen_range(-1.0..1.0))
+            .collect();
+        if sup_accept(&resp, &nw, k, &sigma, &y) {
+            let sc = (0..m)
+                .map(|j| (y[j] - amp.center[j]).abs() / sigma[j])
+                .fold(0.0_f64, f64::max);
+            assert!(
+                sc <= r + 1e-12,
+                "accepted trial with sup-score {sc} > R {r}"
+            );
+            max_accepted = max_accepted.max(sc);
+        }
+    }
+    // The superset bound is not grossly loose.
+    assert!(
+        max_accepted > 0.7 * r,
+        "max accepted {max_accepted} vs R {r}"
+    );
+}
+
+#[test]
+fn simultaneous_band_split_limit_is_kth_sup_residual() {
+    // b_i = 0 (new point has no weight in the calibration fits): R is the k-th smallest
+    // calibration sup-score sup_t |Y_i − m_i| / σ — the split-conformal sup-norm band.
+    let mut rng = StdRng::seed_from_u64(3);
+    let (n2, m) = (9, 6);
+    let mut resp = FdMatrix::zeros(n2, m);
+    for i in 0..n2 {
+        for j in 0..m {
+            resp[(i, j)] = rng.gen_range(-1.0..1.0);
+        }
+    }
+    let mut u = vec![0.0; n2 * n2];
+    for i in 0..n2 {
+        for j in 0..n2 {
+            if i != j {
+                u[i * n2 + j] = 1.0 / (n2 - 1) as f64;
+            }
+        }
+    }
+    let nw = NwWeights {
+        u,
+        b: vec![0.0; n2],
+        test: vec![1.0 / n2 as f64; n2],
+        n2,
+    };
+    let sigma = vec![2.0; m];
+    let k = rank_threshold(n2, 0.2).unwrap();
+    let mut scores: Vec<f64> = (0..n2)
+        .map(|i| {
+            (0..m)
+                .map(|j| {
+                    let mi: f64 = (0..n2)
+                        .filter(|&l| l != i)
+                        .map(|l| resp[(l, j)])
+                        .sum::<f64>()
+                        / (n2 - 1) as f64;
+                    (resp[(i, j)] - mi).abs() / 2.0
+                })
+                .fold(0.0_f64, f64::max)
+        })
+        .collect();
+    scores.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let amp = simultaneous_band(&resp, &nw, k, &sigma);
+    assert!((amp.radius.unwrap() - scores[k - 1]).abs() < 1e-12);
+    for j in 0..m {
+        assert!((amp.upper[j] - amp.center[j] - 2.0 * scores[k - 1]).abs() < 1e-12);
+    }
+}
+
+fn whole_curve_covered(p: &PartialConformalPrediction, truth: &[f64]) -> bool {
+    truth
+        .iter()
+        .enumerate()
+        .all(|(j, &v)| p.amplitude_lower[j] - 1e-9 <= v && v <= p.amplitude_upper[j] + 1e-9)
+}
+
+/// Rotation invariant for a general observation pattern and band type: each of the
+/// n exchangeable curves plays the new curve; the number of rotations whose target is
+/// covered is ≥ k deterministically (amplitude: pointwise per t, or the whole curve for
+/// simultaneous bands; phase: membership).
+fn rotation_counts_general(
+    obs: &PartialObservation,
+    cfg: &PartialConformalConfig,
+) -> (Vec<usize>, usize, usize, usize) {
+    let t = grid(31);
+    let m = t.len();
+    let mut rng = StdRng::seed_from_u64(11);
+    let n = 16;
+    let data = simulate(n, &t, &mut rng);
+    let tmpl = template(&t);
+    let mut amp_cov = vec![0usize; m];
+    let (mut whole, mut ph_cov) = (0usize, 0usize);
+    for r in 0..n {
+        let model =
+            partial_conformal_fit_with_template(&rows_except(&data, r), &t, &tmpl, cfg).unwrap();
+        let truth = elastic_align_pair(&tmpl, &data.row(r), &t, 0.0);
+        let values = extract_observed(obs, &t, &data.row(r));
+        let p = partial_conformal_predict_observed(&model, obs, &values, cfg).unwrap();
+        for j in 0..m {
+            let v = truth.f_aligned[j];
+            if p.amplitude_lower[j] - 1e-9 <= v && v <= p.amplitude_upper[j] + 1e-9 {
+                amp_cov[j] += 1;
+            }
+        }
+        whole += usize::from(whole_curve_covered(&p, &truth.f_aligned));
+        ph_cov += usize::from(p.phase_set_contains(&truth.gamma).unwrap());
+    }
+    let k = ((n as f64) * (1.0 - cfg.alpha) - 1e-12).ceil() as usize;
+    (amp_cov, whole, ph_cov, k)
+}
+
+#[test]
+fn rotation_invariant_simultaneous_band() {
+    let t = grid(31);
+    for (obs, scale) in [
+        (PartialObservation::Prefix(14), PartialBandScale::Constant),
+        (
+            PartialObservation::Prefix(31),
+            PartialBandScale::Custom(t.iter().map(|&s| 0.3 + base(1.0, 1.0, s)).collect()),
+        ),
+        (
+            PartialObservation::Fragments(vec![(3, 9), (18, 25)]),
+            PartialBandScale::Constant,
+        ),
+    ] {
+        let mut cfg = PartialConformalConfig::default();
+        cfg.alpha = 0.2;
+        cfg.n_phase_radii = 2;
+        cfg.band = PartialAmplitudeBand::Simultaneous;
+        cfg.band_scale = scale;
+        let (_, whole, ph, k) = rotation_counts_general(&obs, &cfg);
+        assert!(
+            whole >= k,
+            "{obs:?}: whole-curve coverage {whole} < k = {k}"
+        );
+        assert!(ph >= k, "{obs:?}: phase {ph} < k = {k}");
+    }
+}
+
+#[test]
+fn rotation_invariant_fragments_and_sparse() {
+    for (obs, dist) in [
+        (
+            PartialObservation::Fragments(vec![(2, 8), (15, 22)]),
+            PartialPredictorDistance::L2,
+        ),
+        (
+            PartialObservation::Fragments(vec![(0, 5), (10, 14), (20, 30)]),
+            PartialPredictorDistance::Srsf,
+        ),
+        (
+            PartialObservation::Sparse(vec![0.07, 0.21, 0.38, 0.55, 0.81]),
+            PartialPredictorDistance::L2,
+        ),
+    ] {
+        let mut cfg = PartialConformalConfig::default();
+        cfg.alpha = 0.2;
+        cfg.distance = dist;
+        cfg.n_phase_radii = 2;
+        let (amp, _, ph, k) = rotation_counts_general(&obs, &cfg);
+        assert!(
+            amp.iter().all(|&c| c >= k),
+            "{obs:?}: amp {amp:?} < k = {k}"
+        );
+        assert!(ph >= k, "{obs:?}: phase {ph} < k = {k}");
+    }
+}
+
+#[test]
+fn single_fragment_reproduces_prefix_exactly() {
+    let t = grid(31);
+    let tmpl = template(&t);
+    let mut rng = StdRng::seed_from_u64(8);
+    let cal = simulate(20, &t, &mut rng);
+    let new = simulate(1, &t, &mut rng).row(0);
+    for dist in [PartialPredictorDistance::L2, PartialPredictorDistance::Srsf] {
+        for band in [
+            PartialAmplitudeBand::Pointwise,
+            PartialAmplitudeBand::Simultaneous,
+        ] {
+            for n_obs in [12, 31] {
+                let mut cfg = PartialConformalConfig::default();
+                cfg.alpha = 0.2;
+                cfg.distance = dist;
+                cfg.band = band;
+                cfg.n_phase_radii = 3;
+                let model = partial_conformal_fit_with_template(&cal, &t, &tmpl, &cfg).unwrap();
+                let p = partial_conformal_predict(&model, &new[..n_obs], &cfg).unwrap();
+                let frag = PartialObservation::Fragments(vec![(0, n_obs - 1)]);
+                let mut q =
+                    partial_conformal_predict_observed(&model, &frag, &new[..n_obs], &cfg).unwrap();
+                assert_eq!(q.fragment_registrations, vec![p.registration.clone()]);
+                q.fragment_registrations.clear();
+                assert_eq!(p, q);
+                let pre = PartialObservation::Prefix(n_obs);
+                let r =
+                    partial_conformal_predict_observed(&model, &pre, &new[..n_obs], &cfg).unwrap();
+                assert_eq!(p, r);
+            }
+        }
+    }
+}
+
+#[test]
+fn fragment_distance_is_length_weighted_sum() {
+    // d_prod = Σ λ_j d_j with λ_j ∝ fragment length, checked against direct L² sums.
+    let t = grid(21);
+    let preds_full: Vec<Vec<f64>> = (0..3)
+        .map(|i| t.iter().map(|&s| (3.0 * s + i as f64).sin()).collect())
+        .collect();
+    let frags = vec![(1usize, 5usize), (10, 18)];
+    let obs = PartialObservation::Fragments(frags.clone());
+    let preds: Vec<Vec<f64>> = preds_full
+        .iter()
+        .map(|p| extract_observed(&obs, &t, p))
+        .collect();
+    let cfg = PartialConformalConfig::default();
+    let d = pattern_distances(&obs, &t, &preds, &cfg);
+    let total = (t[5] - t[1]) + (t[18] - t[10]);
+    for (i, j) in [(0, 1), (0, 2), (1, 2)] {
+        let mut want = 0.0;
+        for &(a, b) in &frags {
+            let w = simpsons_weights(&t[a..=b]);
+            let dj = weighted_l2(&preds_full[i][a..=b], &preds_full[j][a..=b], &w);
+            want += (t[b] - t[a]) / total * dj;
+        }
+        assert!((d[i * 3 + j] - want).abs() < 1e-14);
+        assert_eq!(d[i * 3 + j], d[j * 3 + i]);
+    }
+    // Sparse: Euclidean distance of linearly interpolated values.
+    let sp = PartialObservation::Sparse(vec![0.125, 0.5, 0.9]);
+    let ps: Vec<Vec<f64>> = preds_full
+        .iter()
+        .map(|p| extract_observed(&sp, &t, p))
+        .collect();
+    assert!((ps[0][1] - preds_full[0][10]).abs() < 1e-15);
+    let lin = 0.5 * (preds_full[0][2] + preds_full[0][3]);
+    assert!((ps[0][0] - lin).abs() < 1e-14);
+    let ds = pattern_distances(&sp, &t, &ps, &cfg);
+    let want: f64 = ps[0]
+        .iter()
+        .zip(&ps[1])
+        .map(|(a, b)| (a - b).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    assert!((ds[1] - want).abs() < 1e-15);
+}
+
+// ─── Monte-Carlo coverage of the new options ────────────────────────────────
+
+#[test]
+fn monte_carlo_simultaneous_and_sparse_coverage() {
+    let t = grid(31);
+    let m = t.len();
+    let tmpl = template(&t);
+    let reps = 200;
+    let n2 = 19;
+    let alpha = 0.2;
+    let sigma: Vec<f64> = t.iter().map(|&s| 0.2 + base(1.0, 1.0, s)).collect();
+    let (mut sim_const, mut sim_mod, mut sparse_pw) = (0usize, 0usize, 0.0f64);
+    let mut rng = StdRng::seed_from_u64(7272);
+    for _ in 0..reps {
+        let data = simulate(n2 + 1, &t, &mut rng);
+        let cal = rows_except(&data, n2);
+        let m_obs = rng.gen_range(8..m);
+        let truth = elastic_align_pair(&tmpl, &data.row(n2), &t, 0.0);
+        let mut cfg = PartialConformalConfig::default();
+        cfg.alpha = alpha;
+        cfg.n_phase_radii = 1;
+        let model = partial_conformal_fit_with_template(&cal, &t, &tmpl, &cfg).unwrap();
+        cfg.band = PartialAmplitudeBand::Simultaneous;
+        let obs = prefix(&data.row(n2), m_obs);
+        let p = partial_conformal_predict(&model, &obs, &cfg).unwrap();
+        sim_const += usize::from(whole_curve_covered(&p, &truth.f_aligned));
+        cfg.band_scale = PartialBandScale::Custom(sigma.clone());
+        let p = partial_conformal_predict(&model, &obs, &cfg).unwrap();
+        sim_mod += usize::from(whole_curve_covered(&p, &truth.f_aligned));
+        // Sparse pattern at random (curve-independent) times, pointwise band.
+        let mut times: Vec<f64> = (0..4).map(|_| rng.gen_range(0.0..1.0)).collect();
+        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let sp = PartialObservation::Sparse(times);
+        let vals = extract_observed(&sp, &t, &data.row(n2));
+        let mut cfg2 = PartialConformalConfig::default();
+        cfg2.alpha = alpha;
+        cfg2.n_phase_radii = 1;
+        let p = partial_conformal_predict_observed(&model, &sp, &vals, &cfg2).unwrap();
+        let cov = (0..m)
+            .filter(|&j| {
+                let v = truth.f_aligned[j];
+                p.amplitude_lower[j] <= v && v <= p.amplitude_upper[j]
+            })
+            .count();
+        sparse_pw += cov as f64 / m as f64;
+    }
+    let target = 1.0 - alpha;
+    let sd = (target * alpha / reps as f64).sqrt();
+    let upper = target + 1.0 / (n2 + 1) as f64;
+    let sc = sim_const as f64 / reps as f64;
+    let sm = sim_mod as f64 / reps as f64;
+    let spw = sparse_pw / reps as f64;
+    eprintln!("simultaneous const {sc}, modulated {sm}, sparse pointwise {spw}");
+    // Simultaneous bands are a (slightly conservative) superset of the conformal set.
+    assert!(
+        sc >= target - 3.0 * sd && sc <= upper + 0.05 + 3.0 * sd,
+        "sim const {sc}"
+    );
+    assert!(
+        sm >= target - 3.0 * sd && sm <= upper + 0.05 + 3.0 * sd,
+        "sim mod {sm}"
+    );
+    assert!(
+        spw >= target - 3.0 * sd && spw <= upper + 3.0 * sd,
+        "sparse {spw}"
+    );
+}
+
+// ─── Held-out bandwidth tuning ──────────────────────────────────────────────
+
+#[test]
+fn bandwidth_selection_matches_brute_force_leave_one_out() {
+    // Independent re-computation of the tuning criterion through the public API:
+    // for every candidate h, refit on T \ {τ} and predict τ with bandwidth h.
+    let t = grid(25);
+    let m = t.len();
+    let tmpl = template(&t);
+    let mut rng = StdRng::seed_from_u64(31);
+    let tune = simulate(12, &t, &mut rng);
+    for band in [
+        PartialAmplitudeBand::Pointwise,
+        PartialAmplitudeBand::Simultaneous,
+    ] {
+        let mut cfg = PartialConformalConfig::default();
+        cfg.alpha = 0.25;
+        cfg.n_phase_radii = 1;
+        cfg.band = band;
+        let tm = partial_conformal_fit_with_template(&tune, &t, &tmpl, &cfg).unwrap();
+        let obs = PartialObservation::Prefix(11);
+        let sel = partial_conformal_select_bandwidth(&tm, &obs, &cfg).unwrap();
+        assert_eq!(sel.n_tuning, 12);
+        assert_eq!(sel.candidates.len(), sel.mean_width.len());
+        assert!(sel.candidates.len() >= 3);
+        assert!(sel.candidates.windows(2).all(|w| w[1] > w[0]));
+        for (c, &h) in sel.candidates.iter().enumerate() {
+            let mut fixed = cfg.clone();
+            fixed.bandwidth = Some(h);
+            let mut total = 0.0;
+            for tau in 0..12 {
+                let mt = partial_conformal_fit_with_template(
+                    &rows_except(&tune, tau),
+                    &t,
+                    &tmpl,
+                    &fixed,
+                )
+                .unwrap();
+                let p =
+                    partial_conformal_predict(&mt, &prefix(&tune.row(tau), 11), &fixed).unwrap();
+                total += (0..m)
+                    .map(|j| p.amplitude_upper[j] - p.amplitude_lower[j])
+                    .sum::<f64>()
+                    / m as f64;
+            }
+            let want = total / 12.0;
+            assert!(
+                (sel.mean_width[c] - want).abs() < 1e-9 * (1.0 + want.abs()),
+                "{band:?} h={h}: {} vs {want}",
+                sel.mean_width[c]
+            );
+        }
+        let best = sel.mean_width.iter().copied().fold(f64::INFINITY, f64::min);
+        let idx = sel
+            .candidates
+            .iter()
+            .position(|&h| h == sel.bandwidth)
+            .unwrap();
+        assert_eq!(sel.mean_width[idx], best);
+    }
+}
+
+#[test]
+fn tuning_fraction_splits_and_selects() {
+    let t = grid(25);
+    let mut rng = StdRng::seed_from_u64(12);
+    let data = simulate(40, &t, &mut rng);
+    let mut cfg = PartialConformalConfig::default();
+    cfg.alpha = 0.25;
+    cfg.n_phase_radii = 1;
+    cfg.karcher_max_iter = 5;
+    cfg.tuning_fraction = Some(0.4);
+    let model = partial_conformal_fit(&data, &t, &cfg).unwrap();
+    let base = {
+        let mut c = cfg.clone();
+        c.tuning_fraction = None;
+        partial_conformal_fit(&data, &t, &c).unwrap()
+    };
+    // Tuning ∪ calibration = the untuned calibration set, disjointly.
+    let mut all: Vec<usize> = model
+        .tuning_indices
+        .iter()
+        .chain(&model.calibration_indices)
+        .copied()
+        .collect();
+    all.sort_unstable();
+    let mut want = base.calibration_indices.clone();
+    want.sort_unstable();
+    assert_eq!(all, want);
+    assert_eq!(model.tuning_indices.len(), 8);
+    assert_eq!(model.template, base.template);
+    for (r, &i) in model.calibration_indices.iter().enumerate() {
+        assert_eq!(model.calibration_data.row(r), data.row(i));
+    }
+    let obs = prefix(&data.row(0), 12);
+    let p = partial_conformal_predict(&model, &obs, &cfg).unwrap();
+    let sel = p.bandwidth_selection.as_ref().expect("tuned");
+    assert_eq!(sel.bandwidth, p.bandwidth);
+    // Same selection as the public selector on a model holding only the tuning curves.
+    let tm = partial_conformal_fit_with_template(&model.tuning_data, &t, &model.template, &{
+        let mut c = cfg.clone();
+        c.tuning_fraction = None;
+        c
+    })
+    .unwrap();
+    let direct =
+        partial_conformal_select_bandwidth(&tm, &PartialObservation::Prefix(12), &cfg).unwrap();
+    assert_eq!(&direct, sel);
+    // An explicit bandwidth takes precedence over tuning.
+    let mut fixed = cfg.clone();
+    fixed.bandwidth = Some(0.37);
+    let q = partial_conformal_predict(&model, &obs, &fixed).unwrap();
+    assert!(q.bandwidth_selection.is_none());
+    assert_eq!(q.bandwidth, 0.37);
+}
+
+#[test]
+fn monte_carlo_coverage_with_tuned_bandwidth() {
+    let t = grid(25);
+    let m = t.len();
+    let tmpl = template(&t);
+    let reps = 150;
+    let alpha = 0.2;
+    let (mut pw, mut sim) = (0.0f64, 0usize);
+    let mut rng = StdRng::seed_from_u64(9090);
+    let mut n2 = 0;
+    for rep in 0..reps {
+        let data = simulate(31, &t, &mut rng);
+        let cal = rows_except(&data, 30);
+        let truth = elastic_align_pair(&tmpl, &data.row(30), &t, 0.0);
+        let m_obs = rng.gen_range(6..m);
+        let mut cfg = PartialConformalConfig::default();
+        cfg.alpha = alpha;
+        cfg.n_phase_radii = 1;
+        cfg.tuning_fraction = Some(0.35);
+        cfg.seed = rep as u64;
+        let model = partial_conformal_fit_with_template(&cal, &t, &tmpl, &cfg).unwrap();
+        n2 = model.calibration_data.nrows();
+        let obs = prefix(&data.row(30), m_obs);
+        let p = partial_conformal_predict(&model, &obs, &cfg).unwrap();
+        assert!(p.bandwidth_selection.is_some());
+        pw += (0..m)
+            .filter(|&j| {
+                let v = truth.f_aligned[j];
+                p.amplitude_lower[j] <= v && v <= p.amplitude_upper[j]
+            })
+            .count() as f64
+            / m as f64;
+        cfg.band = PartialAmplitudeBand::Simultaneous;
+        let p = partial_conformal_predict(&model, &obs, &cfg).unwrap();
+        sim += usize::from(whole_curve_covered(&p, &truth.f_aligned));
+    }
+    let target = 1.0 - alpha;
+    let sd = (target * alpha / reps as f64).sqrt();
+    let upper = target + 1.0 / (n2 + 1) as f64;
+    let pw = pw / reps as f64;
+    let sim = sim as f64 / reps as f64;
+    eprintln!("tuned: pointwise {pw}, simultaneous {sim} (n2 = {n2})");
+    assert!(
+        pw >= target - 3.0 * sd && pw <= upper + 3.0 * sd,
+        "pointwise {pw}"
+    );
+    assert!(
+        sim >= target - 3.0 * sd && sim <= upper + 0.05 + 3.0 * sd,
+        "simultaneous {sim}"
+    );
+}
+
+#[test]
+fn training_sd_scale_and_new_option_validation() {
+    let t = grid(21);
+    let tmpl = template(&t);
+    let mut rng = StdRng::seed_from_u64(2);
+    let data = simulate(24, &t, &mut rng);
+    let mut cfg = PartialConformalConfig::default();
+    cfg.alpha = 0.3;
+    cfg.n_phase_radii = 1;
+    cfg.karcher_max_iter = 5;
+    cfg.band = PartialAmplitudeBand::Simultaneous;
+    cfg.band_scale = PartialBandScale::TrainingSd;
+    let model = partial_conformal_fit(&data, &t, &cfg).unwrap();
+    let sd = model.training_sd.clone().unwrap();
+    let p = partial_conformal_predict(&model, &prefix(&data.row(0), 10), &cfg).unwrap();
+    let r = p.amplitude_radius.unwrap();
+    let max = sd.iter().copied().fold(0.0_f64, f64::max);
+    for j in 0..t.len() {
+        let s = sd[j].max(0.05 * max);
+        assert!((p.amplitude_upper[j] - p.amplitude_center[j] - r * s).abs() < 1e-12);
+    }
+    // TrainingSd is unavailable without a training split.
+    let cal = partial_conformal_fit_with_template(&data, &t, &tmpl, &cfg).unwrap();
+    assert!(partial_conformal_predict(&cal, &prefix(&data.row(0), 10), &cfg).is_err());
+    let mut c = cfg.clone();
+    c.band_scale = PartialBandScale::Custom(vec![1.0; 5]);
+    assert!(partial_conformal_predict(&model, &prefix(&data.row(0), 10), &c).is_err());
+    c.band_scale = PartialBandScale::Custom(vec![0.0; t.len()]);
+    assert!(partial_conformal_predict(&model, &prefix(&data.row(0), 10), &c).is_err());
+    // Pointwise bands ignore the scale entirely.
+    c.band = PartialAmplitudeBand::Pointwise;
+    assert!(partial_conformal_predict(&model, &prefix(&data.row(0), 10), &c).is_ok());
+    let mut c = cfg.clone();
+    c.tuning_fraction = Some(1.0);
+    assert!(partial_conformal_fit(&data, &t, &c).is_err());
+    c.tuning_fraction = Some(0.3);
+    c.bandwidth_candidates = vec![0.1, -1.0];
+    assert!(partial_conformal_fit(&data, &t, &c).is_err());
+    // Observation patterns.
+    let ok = {
+        let mut c = cfg.clone();
+        c.band = PartialAmplitudeBand::Pointwise;
+        c
+    };
+    let row = data.row(1);
+    let bad = |obs: PartialObservation, vals: &[f64]| {
+        partial_conformal_predict_observed(&model, &obs, vals, &ok).is_err()
+    };
+    assert!(bad(PartialObservation::Fragments(vec![]), &[]));
+    assert!(bad(PartialObservation::Fragments(vec![(3, 3)]), &row[3..4]));
+    assert!(bad(
+        PartialObservation::Fragments(vec![(2, 6), (6, 9)]),
+        &row[2..11]
+    ));
+    assert!(bad(
+        PartialObservation::Fragments(vec![(15, 21)]),
+        &row[15..21]
+    ));
+    assert!(bad(PartialObservation::Fragments(vec![(2, 6)]), &row[2..6]));
+    assert!(bad(PartialObservation::Sparse(vec![0.5]), &[0.0]));
+    assert!(bad(PartialObservation::Sparse(vec![0.5, 0.4]), &[0.0, 0.0]));
+    assert!(bad(PartialObservation::Sparse(vec![0.5, 1.2]), &[0.0, 0.0]));
+    assert!(bad(
+        PartialObservation::Sparse(vec![0.1, 0.5]),
+        &[0.0, f64::NAN]
+    ));
+    assert!(bad(PartialObservation::Prefix(5), &row[..4]));
+    // Elastic needs >= 3 points per fragment.
+    let mut el = ok.clone();
+    el.distance = PartialPredictorDistance::Elastic;
+    assert!(partial_conformal_predict_observed(
+        &model,
+        &PartialObservation::Fragments(vec![(2, 3)]),
+        &row[2..4],
+        &el
+    )
+    .is_err());
+    // Tuning needs enough curves for alpha.
+    let tiny = partial_conformal_fit_with_template(&select_rows(&data, &[0, 1, 2]), &t, &tmpl, &ok)
+        .unwrap();
+    assert!(
+        partial_conformal_select_bandwidth(&tiny, &PartialObservation::Prefix(8), &ok).is_err()
+    );
+}

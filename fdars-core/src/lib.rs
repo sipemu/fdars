@@ -515,9 +515,11 @@ pub use conformal::{
     conformal_generic_classification, conformal_generic_regression, conformal_logistic,
     cv_conformal_classification, cv_conformal_regression, jackknife_plus_regression,
     partial_conformal_fit, partial_conformal_fit_with_template, partial_conformal_predict,
-    ClassificationScore, ConformalClassificationResult, ConformalConfig, ConformalMethod,
-    ConformalRegressionResult, PartialConformalConfig, PartialConformalModel,
-    PartialConformalPrediction, PartialPredictorDistance,
+    partial_conformal_predict_observed, partial_conformal_select_bandwidth, ClassificationScore,
+    ConformalClassificationResult, ConformalConfig, ConformalMethod, ConformalRegressionResult,
+    PartialAmplitudeBand, PartialBandScale, PartialBandwidthSelection, PartialConformalConfig,
+    PartialConformalModel, PartialConformalPrediction, PartialObservation,
+    PartialPredictorDistance,
 };
 
 // Re-export GMM clustering types
