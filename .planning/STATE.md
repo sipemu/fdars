@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T08:20:45.199Z"
+last_updated: "2026-11-26T12:09:06.491Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: fef69806692b8abba26eb051d94b324dee1c3a31
+state_head: 18487a68c9119846d41a2731dab39ee4ba523173
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-cxk: fix rustdoc -Dwarnings errors (99 -> 0) so CI Documentation job passes
+Last activity: 2026-11-26 - Completed quick task 261126-hye: ALN-CAV exact DP pruning on by default in all elastic DP paths (closes #66)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -200,6 +200,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-apa | ALN-PHTEST (#62) elastic amplitude/phase permutation test (PERMANOVA; vegan 2.7.8 adonis2 goldens) | 2026-11-26 | 1d4d5ce1 | [261126-apa-aln-phtest-62-elastic-phase-amplitude-pe](./quick/261126-apa-aln-phtest-62-elastic-phase-amplitude-pe/) |
 | 261126-al4 | ALN-WFDA (GH #61): Tang–Müller pairwise curve synchronisation (fdapace WFDA) | 2026-11-26 | 8209d8e2 | [261126-al4-aln-wfda-tang-mueller-pairwise-synchroni](./quick/261126-al4-aln-wfda-tang-mueller-pairwise-synchroni/) |
 | 261126-cxk | Fix rustdoc -Dwarnings errors so CI Documentation job passes | 2026-11-26 | fef69806 | [261126-cxk-fix-rustdoc-dwarnings-errors-so-ci-docum](./quick/261126-cxk-fix-rustdoc-dwarnings-errors-so-ci-docum/) |
+| 261126-hye | ALN-CAV enable exact DP pruning by default (#66) | 2026-11-26 | 18487a68 | [261126-hye-aln-cav-enable-exact-dp-pruning-by-defau](./quick/261126-hye-aln-cav-enable-exact-dp-pruning-by-defau/) |
 
 ## Deferred Items
 
