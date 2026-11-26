@@ -6,12 +6,14 @@
 //! - Karcher mean computation
 //! - DP engine options (`WarpOptimConfig` neighbourhood / `dp_scl` / edge cost /
 //!   pruning, ALN-DPACC #49)
+//! - Closed-curve rotation search (`elastic_align_pair_closed`, ALN-HYGIENE #56)
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use fdars_core::alignment::{
-    elastic_align_pair, elastic_align_pair_banded, elastic_align_pair_with_config,
-    elastic_self_distance_matrix, elastic_self_distance_matrix_banded, karcher_mean,
-    karcher_mean_with_band, DpEdgeCost, WarpOptimConfig,
+    elastic_align_pair, elastic_align_pair_banded, elastic_align_pair_closed,
+    elastic_align_pair_with_config, elastic_self_distance_matrix,
+    elastic_self_distance_matrix_banded, karcher_mean, karcher_mean_with_band, DpEdgeCost,
+    WarpOptimConfig,
 };
 use fdars_core::matrix::FdMatrix;
 use std::f64::consts::PI;
@@ -242,6 +244,26 @@ fn bench_dp_options(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_closed_align(c: &mut Criterion) {
+    let mut group = c.benchmark_group("elastic_align_pair_closed");
+    for &m in &[50, 100] {
+        let (mat, argvals) = generate_curves(2, m);
+        let f1 = mat.row(0);
+        let f2 = mat.row(1);
+        group.bench_with_input(BenchmarkId::new("m", m), &m, |b, _| {
+            b.iter(|| {
+                elastic_align_pair_closed(
+                    black_box(&f1),
+                    black_box(&f2),
+                    black_box(&argvals),
+                    black_box(0.0),
+                )
+            });
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_elastic_align_pair,
@@ -249,5 +271,6 @@ criterion_group!(
     bench_karcher_mean,
     bench_karcher_mean_with_band,
     bench_dp_options,
+    bench_closed_align,
 );
 criterion_main!(benches);

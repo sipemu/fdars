@@ -62,7 +62,24 @@ fn circular_shift(f: &[f64], k: usize) -> Vec<f64> {
     (0..m).map(|j| f[(j + k) % m]).collect()
 }
 
+/// Evaluate `dist(k)` for every candidate rotation, in parallel when the
+/// `parallel` feature is on. Results come back in candidate order, and the
+/// caller scans them sequentially with the same strict `<` rule as a plain
+/// loop, so the selected rotation (first minimum) is identical either way.
+fn candidate_distances<F>(cands: &[usize], dist: &F) -> Vec<f64>
+where
+    F: Fn(usize) -> f64 + Sync,
+{
+    iter_maybe_parallel!(cands).map(|&k| dist(k)).collect()
+}
+
 /// Find the best circular rotation of `f2` to match `f1`, using a coarse-then-fine strategy.
+///
+/// The SRSF of the (fixed) target `f1` and the Simpson integration weights are
+/// loop invariants, so they are computed once and shared by every candidate
+/// rotation (ALN-HYGIENE #56). Both are pure functions of `f1` / `argvals`, so
+/// the result is bit-identical to recomputing them per candidate. Candidate
+/// rotations are evaluated in parallel (see [`candidate_distances`]).
 ///
 /// Returns `(best_rotation, best_distance)`.
 fn find_best_rotation(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> (usize, f64) {
@@ -71,46 +88,41 @@ fn find_best_rotation(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> (
         return (0, 0.0);
     }
 
+    let q1 = srsf_single(f1, argvals);
+    let weights = simpsons_weights(argvals);
+    let rotation_distance = |k: usize| -> f64 {
+        let f2_rot = circular_shift(f2, k);
+        let q2 = srsf_single(&f2_rot, argvals);
+        let gamma = dp_alignment_core(&q1, &q2, argvals, lambda);
+        let f_aligned = reparameterize_curve(&f2_rot, argvals, &gamma);
+        let q_aligned = srsf_single(&f_aligned, argvals);
+        l2_distance(&q1, &q_aligned, &weights)
+    };
+
     // Coarse search: try m/step_size evenly spaced rotations
     let step_size = (m / 20).max(1);
     let mut best_k = 0;
     let mut best_dist = f64::INFINITY;
 
-    let mut k = 0;
-    while k < m {
-        let f2_rot = circular_shift(f2, k);
-        let q1 = srsf_single(f1, argvals);
-        let q2 = srsf_single(&f2_rot, argvals);
-        let gamma = dp_alignment_core(&q1, &q2, argvals, lambda);
-        let f_aligned = reparameterize_curve(&f2_rot, argvals, &gamma);
-        let q_aligned = srsf_single(&f_aligned, argvals);
-        let weights = simpsons_weights(argvals);
-        let dist = l2_distance(&q1, &q_aligned, &weights);
-
+    let coarse: Vec<usize> = (0..m).step_by(step_size).collect();
+    let coarse_d = candidate_distances(&coarse, &rotation_distance);
+    for (&k, &dist) in coarse.iter().zip(&coarse_d) {
         if dist < best_dist {
             best_dist = dist;
             best_k = k;
         }
-        k += step_size;
     }
 
     // Fine search: refine around best coarse rotation
     let search_start = best_k.saturating_sub(step_size);
     let search_end = (best_k + step_size).min(m);
 
-    for k in search_start..search_end {
-        if k % step_size == 0 {
-            continue; // already checked in coarse pass
-        }
-        let f2_rot = circular_shift(f2, k);
-        let q1 = srsf_single(f1, argvals);
-        let q2 = srsf_single(&f2_rot, argvals);
-        let gamma = dp_alignment_core(&q1, &q2, argvals, lambda);
-        let f_aligned = reparameterize_curve(&f2_rot, argvals, &gamma);
-        let q_aligned = srsf_single(&f_aligned, argvals);
-        let weights = simpsons_weights(argvals);
-        let dist = l2_distance(&q1, &q_aligned, &weights);
-
+    // Skip rotations already checked in the coarse pass.
+    let fine: Vec<usize> = (search_start..search_end)
+        .filter(|k| k % step_size != 0)
+        .collect();
+    let fine_d = candidate_distances(&fine, &rotation_distance);
+    for (&k, &dist) in fine.iter().zip(&fine_d) {
         if dist < best_dist {
             best_dist = dist;
             best_k = k;

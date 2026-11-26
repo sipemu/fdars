@@ -60,6 +60,8 @@ mod tsrvf;
 mod warp_stats;
 
 #[cfg(test)]
+mod hygiene_tests;
+#[cfg(test)]
 mod tests;
 
 // Re-export all public items so that `crate::alignment::X` continues to work.
