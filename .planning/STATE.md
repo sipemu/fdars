@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T15:26:19.004Z"
+last_updated: "2026-11-26T15:31:05.908Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 9f844272a671103f4d7e5f0f845b64a70b2aac3b
+state_head: 77ba1f50e38c6f607d08564814fba700a4f677a0
 progress:
   total_phases: 6
   completed_phases: 6
@@ -209,6 +209,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-lj0 | ALN-CAV (GH #73) DTW family: multivariate, shape-DTW, k-NN, LB_Improved/LB_Enhanced | 2026-11-26 | 9f844272 | [261126-lj0-aln-cav-dtw-family](./quick/261126-lj0-aln-cav-dtw-family/) |
 | 261126-ljn | ALN-CAV (GH #68) (a,b) elastic closed curves + exact PL distance | 2026-11-26 | 9f844272 | [261126-ljn-aln-cav-a-b-elastic-closed-curves-exact-](./quick/261126-ljn-aln-cav-a-b-elastic-closed-curves-exact-/) |
 | 261126-mbw | ALN-CAV (GH #71) fdasrvf-compatible model-based shape CI | 2026-11-26 | 9f844272 | [261126-mbw-aln-cav-fdasrvf-compatible-model-based-s](./quick/261126-mbw-aln-cav-fdasrvf-compatible-model-based-s/) |
+| 261126-mka | ALN-CAV (GH #75) pmat 3.45 complexity drift: decompose 9 fns (bit-identical), CI pin 3.18 -> 3.45.1 | 2026-11-26 | 77ba1f50 | [261126-mka-aln-cav-pmat-version-drift-decompose-9-c](./quick/261126-mka-aln-cav-pmat-version-drift-decompose-9-c/) |
 
 ## Deferred Items
 
