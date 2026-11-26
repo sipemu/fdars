@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**fdasrvf-compatible model-based shape CI for R^d curves (GH #71 ALN-CAV).** Additive; the
+default `CurveShapeCiMethod::Bootstrap` path of `curve_shape_confidence_interval` is unchanged.
+
+### Added
+
+- `CurveShapeCiMethod { Bootstrap (default), ModelBased }` and the `CurveShapeCiConfig`
+  fields `method`, `n_components` (fdasrvf `no`, 5), `n_samples` (`Nsamp`, 100) and
+  `n_warp_components` (5). `ModelBased` ports fdasrvf 2.6.0 `shape_CI` / `sample_shapes`:
+  Karcher median → zero-mean Gaussian on the leading shape-PCA directions of its shooting
+  vectors → geodesic shooting (exact step for open curves, fdasrvf's 4-step projected and
+  parallel-translated shooting for closed contours) → random warps from the horizontal FPCA
+  of the median's warps (if `reparam`) and von Mises rotations (if `rotation`, planar only)
+  → elastic box plot of the posed samples with `alpha = 1 − confidence_level`.
+- `CurveShapeCiResult::model: Option<CurveShapeModelCi>` with fdasrvf's `Q1a` / `Q3a`
+  (`q1a`, `q3a`), the box plot, the PCA, the sampled scores, unposed / posed samples and
+  their SRVFs, warps and rotations. Validated against fdasrvf 2.6.0 on RNG-independent
+  quantities (median shape, covariance eigenvalues) and on sample-distance moments.
+
 **(a,b) elastic metrics: closed contours, exact piecewise-linear distance, branch search
 (GH #68 ALN-CAV).** Additive; every SRVF result and every open-curve `(a,b)` result with the
 default `branch_search = false` is bit-identical (the λ = 1 closure path dispatches to the
