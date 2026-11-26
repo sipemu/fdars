@@ -350,6 +350,39 @@ fn compute_target_landmarks(landmarks: &[Vec<f64>], target: Option<&[f64]>, n: u
     mean_pos
 }
 
+/// Identity warps (n × m) returned for inconsistent input, so the result is
+/// still a valid set of warps (consistent with the unchanged `registered`).
+///
+/// The domain is `[argvals[0], argvals[last]]` sampled uniformly at `m`
+/// points; this equals `argvals` for a consistent uniform grid. With fewer than
+/// two `argvals` the domain falls back to `[0, 1]`.
+fn identity_warps(n: usize, m: usize, argvals: &[f64]) -> FdMatrix {
+    let (t0, t1) = match (argvals.first(), argvals.last()) {
+        (Some(&a), Some(&b)) if argvals.len() >= 2 => (a, b),
+        _ => (0.0, 1.0),
+    };
+    let grid: Vec<f64> = if argvals.len() == m {
+        argvals.to_vec()
+    } else {
+        (0..m)
+            .map(|j| {
+                if m == 1 {
+                    t0
+                } else {
+                    t0 + (t1 - t0) * j as f64 / (m - 1) as f64
+                }
+            })
+            .collect()
+    };
+    let mut gammas = FdMatrix::zeros(n, m);
+    for (j, &g) in grid.iter().enumerate() {
+        for i in 0..n {
+            gammas[(i, j)] = g;
+        }
+    }
+    gammas
+}
+
 /// Register curves using known landmark positions.
 ///
 /// Builds monotone warping functions that map each curve's landmarks to common
@@ -363,6 +396,9 @@ fn compute_target_landmarks(landmarks: &[Vec<f64>], target: Option<&[f64]>, n: u
 ///
 /// # Returns
 /// [`LandmarkResult`] containing registered curves, warps, and landmark info.
+/// If the input is inconsistent (`n == 0`, `m == 0`, `argvals.len() != m` or
+/// `landmarks.len() != n`), the curves are returned unchanged with identity
+/// warps on the domain `[argvals[0], argvals[last]]`.
 pub fn landmark_register(
     data: &FdMatrix,
     argvals: &[f64],
@@ -373,7 +409,7 @@ pub fn landmark_register(
     if n == 0 || m == 0 || argvals.len() != m || landmarks.len() != n {
         return LandmarkResult {
             registered: data.clone(),
-            gammas: FdMatrix::zeros(n, m),
+            gammas: identity_warps(n, m, argvals),
             landmarks: landmarks
                 .iter()
                 .map(|lm| {
@@ -442,7 +478,9 @@ pub fn landmark_register(
 /// * `expected_count` — Expected number of landmarks per curve (uses first N)
 ///
 /// # Returns
-/// [`LandmarkResult`] with detected landmarks and registered curves.
+/// [`LandmarkResult`] with detected landmarks and registered curves. Inconsistent
+/// input (`n == 0`, `m == 0` or `argvals.len() != m`) returns the curves unchanged
+/// with identity warps.
 pub fn detect_and_register(
     data: &FdMatrix,
     argvals: &[f64],
@@ -454,7 +492,7 @@ pub fn detect_and_register(
     if n == 0 || m == 0 || argvals.len() != m {
         return LandmarkResult {
             registered: data.clone(),
-            gammas: FdMatrix::zeros(n, m),
+            gammas: identity_warps(n, m, argvals),
             landmarks: Vec::new(),
             target_landmarks: Vec::new(),
         };
@@ -831,6 +869,53 @@ mod tests {
         let landmarks = vec![vec![0.5]];
         let result = landmark_register(&data, &t, &landmarks, None);
         assert_eq!(result.registered.nrows(), 2);
+    }
+
+    /// Every row of `gammas` must be a valid warp of the domain: endpoints pinned
+    /// to the domain ends and non-decreasing (GH #78: inconsistent input used to
+    /// return all-zero warps).
+    fn assert_valid_identity_warps(gammas: &FdMatrix, t0: f64, t1: f64) {
+        let (n, m) = gammas.shape();
+        for i in 0..n {
+            let g = gammas.row(i);
+            assert!((g[0] - t0).abs() < 1e-12, "row {i}: gamma(start)={}", g[0]);
+            assert!(
+                (g[m - 1] - t1).abs() < 1e-12,
+                "row {i}: gamma(end)={}",
+                g[m - 1]
+            );
+            for j in 1..m {
+                let expected = t0 + (t1 - t0) * j as f64 / (m - 1) as f64;
+                assert!(
+                    (g[j] - expected).abs() < 1e-12,
+                    "row {i}: not identity at {j}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_gh78_inconsistent_input_returns_identity_warps() {
+        let m = 61;
+        let t = uniform_grid(m);
+        // 3 curves, 2 landmark rows (issue repro).
+        let data = FdMatrix::from_column_major(vec![1.0; 3 * m], 3, m).unwrap();
+        let landmarks = vec![vec![0.4], vec![0.5]];
+        let r = landmark_register(&data, &t, &landmarks, None);
+        assert_eq!(r.gammas.shape(), (3, m));
+        assert_valid_identity_warps(&r.gammas, 0.0, 1.0);
+        assert_eq!(r.registered, data);
+
+        // argvals of the wrong length: identity on the stated domain [2, 5].
+        let wrong_t: Vec<f64> = (0..=10).map(|k| 2.0 + 0.3 * k as f64).collect();
+        let lms3 = vec![vec![3.0], vec![3.5], vec![4.0]];
+        let r = landmark_register(&data, &wrong_t, &lms3, None);
+        assert_valid_identity_warps(&r.gammas, 2.0, 5.0);
+
+        // detect_and_register with mismatched argvals.
+        let r = detect_and_register(&data, &wrong_t, LandmarkKind::Peak, 0.1, 1);
+        assert_eq!(r.gammas.shape(), (3, m));
+        assert_valid_identity_warps(&r.gammas, 2.0, 5.0);
     }
 
     #[test]

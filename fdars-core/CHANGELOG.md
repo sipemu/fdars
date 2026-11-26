@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (these types now also derive serde under the `serde` feature).
 
 ### Fixed
+- `landmark::landmark_register` / `detect_and_register` returned all-zero
+  `gammas` (not a valid warp) without an error on inconsistent input (`n == 0`,
+  `m == 0`, `argvals.len() != m`, `landmarks.len() != n`); they now return identity
+  warps on `[argvals[0], argvals[last]]` alongside the unchanged curves. Signatures
+  are unchanged (a fallible variant would be a breaking change) (GH #78).
 - `alignment::transfer_alignment` composed the bridge and within-target warps in the
   wrong order (`γ_b∘γ_i`); the total warp is now `γ_i∘γ_b`, which is what maps
   `f_i` onto the source mean (`f_i∘γ_i ≈ μ_T`, `μ_T∘γ_b ≈ μ_S`). The orders only
