@@ -510,7 +510,7 @@ pub struct TvdMssOutliers {
 /// López-Pintado–Romo depth-fence [`functional_boxplot`] on the remaining curves' values to flag
 /// **magnitude outliers**, re-mapping the reduced indices back to the original sample.
 ///
-/// Consumes Phase 28's [`total_variation_depth_1d`] directly for the `tvd`/`mss` vectors — no
+/// Consumes Phase 28's `total_variation_depth_1d` directly for the `tvd`/`mss` vectors — no
 /// reimplementation. **Divergence:** `fdaoutlier` scales the stage-2 central region by
 /// `n_orig / n_reduced`; fdars' `functional_boxplot` fixes the central region at the deepest 50%
 /// of the reduced set, so `central_region_tvd` is informational only.

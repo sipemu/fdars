@@ -211,7 +211,7 @@ pub(crate) fn total_variation_depth_1d(
 /// Compute Total Variation Depth (with MSS) for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`total_variation_depth_1d`]. The `dim` argument makes caller intent explicit.
+/// `total_variation_depth_1d`. The `dim` argument makes caller intent explicit.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn total_variation_depth(
     data_obj: &FdMatrix,

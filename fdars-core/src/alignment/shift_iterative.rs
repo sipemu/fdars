@@ -578,7 +578,7 @@ fn newton_iteration(
 /// misalignment seed `config.initial` with e.g.
 /// [`crate::alignment::least_squares_shift_registration`].
 ///
-/// See the [module documentation](self) for the sign convention (opposite to
+/// See the module documentation for the sign convention (opposite to
 /// scikit-fda) and the documented deviations.
 ///
 /// # Errors

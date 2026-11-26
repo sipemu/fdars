@@ -79,7 +79,7 @@ pub(crate) fn hshift_cross_1d(
 
 /// H-shift self-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`hshift_self_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `hshift_self_1d`; `dim` makes intent explicit.
 pub fn hshift_self(data: &FdMatrix, argvals: &[f64], max_shift: usize, dim: Dim) -> FdMatrix {
     match dim {
         Dim::One | Dim::Two => hshift_self_1d(data, argvals, max_shift),
@@ -88,7 +88,7 @@ pub fn hshift_self(data: &FdMatrix, argvals: &[f64], max_shift: usize, dim: Dim)
 
 /// H-shift cross-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`hshift_cross_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `hshift_cross_1d`; `dim` makes intent explicit.
 pub fn hshift_cross(
     data1: &FdMatrix,
     data2: &FdMatrix,

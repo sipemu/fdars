@@ -192,7 +192,7 @@ pub(crate) fn modified_hypograph_index_1d(
 /// Compute the Hypograph Index (HI) for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`hypograph_index_1d`]. The `dim` argument makes caller intent explicit.
+/// `hypograph_index_1d`. The `dim` argument makes caller intent explicit.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn hypograph_index(
     data_obj: &FdMatrix,
@@ -207,7 +207,7 @@ pub fn hypograph_index(
 /// Compute the Epigraph Index (EI) for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`epigraph_index_1d`]. The `dim` argument makes caller intent explicit.
+/// `epigraph_index_1d`. The `dim` argument makes caller intent explicit.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn epigraph_index(
     data_obj: &FdMatrix,
@@ -222,7 +222,7 @@ pub fn epigraph_index(
 /// Compute the Modified Hypograph Index (MHI) for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`modified_hypograph_index_1d`]. The `dim` argument makes caller intent explicit.
+/// `modified_hypograph_index_1d`. The `dim` argument makes caller intent explicit.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn modified_hypograph_index(
     data_obj: &FdMatrix,

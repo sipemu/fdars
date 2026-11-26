@@ -11,14 +11,14 @@
 //!   of the posterior FPC-score covariance `Cov(ξ | Y_S)` — trace for A, log-det
 //!   for D.
 //!
-//! Both criteria share the private [`build_sigma_design`] helper, which assembles
+//! Both criteria share the private `build_sigma_design` helper, which assembles
 //! the `p×p` covariance `Σ_d = Φ_d diag(λ) Φ_dᵀ + σ²I_p` of the observations at the
 //! `p = |selected|` design points (mirroring the `Σ_yi` assembly in
 //! `pace_fpca.rs`). All criteria are *minimized* and are monotone non-increasing as
 //! design points are added, so the (future) greedy selector minimizes uncertainty.
 //!
 //! The mathematics follows Ji & Müller (2017) and the Yao–Müller–Wang (2005) PACE
-//! formulation already implemented in [`crate::pace_fpca`]. [`design_criterion`]
+//! formulation already implemented in [`crate::pace_fpca`](mod@crate::pace_fpca). [`design_criterion`]
 //! is the pure numerical core; [`optimal_design`] wraps it in a deterministic
 //! greedy sequential forward-selection loop.
 //!

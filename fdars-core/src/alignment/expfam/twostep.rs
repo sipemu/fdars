@@ -442,7 +442,7 @@ fn glmm_rows(g: &Gridded, efun: &[Vec<f64>], family: ExpFamily) -> GlmmData {
 /// `cov_hall`), its eigenvectors on the grid of time points (rounded to
 /// [`GfpcaConfig::index_significant_digits`]) are the FPCs, and the mean and
 /// scores come from a generalized linear mixed model with a P-spline mean and
-/// independent random FPC scores. See the [module documentation](super) for the
+/// independent random FPC scores. See the parent module documentation for the
 /// deviations from R (no `mgcv` / `gamm4`; native GCV / UBRE, REML and Laplace
 /// fits).
 ///

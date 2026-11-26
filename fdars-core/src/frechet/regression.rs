@@ -227,7 +227,7 @@ fn validate_reg_input(
 /// the global linear weight scheme `sᵢ(x) = 1 + (Xᵢ − X̄)ᵀ Σ̂⁻¹ (x − X̄)` and the
 /// signed weighted quantile average.
 ///
-/// This function uses [`crate::frechet::space::signed_quantile_average`]
+/// This function uses `crate::frechet::space::signed_quantile_average`
 /// (sort-based isotonic projection), **NOT**
 /// [`crate::density_fda::wasserstein_barycenter`], because the Petersen–Müller
 /// weights `sᵢ(x)` can be **negative** (RESEARCH KEY RISK). Where R's
@@ -270,7 +270,7 @@ pub fn frechet_global_reg(
 }
 
 /// Global Fréchet regression over an arbitrary object [`MetricSpace`] backend
-/// (FRE-02-06). Reuses the Petersen–Müller [`compute_global_weights`] and predicts
+/// (FRE-02-06). Reuses the Petersen–Müller `compute_global_weights` and predicts
 /// one object per `xout` row via the space's weighted Fréchet mean.
 ///
 /// The Petersen–Müller weights can be **negative** for extrapolation — this is
@@ -313,7 +313,7 @@ pub fn frechet_global_reg_space<S: MetricSpace>(
 /// `sᵢ = Kᵢ (1 − (Xᵢ − x₀)ᵀ μ₂⁻¹ μ₁)`.
 ///
 /// Like [`frechet_global_reg`], this feeds signed weights into
-/// [`crate::frechet::space::signed_quantile_average`], **NOT**
+/// `crate::frechet::space::signed_quantile_average`, **NOT**
 /// [`crate::density_fda::wasserstein_barycenter`], because the local-linear
 /// correction weights can be **negative** (RESEARCH KEY RISK); the monotone
 /// projection is the sort-based zero-dependency alternative to R's `osqp` QP.
@@ -357,7 +357,7 @@ pub fn frechet_local_reg(
 }
 
 /// Local (local-linear, kernel-weighted) Fréchet regression over an arbitrary
-/// object [`MetricSpace`] backend (FRE-02-06). Reuses [`compute_local_weights`]
+/// object [`MetricSpace`] backend (FRE-02-06). Reuses `compute_local_weights`
 /// and predicts one object per `xout` row via the space's weighted Fréchet mean.
 ///
 /// The same signed-weight note as [`frechet_global_reg_space`] applies for the

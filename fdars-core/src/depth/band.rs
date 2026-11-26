@@ -93,7 +93,7 @@ pub(crate) fn modified_epigraph_index_1d(data_obj: &FdMatrix, data_ori: &FdMatri
 /// Compute Band Depth (BD) for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`band_1d`]. The `dim` argument makes caller intent explicit.
+/// `band_1d`. The `dim` argument makes caller intent explicit.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn band(data_obj: &FdMatrix, data_ori: &FdMatrix, dim: Dim) -> Vec<f64> {
     match dim {
@@ -104,7 +104,7 @@ pub fn band(data_obj: &FdMatrix, data_ori: &FdMatrix, dim: Dim) -> Vec<f64> {
 /// Compute Modified Band Depth (MBD) for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`modified_band_1d`]. The `dim` argument makes caller intent explicit.
+/// `modified_band_1d`. The `dim` argument makes caller intent explicit.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn modified_band(data_obj: &FdMatrix, data_ori: &FdMatrix, dim: Dim) -> Vec<f64> {
     match dim {
@@ -115,7 +115,7 @@ pub fn modified_band(data_obj: &FdMatrix, data_ori: &FdMatrix, dim: Dim) -> Vec<
 /// Compute Modified Epigraph Index (MEI) for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`modified_epigraph_index_1d`]. The `dim` argument makes caller intent explicit.
+/// `modified_epigraph_index_1d`. The `dim` argument makes caller intent explicit.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn modified_epigraph_index(data_obj: &FdMatrix, data_ori: &FdMatrix, dim: Dim) -> Vec<f64> {
     match dim {

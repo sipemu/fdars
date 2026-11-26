@@ -44,7 +44,7 @@ pub(crate) fn modal_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64) -> Vec<
 /// Compute modal depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`modal_1d`]. The `dim` argument makes caller intent explicit and provides a
+/// `modal_1d`. The `dim` argument makes caller intent explicit and provides a
 /// single future seam should a real 2D specialization ever be needed.
 ///
 /// # Arguments
@@ -71,7 +71,7 @@ pub fn modal(data_obj: &FdMatrix, data_ori: &FdMatrix, h: f64, dim: Dim) -> Vec<
 /// depth is smooth everywhere (Gaussian kernel + L2, no rank/sort/indicator ops),
 /// which is why it is the differentiable depth measure.
 ///
-/// At `T = f64` this reproduces one row of [`modal_1d`] to within rounding
+/// At `T = f64` this reproduces one row of `modal_1d` to within rounding
 /// (~1e-12; `modal_1d` uses `f64::powi(2)` which is not bit-guaranteed equal to
 /// `u*u`). Returns `T::zero()` for an empty reference set.
 ///

@@ -135,7 +135,7 @@ pub(crate) fn extremal_depth_1d(
 /// Compute extremal depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`extremal_depth_1d`]. The `dim` argument makes caller intent explicit.
+/// `extremal_depth_1d`. The `dim` argument makes caller intent explicit.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn extremal_depth(
     data_obj: &FdMatrix,

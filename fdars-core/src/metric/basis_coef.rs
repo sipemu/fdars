@@ -146,7 +146,7 @@ pub(crate) fn basis_coef_cross_1d(
 
 /// Basis-coefficient self-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`basis_coef_self_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `basis_coef_self_1d`; `dim` makes intent explicit.
 pub fn basis_coef_self(
     data: &FdMatrix,
     argvals: &[f64],
@@ -161,7 +161,7 @@ pub fn basis_coef_self(
 
 /// Basis-coefficient cross-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`basis_coef_cross_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `basis_coef_cross_1d`; `dim` makes intent explicit.
 pub fn basis_coef_cross(
     data1: &FdMatrix,
     data2: &FdMatrix,

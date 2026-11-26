@@ -50,7 +50,7 @@ pub(crate) fn rpd_depth_1d(
 /// Compute RPD depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`rpd_depth_1d`]. The `dim` argument makes caller intent explicit. Use
+/// `rpd_depth_1d`. The `dim` argument makes caller intent explicit. Use
 /// [`rpd_depth_1d_seeded`] for reproducible results.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn rpd_depth(
@@ -68,7 +68,7 @@ pub fn rpd_depth(
 
 /// Compute RPD depth with optional seed for reproducibility.
 ///
-/// See [`rpd_depth_1d`] for details. When `seed` is `Some`, the random
+/// See `rpd_depth_1d` for details. When `seed` is `Some`, the random
 /// projections are generated deterministically.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn rpd_depth_1d_seeded(

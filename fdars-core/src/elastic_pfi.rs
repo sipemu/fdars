@@ -205,7 +205,7 @@ fn compute_metric(y: &[f64], pred: &[f64], metric: &PfiMetric) -> f64 {
 ///
 /// A single `StdRng::seed_from_u64(seed)` is advanced across the entire
 /// component loop, matching the advancing-RNG convention of the existing
-/// [`fpc_permutation_importance`] family.  Two calls with the same `seed`
+/// [`fpc_permutation_importance`](crate::explain::fpc_permutation_importance) family.  Two calls with the same `seed`
 /// and `n_repeats` return bit-identical `importance` vectors.
 ///
 /// # Arguments

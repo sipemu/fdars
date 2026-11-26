@@ -12,7 +12,7 @@
 //! 2. **Refinement (shape extraction).** Each centroid is recomputed as the
 //!    **top eigenvector** of a shift-aligned, mean-centered cross-product matrix
 //!    — *not* the arithmetic mean (that would be k-means, not k-Shape). See
-//!    [`shape_extraction`] for the exact matrix algebra.
+//!    `shape_extraction` for the exact matrix algebra.
 //!
 //! ## Shape extraction (the only genuinely-new numerical piece)
 //!

@@ -672,7 +672,7 @@ fn template_data(
 /// of `template`, whose time range must equal the data's) with `config.fpca.kt`
 /// cubic B-splines (interior knots at pooled-time quantiles); every curve's
 /// monotone inverse warp is then estimated by maximising its likelihood. See the
-/// [module documentation](self) for the model and the deviations from R.
+/// module documentation for the model and the deviations from R.
 ///
 /// With `config.fpca.periodic` the template is a periodic cubic B-spline (registr
 /// `periodic = TRUE`, `pbs`). With [`WarpingType::PiecewiseLinear2`] every
@@ -745,7 +745,7 @@ pub fn register_expfam(
 /// GFPCA step; for the variational EM registr then uses `Kt = 20` throughout
 /// (registration templates included), which fdars reproduces.
 ///
-/// See the [module documentation](self) for the model, incomplete curves and
+/// See the module documentation for the model, incomplete curves and
 /// the deviations from R.
 ///
 /// # Errors

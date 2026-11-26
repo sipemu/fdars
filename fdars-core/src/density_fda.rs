@@ -3,7 +3,7 @@
 //! This module implements the log-quantile-density (LQD) transformation framework of
 //! Petersen and Mueller (2016) for probability-density-valued functional data.  The LQD map
 //! embeds the constraint-carrying space of probability densities into the unconstrained Hilbert
-//! space L²([0,1]), where ordinary FPCA applies.  The inverse map always returns a valid
+//! space L²(\[0,1\]), where ordinary FPCA applies.  The inverse map always returns a valid
 //! (non-negative, unit-integral) probability density.
 //!
 //! # Types

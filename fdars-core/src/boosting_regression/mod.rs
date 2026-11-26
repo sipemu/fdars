@@ -5,8 +5,8 @@
 //!
 //! # Methods
 //!
-//! - [`boost_fosr`] — Component-wise boosted function-on-scalar regression (REG-06-01)
-//! - [`boost_fofr`] — Component-wise boosted function-on-function regression (REG-06-02)
+//! - [`fn@boost_fosr`] — Component-wise boosted function-on-scalar regression (REG-06-01)
+//! - [`fn@boost_fofr`] — Component-wise boosted function-on-function regression (REG-06-02)
 //! - [`gamlss_fosr`] — GAMLSS distributional boosting: location + scale (REG-06-03)
 //! - [`bayesian_fosr`] — Bayesian FOSR via conjugate Gibbs sampler (REG-06-04)
 //! - [`stability_selection`] — FDboost-style stability selection (REG-06-05)
@@ -232,9 +232,9 @@ pub struct BoostFofrResult {
     pub r_squared: f64,
     /// FPCA result for each functional predictor (one per predictor).
     pub fpca_x: Vec<crate::regression::FpcaResult>,
-    /// Accumulated FPC-space score coefficients per predictor (Vec[j] is K_j × m_y).
+    /// Accumulated FPC-space score coefficients per predictor (`Vec[j]` is K_j × m_y).
     pub score_coefs: Vec<FdMatrix>,
-    /// Reconstructed coefficient surfaces β_j(s,t) per predictor (Vec[j] is m_x × m_y).
+    /// Reconstructed coefficient surfaces β_j(s,t) per predictor (`Vec[j]` is m_x × m_y).
     pub beta_surfaces: Vec<FdMatrix>,
     /// Index j* of the base-learner selected at each boosting iteration (length mstop).
     pub selected_learners: Vec<usize>,
@@ -318,9 +318,9 @@ pub struct BayesianFosrResult {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct StabilityResult {
-    /// Selection frequency π̂[j] ∈ [0, 1] for each base-learner j = 0..p.
+    /// Selection frequency `π̂[j]` ∈ \[0, 1\] for each base-learner j = 0..p.
     pub selection_freq: Vec<f64>,
-    /// Indices j where π̂[j] ≥ pi_thr (the "stable set").
+    /// Indices j where `π̂[j]` ≥ pi_thr (the "stable set").
     pub stable_set: Vec<usize>,
     /// Threshold π used.
     pub pi_thr: f64,

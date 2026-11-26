@@ -231,7 +231,7 @@ pub(crate) fn pca_cross_1d(
 
 /// PCA-score self-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`pca_self_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `pca_self_1d`; `dim` makes intent explicit.
 pub fn pca_self(data: &FdMatrix, ncomp: usize, dim: Dim) -> Result<FdMatrix, FdarError> {
     match dim {
         Dim::One | Dim::Two => pca_self_1d(data, ncomp),
@@ -240,7 +240,7 @@ pub fn pca_self(data: &FdMatrix, ncomp: usize, dim: Dim) -> Result<FdMatrix, Fda
 
 /// PCA-score cross-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`pca_cross_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `pca_cross_1d`; `dim` makes intent explicit.
 pub fn pca_cross(
     data1: &FdMatrix,
     data2: &FdMatrix,

@@ -128,7 +128,7 @@ fn deltas_and_target(
 /// Shifts that move each curve's landmark `tᵢ` to the target τ: `δᵢ = τ − tᵢ`.
 ///
 /// Equals `−landmark_shift_deltas(fd, landmarks, location)` of scikit-fda 0.10.1
-/// (fdars sign convention, see the [module documentation](self)).
+/// (fdars sign convention, see the module documentation).
 ///
 /// # Errors
 ///

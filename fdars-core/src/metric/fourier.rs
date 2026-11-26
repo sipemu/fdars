@@ -76,7 +76,7 @@ pub(crate) fn fourier_cross_1d(data1: &FdMatrix, data2: &FdMatrix, nfreq: usize)
 
 /// Fourier-coefficient self-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`fourier_self_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `fourier_self_1d`; `dim` makes intent explicit.
 pub fn fourier_self(data: &FdMatrix, nfreq: usize, dim: Dim) -> FdMatrix {
     match dim {
         Dim::One | Dim::Two => fourier_self_1d(data, nfreq),
@@ -85,7 +85,7 @@ pub fn fourier_self(data: &FdMatrix, nfreq: usize, dim: Dim) -> FdMatrix {
 
 /// Fourier-coefficient cross-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`fourier_cross_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `fourier_cross_1d`; `dim` makes intent explicit.
 pub fn fourier_cross(data1: &FdMatrix, data2: &FdMatrix, nfreq: usize, dim: Dim) -> FdMatrix {
     match dim {
         Dim::One | Dim::Two => fourier_cross_1d(data1, data2, nfreq),

@@ -41,7 +41,7 @@ use crate::smooth_basis::{differentiate_basis_columns, integrate_symmetric_penal
 /// The j-th basis function is `B_j(t) = t^{exponents[j]}`.
 ///
 /// When all exponents are non-negative integers the penalty is analytic (same as
-/// [`monomial_basis`]); otherwise a numeric Gram is used on the fine quadrature
+/// [`monomial_basis`](crate::basis::monomial_basis)); otherwise a numeric Gram is used on the fine quadrature
 /// grid.
 ///
 /// # Arguments

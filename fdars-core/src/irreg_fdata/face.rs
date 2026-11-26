@@ -98,7 +98,7 @@ fn psd_project(cov: &FdMatrix, grid: &[f64]) -> Result<FdMatrix, FdarError> {
 ///
 /// Estimates a symmetric, positive-semidefinite covariance surface on `grid` from
 /// the sparse/irregular sample `ifd`. The raw kernel-smoothed covariance
-/// ([`cov_irreg`]) is sandwiched with a separable Gaussian smoother (the same
+/// ([`cov_irreg`](crate::irreg_fdata::cov_irreg)) is sandwiched with a separable Gaussian smoother (the same
 /// `bandwidth` on both passes) and projected to the nearest PSD matrix.
 ///
 /// On a densely-observed regular sample this recovers the underlying covariance
@@ -110,7 +110,7 @@ fn psd_project(cov: &FdMatrix, grid: &[f64]) -> Result<FdMatrix, FdarError> {
 /// Returns [`FdarError`] if the sample is empty (`ifd.n_obs() == 0`), the `grid`
 /// has fewer than 2 points or is not strictly increasing, or the `bandwidth` is
 /// not finite and strictly positive. Inputs are validated **before** calling
-/// [`cov_irreg`], which panics on malformed dimensions.
+/// [`cov_irreg`](crate::irreg_fdata::cov_irreg), which panics on malformed dimensions.
 ///
 /// # Examples
 ///

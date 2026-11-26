@@ -195,7 +195,7 @@ pub(crate) fn deriv_cross_1d(
 
 /// Derivative-weighted self-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`deriv_self_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `deriv_self_1d`; `dim` makes intent explicit.
 pub fn deriv_self(
     data: &FdMatrix,
     argvals: &[f64],
@@ -210,7 +210,7 @@ pub fn deriv_self(
 
 /// Derivative-weighted cross-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`deriv_cross_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `deriv_cross_1d`; `dim` makes intent explicit.
 pub fn deriv_cross(
     data1: &FdMatrix,
     data2: &FdMatrix,

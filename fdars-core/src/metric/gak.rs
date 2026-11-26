@@ -25,7 +25,7 @@
 //! `k(x, y) / sqrt(k(x, x) · k(y, y))`, computed entirely in log space as
 //! `exp(logGAK(x, y) - 0.5·(logGAK(x, x) + logGAK(y, y)))`. This gives a
 //! similarity in `[0, 1]` with `k(x, x) = 1`, and is the form with the PSD
-//! guarantee. The unnormalized log-kernel [`loggak`] is exposed only
+//! guarantee. The unnormalized log-kernel `loggak` is exposed only
 //! `pub(crate)` for internal reuse (e.g. split train/predict normalization).
 //!
 //! ## Local kernel

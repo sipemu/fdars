@@ -507,7 +507,7 @@ fn compute_a_inv_edf(l: &[f64], phi_t_phi: &[f64], big_n: usize) -> (Vec<f64>, f
 /// PDE-regularised (Laplacian-penalty) surface smoothing at a **fixed** smoothing parameter λ.
 ///
 /// Solves the SR-PDE penalised normal equations `(Φ'Φ + λ·K) c = Φ'y` using the in-house dense
-/// Cholesky solver from [`crate::linalg`]. Returns the fitted node-coefficient vector `c`
+/// Cholesky solver from `crate::linalg`. Returns the fitted node-coefficient vector `c`
 /// together with diagnostic fields (edf, GCV, RSS, λ).
 ///
 /// # SR-PDE System

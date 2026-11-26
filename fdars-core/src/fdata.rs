@@ -184,7 +184,7 @@ pub(crate) fn mean_1d(data: &FdMatrix) -> Vec<f64> {
 ///
 /// The 2D path never diverged from the 1D one (both compute the pointwise mean
 /// over the flattened column-major grid), so both [`Dim`] arms forward to
-/// [`mean_1d`]. The `dim` argument makes caller intent explicit and provides a
+/// `mean_1d`. The `dim` argument makes caller intent explicit and provides a
 /// single future seam should a real 2D specialization ever be needed.
 ///
 /// # Arguments
@@ -251,7 +251,7 @@ pub(crate) fn center_1d(data: &FdMatrix) -> FdMatrix {
 /// Center functional data by subtracting the mean function via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`center_1d`]. The `dim` argument makes caller intent explicit and provides a
+/// `center_1d`. The `dim` argument makes caller intent explicit and provides a
 /// single future seam should a real 2D specialization ever be needed.
 ///
 /// # Arguments
@@ -577,7 +577,7 @@ pub enum NormalizationMethod {
 /// Normalize functional data using the specified method.
 ///
 /// **Column-wise methods** (across curves at each time point):
-/// - `Center`: subtract column means (same as [`center_1d`])
+/// - `Center`: subtract column means (same as `center_1d`)
 /// - `Autoscale`: center + divide by column std dev (unit variance per time point)
 /// - `Pareto`: center + divide by sqrt(column std dev)
 /// - `Range`: center + divide by column range (max - min)
@@ -819,7 +819,7 @@ pub(crate) fn norm_lp_1d(data: &FdMatrix, argvals: &[f64], p: f64) -> Vec<f64> {
 /// Compute Lp norm for each sample via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`norm_lp_1d`]. The `dim` argument makes caller intent explicit and provides a
+/// `norm_lp_1d`. The `dim` argument makes caller intent explicit and provides a
 /// single future seam should a real 2D specialization ever be needed.
 ///
 /// # Arguments

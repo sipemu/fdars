@@ -313,7 +313,7 @@ pub(crate) fn soft_dtw_div_cross_1d(data1: &FdMatrix, data2: &FdMatrix, gamma: f
 
 /// Soft-DTW self-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`soft_dtw_self_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `soft_dtw_self_1d`; `dim` makes intent explicit.
 pub fn soft_dtw_self(data: &FdMatrix, gamma: f64, dim: Dim) -> FdMatrix {
     match dim {
         Dim::One | Dim::Two => soft_dtw_self_1d(data, gamma),
@@ -322,7 +322,7 @@ pub fn soft_dtw_self(data: &FdMatrix, gamma: f64, dim: Dim) -> FdMatrix {
 
 /// Soft-DTW cross-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`soft_dtw_cross_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `soft_dtw_cross_1d`; `dim` makes intent explicit.
 pub fn soft_dtw_cross(data1: &FdMatrix, data2: &FdMatrix, gamma: f64, dim: Dim) -> FdMatrix {
     match dim {
         Dim::One | Dim::Two => soft_dtw_cross_1d(data1, data2, gamma),
@@ -331,7 +331,7 @@ pub fn soft_dtw_cross(data1: &FdMatrix, data2: &FdMatrix, gamma: f64, dim: Dim) 
 
 /// Soft-DTW divergence self-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`soft_dtw_div_self_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `soft_dtw_div_self_1d`; `dim` makes intent explicit.
 pub fn soft_dtw_div_self(data: &FdMatrix, gamma: f64, dim: Dim) -> FdMatrix {
     match dim {
         Dim::One | Dim::Two => soft_dtw_div_self_1d(data, gamma),
@@ -340,7 +340,7 @@ pub fn soft_dtw_div_self(data: &FdMatrix, gamma: f64, dim: Dim) -> FdMatrix {
 
 /// Soft-DTW divergence cross-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`soft_dtw_div_cross_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `soft_dtw_div_cross_1d`; `dim` makes intent explicit.
 pub fn soft_dtw_div_cross(data1: &FdMatrix, data2: &FdMatrix, gamma: f64, dim: Dim) -> FdMatrix {
     match dim {
         Dim::One | Dim::Two => soft_dtw_div_cross_1d(data1, data2, gamma),
@@ -947,7 +947,7 @@ pub(crate) fn soft_dtw_barycenter_multirestart(
 /// `InvalidParameter` validation for gamma is deferred to the Phase 103 `Result`-returning
 /// config entry point (SDTW-03).
 ///
-/// This function delegates to [`soft_dtw_barycenter_multirestart`] with `n_restarts=1, seed=0`,
+/// This function delegates to `soft_dtw_barycenter_multirestart` with `n_restarts=1, seed=0`,
 /// ensuring bit-identical output to `soft_dtw_barycenter_with_config` when `config.n_restarts=1`
 /// on all inputs, including NaN-valued data (SDTW-03 non-breaking parity guarantee).
 #[must_use]

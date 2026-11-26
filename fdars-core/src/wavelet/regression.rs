@@ -15,12 +15,12 @@
 //! is `y = α + C β_c` in coefficient space (with `C` the coefficient design), then
 //! in the time domain `y = α + X (Wᵀ β_c)`, so the time-domain coefficient is
 //! `β(t) = Wᵀ β_c` — exactly the inverse DWT of the coefficient-space weights.
-//! [`coeff_weights_to_beta_t`] performs that inverse DWT.
+//! `coeff_weights_to_beta_t` performs that inverse DWT.
 //!
 //! ## Shared seams (reused by the `wnet` regressor, Plan 70-02)
 //!
-//! - [`curves_to_coeff_design`] — the curves → concatenated-coefficient-design seam.
-//! - [`coeff_weights_to_beta_t`] — the coefficient-weights → β(t) seam.
+//! - `curves_to_coeff_design` — the curves → concatenated-coefficient-design seam.
+//! - `coeff_weights_to_beta_t` — the coefficient-weights → β(t) seam.
 //!
 //! ## End-to-end example (via the prelude, WAV-06)
 //!
@@ -90,7 +90,7 @@ pub enum WcrMethod {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct WcrConfig {
-    /// Wavelet family for the DWT of each curve (default [`WaveletFamily::Daubechies(4)`]).
+    /// Wavelet family for the DWT of each curve (default [`WaveletFamily::Daubechies`]`(4)`).
     pub family: WaveletFamily,
     /// Boundary handling for the DWT (default [`BoundaryMode::Periodic`]).
     pub mode: BoundaryMode,
@@ -727,7 +727,7 @@ impl WcrResult {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub struct WnetConfig {
-    /// Wavelet family for the DWT of each curve (default [`WaveletFamily::Daubechies(4)`]).
+    /// Wavelet family for the DWT of each curve (default [`WaveletFamily::Daubechies`]`(4)`).
     pub family: WaveletFamily,
     /// Boundary handling for the DWT (default [`BoundaryMode::Periodic`]).
     pub mode: BoundaryMode,
@@ -1215,11 +1215,11 @@ fn wnet_cv_score_lambda(
 /// Fit the wavelet-domain elastic-net scalar-on-function regressor `wnet` (WAV-04).
 ///
 /// Transforms every curve into its wavelet-coefficient vector (shared seam
-/// [`curves_to_coeff_design`]), selects a deterministic cross-validated λ
-/// ([`wnet_cv_lambda`]), refits the per-coefficient elastic-net
-/// ([`elastic_net_cd`]) at that λ on the full data, and reconstructs the
+/// `curves_to_coeff_design`), selects a deterministic cross-validated λ
+/// (`wnet_cv_lambda`), refits the per-coefficient elastic-net
+/// (`elastic_net_cd`) at that λ on the full data, and reconstructs the
 /// time-domain functional coefficient β(t) via the inverse DWT (shared seam
-/// [`coeff_weights_to_beta_t`]).
+/// `coeff_weights_to_beta_t`).
 ///
 /// Because a sparse wavelet basis concentrates localized signal in a few
 /// coefficients, the L1 penalty drives the rest to exactly zero — the nonzero

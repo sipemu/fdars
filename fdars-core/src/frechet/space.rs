@@ -20,7 +20,7 @@ use crate::matrix::FdMatrix;
 /// Implementors must be `Send + Sync` so the statistics routines can parallelize.
 /// `weighted_frechet_mean` expects **non-negative** weights (they are normalized
 /// to sum to 1 by callers); the signed-weight regression path uses the private
-/// [`signed_quantile_average`] helper instead, never `weighted_frechet_mean`.
+/// `signed_quantile_average` helper instead, never `weighted_frechet_mean`.
 pub trait MetricSpace: Send + Sync {
     /// The object type living in this metric space (e.g. a density on a grid).
     type Object;

@@ -113,7 +113,7 @@ pub enum AffineMetric {
 }
 
 /// Where registered curves are compared with the template (see the
-/// [module documentation](self)).
+/// module documentation).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -788,7 +788,7 @@ fn validate_warp_params(dilations: &[f64], shifts: &[f64], n: usize) -> Result<(
 /// Apply linear warps: `out[(i, j)] = fᵢ((tⱼ − shifts[i]) / dilations[i])`.
 ///
 /// The registered curves `gᵢ = fᵢ ∘ hᵢ⁻¹` of `hᵢ(t) = aᵢ·t + bᵢ` (see the
-/// [module documentation](self)), by linear interpolation on `argvals`;
+/// module documentation), by linear interpolation on `argvals`;
 /// pre-images outside the domain follow `extrapolation`.
 ///
 /// # Errors
@@ -920,7 +920,7 @@ fn fit_all(
 ///
 /// This is the k = 1 case of R `fdacluster::fdakmeans(warping_class = ...,
 /// centroid_type = "mean", metric = ...)`; see the
-/// [module documentation](self) for the warp convention, the comparison
+/// module documentation for the warp convention, the comparison
 /// domains and the documented deviations.
 ///
 /// # Errors

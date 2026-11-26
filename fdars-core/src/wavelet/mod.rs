@@ -4,13 +4,13 @@
 //! orthonormal Daubechies filter tables (Haar/db1 through db10, in [`filters`]) and
 //! one single-level DWT step that perfectly reconstructs its input.
 //!
-//! - **Analysis** ([`single_level_analysis`]): a signal is convolved with the
+//! - **Analysis** (`single_level_analysis`): a signal is convolved with the
 //!   analysis low-pass filter (`dec_lo`) and high-pass filter (`dec_hi`), then
 //!   downsampled by 2, yielding an *approximation* and a *detail* coefficient
 //!   vector. Under [`BoundaryMode::Periodic`] each has length `ceil(n/2)`; under
 //!   [`BoundaryMode::Symmetric`] each has length `n` (the signal is mirror-extended
 //!   to `2n` internally).
-//! - **Synthesis** ([`single_level_synthesis`]): the exact inverse of analysis —
+//! - **Synthesis** (`single_level_synthesis`): the exact inverse of analysis —
 //!   the approximation and detail are scattered back through the transpose of the
 //!   orthogonal even-length core and summed to reconstruct the original signal.
 //!
@@ -27,7 +27,7 @@
 //! any signal of any length to ≤1e-10 relative error for every in-scope family and
 //! both boundary modes — the property multi-level (Mallat pyramid) construction
 //! builds on. The `rec_lo`/`rec_hi` (time-reversed) synthesis filters are exposed on
-//! [`filters::FilterBank`] for downstream use and verified by the filter-invariant
+//! `filters::FilterBank` for downstream use and verified by the filter-invariant
 //! tests, though this single-level engine reconstructs via the core transpose.
 //!
 //! No crate-root or prelude re-exports are added in this phase (deferred to a later
@@ -298,7 +298,7 @@ pub(crate) fn single_level_synthesis(
 ///
 /// # Errors
 /// Returns [`FdarError::InvalidParameter`] if `signal_len == 0`, if `family` is an
-/// unsupported Daubechies order (surfaced via [`filters::filter_bank`]), or if the
+/// unsupported Daubechies order (surfaced via `filters::filter_bank`), or if the
 /// signal is too short to admit even a single useful level.
 pub fn max_level(signal_len: usize, family: &WaveletFamily) -> Result<usize, FdarError> {
     if signal_len == 0 {
@@ -410,7 +410,7 @@ impl WaveletCoeffs {
 
 /// Multi-level orthogonal DWT: decompose a signal into a Mallat coefficient pyramid.
 ///
-/// Applies [`single_level_analysis`] repeatedly to the running approximation band,
+/// Applies `single_level_analysis` repeatedly to the running approximation band,
 /// collecting one detail band per level (finest-first). When `level` is `None` the
 /// depth defaults to [`max_level`]; an explicit `level` is validated to lie in
 /// `1..=max_level`.
@@ -478,7 +478,7 @@ pub fn decompose(
 /// Invert [`decompose`]: reconstruct the original signal from a coefficient pyramid.
 ///
 /// Rebuilds the filter bank from `coeffs.family`, then folds the detail bands back in
-/// reverse level order (coarsest-first), calling [`single_level_synthesis`] with each
+/// reverse level order (coarsest-first), calling `single_level_synthesis` with each
 /// level's exact analysis-input length recovered from `coeffs.level_lens`. Returns
 /// exactly `coeffs.signal_len` samples. Never emits NaN/inf when inputs are finite.
 ///
@@ -517,7 +517,7 @@ pub fn reconstruct(coeffs: &WaveletCoeffs) -> Result<Vec<f64>, FdarError> {
     Ok(approx)
 }
 
-/// Multi-level orthogonal DWT over every row (curve) of an [`FdMatrix`].
+/// Multi-level orthogonal DWT over every row (curve) of an [`FdMatrix`](crate::matrix::FdMatrix).
 ///
 /// Each row is a signal of length `data.ncols()`; the result holds one
 /// [`WaveletCoeffs`] per row, in row order. The batch path is exactly the per-row

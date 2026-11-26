@@ -1550,7 +1550,7 @@ fn assemble(
 /// Bayesian group alignment: joint posterior draws of all warps, the template and
 /// the noise variance via Z-mixture pCN MCMC, with multiple chains.
 ///
-/// See the [module documentation](self) for the model. Each curve `f_i` (row of
+/// See the module documentation for the model. Each curve `f_i` (row of
 /// `data`) gets a posterior over warps `γ_i` such that `f_i ∘ γ_i` is aligned to the
 /// common template; the result reports the posterior-mean (ψ-mean) and median
 /// warps, pointwise credible bands for the warps, the template SRSF and the

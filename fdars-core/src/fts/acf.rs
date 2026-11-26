@@ -429,7 +429,7 @@ pub fn functional_pacf(
 /// reconstructed[i, j] = reconstructed[i-1, j] + D[i-1, j]    for i >= 1
 /// ```
 ///
-/// This round-trips within machine precision (|reconstructed[i,j] - data[i,j]| < 1e-10
+/// This round-trips within machine precision (`|reconstructed[i,j] - data[i,j]|` < 1e-10
 /// for typical f64 inputs). The tolerance is tight because first-differencing and
 /// cumulative-summation are exact inverse operations in floating-point arithmetic
 /// (no approximation is involved, only floating-point rounding).

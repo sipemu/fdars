@@ -113,7 +113,7 @@ where
 /// per-iteration seeded RNG (`StdRng::seed_from_u64(seed.wrapping_add(perm))`), so
 /// it is reproducible for a fixed `seed`. Pass `n_perm = 0` to use the default of 999.
 ///
-/// The exact σ̂ₗ² variance estimator is **[ASSUMED]** (see [`compute_tn_generic`]);
+/// The exact σ̂ₗ² variance estimator is **\[ASSUMED\]** (see `compute_tn_generic`);
 /// the permutation p-value does not depend on that assumption.
 ///
 /// # Errors
@@ -205,7 +205,7 @@ pub fn frechet_anova(
 }
 
 /// Fréchet ANOVA group-difference test over an arbitrary object [`MetricSpace`]
-/// backend (FRE-02-07). Reuses the Dubey–Müller [`compute_tn_generic`] statistic
+/// backend (FRE-02-07). Reuses the Dubey–Müller `compute_tn_generic` statistic
 /// and the identical seeded-permutation p-value machinery as [`frechet_anova`],
 /// generalized from densities to any metric-space objects.
 ///

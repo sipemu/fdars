@@ -698,7 +698,7 @@ fn kcfc_reassign(
 /// Configuration for funFEM discriminative-subspace clustering.
 ///
 /// funFEM applies the Fisher-EM algorithm to functional data: it first extracts
-/// global FPC scores via [`fdata_to_pc`](crate::regression::fdata_to_pc),
+/// global FPC scores via [`fdata_to_pc`],
 /// then alternates between finding a discriminative subspace (maximising
 /// between-class vs within-class scatter) and running a GMM E/M step in that
 /// subspace.

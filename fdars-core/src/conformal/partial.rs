@@ -52,7 +52,7 @@
 //!   fragmented / sparse observation regimes are **not** implemented.
 //! * The partial registration of the new prefix onto the template (an estimate of the
 //!   observed part of `γ_{n+1}*`) is reported via
-//!   [`elastic_partial_match`](crate::alignment::elastic_partial_match); it is
+//!   [`elastic_partial_match`]; it is
 //!   informative only and does not enter the conformal sets.
 
 use crate::alignment::{

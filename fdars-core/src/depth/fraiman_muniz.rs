@@ -43,7 +43,7 @@ pub(crate) fn fraiman_muniz_1d(data_obj: &FdMatrix, data_ori: &FdMatrix, scale: 
 /// Compute Fraiman-Muniz depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`fraiman_muniz_1d`]. The `dim` argument makes caller intent explicit and
+/// `fraiman_muniz_1d`. The `dim` argument makes caller intent explicit and
 /// provides a single future seam should a real 2D specialization ever be needed.
 ///
 /// # Arguments

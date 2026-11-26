@@ -133,7 +133,7 @@ pub(crate) fn extreme_rank_length_depth_1d(
 /// Compute Extreme Rank Length depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`extreme_rank_length_depth_1d`]. The `dim` argument makes caller intent explicit.
+/// `extreme_rank_length_depth_1d`. The `dim` argument makes caller intent explicit.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn extreme_rank_length_depth(
     data_obj: &FdMatrix,

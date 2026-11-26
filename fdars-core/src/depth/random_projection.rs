@@ -61,7 +61,7 @@ pub fn random_projection_1d_seeded(
 /// Compute random projection depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`random_projection_1d`]. Because `random_projection_1d` draws fresh entropy
+/// `random_projection_1d`. Because `random_projection_1d` draws fresh entropy
 /// from `thread_rng()` (no public seed), the forwarding is a compile-time
 /// guarantee (single-arm `match`), not a runtime-equality one; use
 /// [`random_projection_1d_seeded`] for reproducible results.

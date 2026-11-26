@@ -226,7 +226,7 @@ pub(crate) fn kl_cross_1d(
 
 /// Symmetric KL self-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`kl_self_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `kl_self_1d`; `dim` makes intent explicit.
 #[must_use]
 pub fn kl_self(data: &FdMatrix, argvals: &[f64], epsilon: f64, dim: Dim) -> FdMatrix {
     match dim {
@@ -236,7 +236,7 @@ pub fn kl_self(data: &FdMatrix, argvals: &[f64], epsilon: f64, dim: Dim) -> FdMa
 
 /// Symmetric KL cross-distance matrix via a unified [`Dim`] dispatch.
 ///
-/// Both [`Dim`] arms forward to [`kl_cross_1d`]; `dim` makes intent explicit.
+/// Both [`Dim`] arms forward to `kl_cross_1d`; `dim` makes intent explicit.
 #[must_use]
 pub fn kl_cross(
     data1: &FdMatrix,

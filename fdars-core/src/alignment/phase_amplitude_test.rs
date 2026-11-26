@@ -283,8 +283,8 @@ fn joint_distances(amp: &FdMatrix, phase: &FdMatrix) -> FdMatrix {
 /// using the labels**; then a one-way PERMANOVA (pseudo-F, R `vegan::adonis2`
 /// semantics) with a seeded label-permutation p-value is computed separately
 /// on the amplitude distances, the phase (Fisher–Rao warp) distances and —
-/// optionally — a scale-free joint distance. See the [module
-/// docs](self) for the distances and for why label-free alignment makes the
+/// optionally — a scale-free joint distance. See the module
+/// docs for the distances and for why label-free alignment makes the
 /// permutation test exact under H0.
 ///
 /// The three tests use the same `seed`, i.e. the same permutations. Permutation

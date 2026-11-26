@@ -87,7 +87,7 @@ pub enum WfdaChoice {
 }
 
 /// Pairwise cost used to truncate or weight the pairwise warps (see the
-/// [module documentation](self)).
+/// module documentation).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -737,7 +737,7 @@ fn to_argvals_scale(h: &[f64], argvals: &[f64]) -> Vec<f64> {
 /// (n − 1))` partner curves under the penalty `λ`, averages them into the
 /// curve's inverse warp to the common time scale (truncated or weighted mean,
 /// [`WfdaChoice`]), inverts it and registers the curve. See the
-/// [module documentation](self) for the algorithm and its correspondence with
+/// module documentation for the algorithm and its correspondence with
 /// fdapace 0.6.0.
 ///
 /// # Arguments

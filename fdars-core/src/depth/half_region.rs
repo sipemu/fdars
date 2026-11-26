@@ -158,7 +158,7 @@ pub(crate) fn modified_half_region_depth_1d(
 /// Compute Half-Region Depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`half_region_depth_1d`]. The `dim` argument makes caller intent explicit.
+/// `half_region_depth_1d`. The `dim` argument makes caller intent explicit.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn half_region_depth(
     data_obj: &FdMatrix,
@@ -173,7 +173,7 @@ pub fn half_region_depth(
 /// Compute Modified Half-Region Depth for 1D or 2D functional data via a unified [`Dim`] dispatch.
 ///
 /// The 2D path never diverged from the 1D one, so both [`Dim`] arms forward to
-/// [`modified_half_region_depth_1d`]. The `dim` argument makes caller intent explicit.
+/// `modified_half_region_depth_1d`. The `dim` argument makes caller intent explicit.
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn modified_half_region_depth(
     data_obj: &FdMatrix,
