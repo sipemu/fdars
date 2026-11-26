@@ -238,7 +238,9 @@ fn dp_align_partial(q1: &[f64], q2: &[f64], argvals: &[f64], lambda: f64) -> Vec
     let q1n: Vec<f64> = q1.iter().map(|&v| v / norm1).collect();
     let q2n: Vec<f64> = q2.iter().map(|&v| v / norm2).collect();
 
-    let path = super::dp_grid_solve(m, m, |sr, sc, tr, tc| {
+    // Exact pruning (non-negative edge costs on a strictly increasing grid).
+    let prune = super::dp_prune_is_exact(argvals, lambda);
+    let path = super::dp_grid_solve(m, m, prune, |sr, sc, tr, tc| {
         dp_edge_weight(&q1n, &q2n, argvals, sc, tc, sr, tr)
             + dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
     });

@@ -26,7 +26,9 @@
 //! default `CubicSpline` is not-a-knot).
 
 use super::optim::WarpObjectivePenalty;
-use super::{dp_alignment_core_banded, dp_alignment_core_with_penalty, dp_l2psi_penalty};
+use super::{
+    dp_alignment_core_banded, dp_alignment_core_with_penalty, dp_l2psi_penalty, dp_prune_is_exact,
+};
 use crate::helpers::linear_interp;
 use crate::metric::soft_dtw::{lbfgs_dot, lbfgs_hessian_scale, two_loop_lbfgs};
 use std::collections::VecDeque;
@@ -641,7 +643,8 @@ fn coarse_dp_start(q1: &[f64], q2: &[f64], t1: &[f64], p: &RbfgsParams) -> (Vec<
         dp_alignment_core_banded(&q1c, &q2c, &tc, p.lambda, None)
     } else {
         let tcr = &tc;
-        dp_alignment_core_with_penalty(&q1c, &q2c, tcr, None, |sc, tc_, sr, tr| {
+        let prune = dp_prune_is_exact(tcr, p.lambda);
+        dp_alignment_core_with_penalty(&q1c, &q2c, tcr, None, prune, |sc, tc_, sr, tr| {
             dp_l2psi_penalty(tcr, sc, tc_, sr, tr, p.lambda)
         })
     };

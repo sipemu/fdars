@@ -3,6 +3,7 @@
 use super::srsf::reparameterize_curve;
 use super::{
     dp_alignment_core, dp_edge_weight, dp_grid_solve, dp_lambda_penalty, dp_path_to_gamma,
+    dp_prune_is_exact,
 };
 use crate::error::FdarError;
 use crate::helpers::{cumulative_trapz, l2_distance, simpsons_weights};
@@ -166,7 +167,9 @@ fn dp_alignment_core_nd(
         })
         .collect();
 
-    let path = dp_grid_solve(m, m, |sr, sc, tr, tc| {
+    // Exact pruning (non-negative edge costs on a strictly increasing grid).
+    let prune = dp_prune_is_exact(argvals, lambda);
+    let path = dp_grid_solve(m, m, prune, |sr, sc, tr, tc| {
         let w: f64 = (0..d)
             .map(|k| dp_edge_weight(&q1n[k], &q2n[k], argvals, sc, tc, sr, tr))
             .sum();

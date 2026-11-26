@@ -11,8 +11,8 @@
 
 use super::rbfgs::{rbfgs_warp, RbfgsParams};
 use super::{
-    coprime_nbhd, dp_alignment_core_opts, dp_l2psi_penalty, dp_lambda_penalty, DpEngineOptions,
-    DpMoves,
+    coprime_nbhd, dp_alignment_core_opts, dp_l2psi_penalty, dp_lambda_penalty, dp_prune_is_exact,
+    DpEngineOptions, DpMoves,
 };
 use crate::error::FdarError;
 
@@ -118,7 +118,8 @@ pub enum DpEdgeCost {
 /// ```
 ///
 /// A more accurate dynamic program — fdasrsf `DP2`'s 63-move `grid_dim = 10`
-/// neighbourhood with the exact piecewise-linear cost, plus exact pruning:
+/// neighbourhood with the exact piecewise-linear cost (exact pruning is on by
+/// default):
 ///
 /// ```
 /// use fdars_core::alignment::{elastic_align_pair_with_config, DpEdgeCost, WarpOptimConfig};
@@ -130,7 +131,7 @@ pub enum DpEdgeCost {
 /// let mut cfg = WarpOptimConfig::default();
 /// cfg.nbhd_dim = 10;
 /// cfg.dp_cost = DpEdgeCost::PiecewiseLinear;
-/// cfg.dp_prune = true;
+/// assert!(cfg.dp_prune); // exact pruning is on by default
 /// let fine = elastic_align_pair_with_config(&f1, &f2, &t, &cfg).unwrap();
 /// let classic = elastic_align_pair_with_config(&f1, &f2, &t, &WarpOptimConfig::default()).unwrap();
 /// assert!(fine.gamma.windows(2).all(|w| w[1] >= w[0]));
@@ -174,8 +175,12 @@ pub struct WarpOptimConfig {
     /// DP candidate pruning (fdasrsf ≥ 2.7.4): skip a predecessor whose
     /// accumulated cost already reaches the target cell's best, without
     /// evaluating its edge. Exact — bit-identical warps — because every edge
-    /// cost is non-negative under a validated config (`lambda ≥ 0`). Default
-    /// `false`. DP only.
+    /// cost is non-negative under a validated config (`lambda ≥ 0`, strictly
+    /// increasing `argvals`); the engine re-checks both and never prunes
+    /// otherwise. Default `true` (≈ 1.6× faster DP; the classic functions
+    /// such as [`elastic_align_pair`](super::elastic_align_pair) and
+    /// [`karcher_mean`](super::karcher_mean) prune under the same condition).
+    /// Set `false` to run the unpruned reference fill. DP only.
     pub dp_prune: bool,
 }
 
@@ -190,7 +195,7 @@ impl Default for WarpOptimConfig {
             nbhd_dim: 7,
             dp_scl: 1,
             dp_cost: DpEdgeCost::PiecewiseConstant,
-            dp_prune: false,
+            dp_prune: true,
         }
     }
 }
@@ -290,7 +295,8 @@ fn dp_warp(
     let opts = DpEngineOptions {
         moves: DpMoves {
             nbhd: &nbhd,
-            prune: cfg.dp_prune,
+            // Exact (bit-identical) only for non-negative edge costs.
+            prune: cfg.dp_prune && dp_prune_is_exact(argvals, cfg.lambda),
         },
         scl: cfg.dp_scl.max(1),
         cost: cfg.dp_cost,

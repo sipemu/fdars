@@ -2,7 +2,7 @@
 
 use super::pairwise::elastic_align_pair;
 use super::srsf::{reparameterize_curve, srsf_transform};
-use super::{dp_edge_weight, dp_grid_solve, dp_lambda_penalty};
+use super::{dp_edge_weight, dp_grid_solve, dp_lambda_penalty, dp_prune_is_exact};
 use crate::helpers::{l2_distance, linear_interp, simpsons_weights};
 use crate::matrix::FdMatrix;
 use crate::warping::normalize_warp;
@@ -56,7 +56,9 @@ fn dp_segment(
         return vec![(sc, sr), (ec, er)];
     }
 
-    let path = dp_grid_solve(nr, nc, |local_sr, local_sc, local_tr, local_tc| {
+    // Exact pruning (non-negative edge costs on a strictly increasing grid).
+    let prune = dp_prune_is_exact(argvals, lambda);
+    let path = dp_grid_solve(nr, nc, prune, |local_sr, local_sc, local_tr, local_tc| {
         let gsr = sr + local_sr;
         let gsc = sc + local_sc;
         let gtr = sr + local_tr;

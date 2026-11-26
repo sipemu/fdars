@@ -5,15 +5,15 @@
 //! - Self-distance matrix with varying n and m
 //! - Karcher mean computation
 //! - DP engine options (`WarpOptimConfig` neighbourhood / `dp_scl` / edge cost /
-//!   pruning, ALN-DPACC #49)
+//!   pruning, ALN-DPACC #49; pruning on by default, GH #66)
 //! - Closed-curve rotation search (`elastic_align_pair_closed`, ALN-HYGIENE #56)
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use fdars_core::alignment::{
     elastic_align_pair, elastic_align_pair_banded, elastic_align_pair_closed,
     elastic_align_pair_with_config, elastic_self_distance_matrix,
-    elastic_self_distance_matrix_banded, karcher_mean, karcher_mean_with_band, DpEdgeCost,
-    WarpOptimConfig,
+    elastic_self_distance_matrix_banded, karcher_mean, karcher_mean_with_band,
+    karcher_mean_with_config, DpEdgeCost, WarpOptimConfig,
 };
 use fdars_core::matrix::FdMatrix;
 use std::f64::consts::PI;
@@ -114,6 +114,8 @@ fn bench_self_distance_matrix(c: &mut Criterion) {
     group.finish();
 }
 
+// Sealed config: external construction is `default()` + field assignment.
+#[allow(clippy::field_reassign_with_default)]
 fn bench_karcher_mean(c: &mut Criterion) {
     let mut group = c.benchmark_group("karcher_mean");
 
@@ -145,6 +147,23 @@ fn bench_karcher_mean(c: &mut Criterion) {
                 black_box(1e-4),
                 black_box(0.0),
             )
+        });
+    });
+
+    // The unpruned reference fill (`dp_prune = false`, GH #66): bit-identical
+    // to `n20_m50`, which prunes by default.
+    let mut unpruned = WarpOptimConfig::default();
+    unpruned.dp_prune = false;
+    group.bench_function("n20_m50_unpruned", |b| {
+        b.iter(|| {
+            karcher_mean_with_config(
+                black_box(&mat),
+                black_box(&argvals),
+                black_box(15),
+                black_box(1e-4),
+                &unpruned,
+            )
+            .unwrap()
         });
     });
 
@@ -196,27 +215,35 @@ fn bench_karcher_mean_with_band(c: &mut Criterion) {
 }
 
 /// DP engine options on one pair (ALN-DPACC #49). `default` is the classic
-/// 35-move piecewise-constant engine; the others trade time for accuracy
-/// (`nbhd10_linear` = fdasrsf `DP2`) or, with pruning, save edge evaluations
-/// without changing the result.
+/// 35-move piecewise-constant engine with exact pruning (on by default since
+/// GH #66); the `_unpruned` variants set `dp_prune = false` (the reference
+/// fill, bit-identical results). The others trade time for accuracy
+/// (`nbhd10_linear` = fdasrsf `DP2`, `scl3` = 3× refined cost).
 // Sealed config: external construction is `default()` + field assignment.
 #[allow(clippy::field_reassign_with_default)]
 fn bench_dp_options(c: &mut Criterion) {
     let mut group = c.benchmark_group("dp_options");
-    let variants: [(&str, usize, usize, DpEdgeCost, bool); 7] = [
-        ("default", 7, 1, DpEdgeCost::PiecewiseConstant, false),
-        ("default_pruned", 7, 1, DpEdgeCost::PiecewiseConstant, true),
-        ("linear7", 7, 1, DpEdgeCost::PiecewiseLinear, false),
-        ("nbhd10_linear", 10, 1, DpEdgeCost::PiecewiseLinear, false),
+    let variants: [(&str, usize, usize, DpEdgeCost, bool); 8] = [
+        ("default", 7, 1, DpEdgeCost::PiecewiseConstant, true),
         (
-            "nbhd10_linear_pruned",
+            "default_unpruned",
+            7,
+            1,
+            DpEdgeCost::PiecewiseConstant,
+            false,
+        ),
+        ("linear7", 7, 1, DpEdgeCost::PiecewiseLinear, true),
+        ("linear7_unpruned", 7, 1, DpEdgeCost::PiecewiseLinear, false),
+        ("nbhd10_linear", 10, 1, DpEdgeCost::PiecewiseLinear, true),
+        (
+            "nbhd10_linear_unpruned",
             10,
             1,
             DpEdgeCost::PiecewiseLinear,
-            true,
+            false,
         ),
-        ("scl3", 7, 3, DpEdgeCost::PiecewiseConstant, false),
-        ("scl3_pruned", 7, 3, DpEdgeCost::PiecewiseConstant, true),
+        ("scl3", 7, 3, DpEdgeCost::PiecewiseConstant, true),
+        ("scl3_unpruned", 7, 3, DpEdgeCost::PiecewiseConstant, false),
     ];
     for &m in &[100, 200] {
         let (mat, argvals) = generate_curves(2, m);

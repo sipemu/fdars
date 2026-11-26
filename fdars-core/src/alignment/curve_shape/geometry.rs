@@ -4,7 +4,9 @@
 //! column = sample) on the implicit uniform grid `t_j = j/(m−1)` of `[0, 1]`.
 //! L² inner products use trapezoidal weights on that grid.
 
-use crate::alignment::{dp_edge_weight_core, dp_grid_solve, dp_lambda_penalty, dp_path_to_gamma};
+use crate::alignment::{
+    dp_edge_weight_core, dp_grid_solve, dp_lambda_penalty, dp_path_to_gamma, dp_prune_is_exact,
+};
 use crate::error::FdarError;
 use crate::helpers::linear_interp;
 use crate::matrix::FdMatrix;
@@ -513,7 +515,9 @@ pub(super) fn dp_warp(q1: &FdMatrix, q2: &FdMatrix, grid: &Grid, lambda: f64) ->
     }
     let h = grid.h;
     let t = &grid.t;
-    let path = dp_grid_solve(m, m, |sr, sc, tr, tc| {
+    // Exact pruning: spans `dc·h` and the λ penalty are non-negative.
+    let prune = h > 0.0 && dp_prune_is_exact(t, lambda);
+    let path = dp_grid_solve(m, m, prune, |sr, sc, tr, tc| {
         let (dr, dc) = (tr - sr, tc - sc);
         let rs = rslope[dr][dc];
         let span = dc as f64 * h;

@@ -13,6 +13,28 @@ Changed below).
 
 ## [Unreleased]
 
+**Exact DP pruning on by default (GH #66 ALN-CAV).** Behaviour-preserving and non-breaking: every
+result is bit-identical (FNV-hash tests recorded on the unpruned code); no signature change, no new
+crate dependency.
+
+### Changed
+
+- `WarpOptimConfig::dp_prune` now defaults to `true` (was `false`). Set it to `false` to run the
+  unpruned reference fill.
+- The shared elastic DP engine now prunes in the classic paths too — `elastic_align_pair`
+  (+ `_banded`, `_penalized`, `_constrained`, `_with_landmarks`, `_multires`), `elastic_distance`,
+  the self/cross distance matrices, `karcher_mean` (+ `_with_band`/`_banded`), closed-curve
+  alignment, R^d (`elastic_align_pair_nd`, `karcher_mean_nd`), planar `curve_shape_*`, partial
+  matching, geodesics, the RBFGS coarse DP start and every downstream user of the DP (elastic
+  regression, conformal, FPCA, …). Pruning skips a predecessor whose accumulated cost already
+  reaches the target's best; it is exact whenever every edge cost is non-negative, so it is applied
+  only when `λ ≥ 0` and the grid is finite and strictly increasing (a new internal gate
+  `dp_prune_is_exact`); a negative or NaN `λ` is never pruned.
+- Speed (criterion `--quick`, same build, pruned vs `dp_prune = false`): pair alignment m = 100
+  6.5 → 4.2 ms (1.5×), m = 200 26.7 → 16.3 ms (1.6×); `karcher_mean` n = 20, m = 50
+  87.5 → 60.7 ms (1.4×). The `dp_options` bench rows are renamed (`default` = pruned,
+  `*_unpruned` = reference) and `karcher_mean/n20_m50_unpruned` is added.
+
 **Permutation test of group amplitude and phase differences (GH #62 ALN-PHTEST).** Additive and
 non-breaking (new modules `alignment::phase_amplitude_test` and `inference::permanova`; existing code
 untouched apart from re-exports); no new crate dependency.

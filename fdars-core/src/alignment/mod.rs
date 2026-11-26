@@ -88,6 +88,8 @@ mod wfda;
 #[cfg(test)]
 mod hygiene_tests;
 #[cfg(test)]
+mod prune_default_tests;
+#[cfg(test)]
 mod tests;
 
 // Re-export all public items so that `crate::alignment::X` continues to work.
@@ -619,11 +621,41 @@ pub(super) struct DpMoves<'a> {
     pub prune: bool,
 }
 
-/// The classic engine: fdasrvf's 35-move `nbhd_dim = 7` set, no pruning.
-pub(super) const DP_MOVES_CLASSIC: DpMoves<'static> = DpMoves {
-    nbhd: &COPRIME_NBHD_7,
-    prune: false,
-};
+/// The classic engine: fdasrvf's 35-move `nbhd_dim = 7` set, no pruning
+/// (the unpruned reference fill).
+pub(super) const DP_MOVES_CLASSIC: DpMoves<'static> = DpMoves::classic(false);
+
+impl DpMoves<'static> {
+    /// fdasrvf's 35-move `nbhd_dim = 7` set with the given pruning switch.
+    pub(super) const fn classic(prune: bool) -> Self {
+        Self {
+            nbhd: &COPRIME_NBHD_7,
+            prune,
+        }
+    }
+}
+
+/// Whether exact DP pruning ([`DpMoves::prune`]) is guaranteed bit-identical
+/// for a DP whose edge costs are a squared-residual data term plus a
+/// `λ`-weighted non-negative slope penalty, integrated over `argvals` spans.
+///
+/// Pruning is exact when every edge cost is `≥ 0` (or NaN, which never wins
+/// either way). The data term and the `l2gam` / `l2psi` penalties are
+/// non-negative multiples of the edge span, so this holds when
+///
+/// * `lambda ≥ 0` (a negative — or NaN — `λ` is never pruned, even though the
+///   classic penalties are inactive for `λ ≤ 0`), and
+/// * `argvals` is finite and strictly increasing (every span is positive).
+///
+/// The check is `O(m)`, negligible next to the `O(m²·|nbhd|)` grid fill. It
+/// gates pruning in every DP entry point routed through [`dp_grid_solve`] /
+/// [`dp_grid_solve_moves`], so pruning is on by default exactly where it
+/// cannot change a result.
+pub(super) fn dp_prune_is_exact(argvals: &[f64], lambda: f64) -> bool {
+    lambda >= 0.0
+        && argvals.iter().all(|v| v.is_finite())
+        && argvals.windows(2).all(|w| w[1] > w[0])
+}
 
 /// Try to relax cell `(tr, tc)` from each neighbourhood move, updating cost and parent.
 #[inline]
@@ -675,19 +707,27 @@ thread_local! {
     static DP_SCRATCH: RefCell<(Vec<f64>, Vec<u32>)> = const { RefCell::new((Vec::new(), Vec::new())) };
 }
 
-/// Shared DP grid fill + traceback using the coprime neighborhood.
+/// Shared DP grid fill + traceback using the classic coprime neighborhood.
 ///
 /// `edge_cost(sr, sc, tr, tc)` returns the combined edge weight + penalty for
 /// a move from local (sr, sc) to local (tr, tc). Returns the raw local-index
-/// path from (0,0) to (nrows-1, ncols-1).
-pub(super) fn dp_grid_solve<F>(nrows: usize, ncols: usize, edge_cost: F) -> Vec<(usize, usize)>
+/// path from (0,0) to (nrows-1, ncols-1). `prune` enables exact candidate
+/// pruning ([`DpMoves::prune`]); callers pass it only when every edge cost is
+/// non-negative (see [`dp_prune_is_exact`]).
+pub(super) fn dp_grid_solve<F>(
+    nrows: usize,
+    ncols: usize,
+    prune: bool,
+    edge_cost: F,
+) -> Vec<(usize, usize)>
 where
     F: Fn(usize, usize, usize, usize) -> f64,
 {
-    dp_grid_solve_banded(nrows, ncols, None, edge_cost)
+    dp_grid_solve_moves(nrows, ncols, None, DpMoves::classic(prune), edge_cost)
 }
 
-/// Shared DP grid fill + traceback, optionally restricted to a Sakoe–Chiba band.
+/// Shared DP grid fill + traceback with an explicit move set / pruning
+/// switch, optionally restricted to a Sakoe–Chiba band.
 ///
 /// When `band = Some(r)`, only cells with `|tr − tc| ≤ r` are filled; the rest
 /// stay at `+∞` and are skipped as predecessors, so the optimal warp is confined
@@ -696,19 +736,6 @@ where
 /// warps. `band = None` reproduces the full unbanded search exactly. A feasible
 /// path always exists for any `r ≥ 0` because the `(1,1)` diagonal move keeps
 /// `tr = tc`.
-pub(super) fn dp_grid_solve_banded<F>(
-    nrows: usize,
-    ncols: usize,
-    band: Option<usize>,
-    edge_cost: F,
-) -> Vec<(usize, usize)>
-where
-    F: Fn(usize, usize, usize, usize) -> f64,
-{
-    dp_grid_solve_moves(nrows, ncols, band, DP_MOVES_CLASSIC, edge_cost)
-}
-
-/// [`dp_grid_solve_banded`] with an explicit move set / pruning switch.
 pub(super) fn dp_grid_solve_moves<F>(
     nrows: usize,
     ncols: usize,
@@ -725,7 +752,7 @@ where
     // the pub(super) surface in debug/test builds (free in release).
     debug_assert!(
         nrows >= 1 && ncols >= 1,
-        "dp_grid_solve_banded requires a non-empty grid (nrows={nrows}, ncols={ncols})"
+        "dp_grid_solve_moves requires a non-empty grid (nrows={nrows}, ncols={ncols})"
     );
     DP_SCRATCH.with(|cell| {
         let mut scratch = cell.borrow_mut();
@@ -750,7 +777,7 @@ where
 ///   `tr.saturating_sub(r) ..= (tr + r).min(ncols - 1)` expressed as a
 ///   half-open range. When the lower bound exceeds the upper bound the range is
 ///   empty, exactly like the inclusive form, so the same cells are visited.
-///   Requires `ncols >= 1` (debug-asserted by [`dp_grid_solve_banded`]).
+///   Requires `ncols >= 1` (debug-asserted by [`dp_grid_solve_moves`]).
 #[inline]
 fn dp_band_cols(tr: usize, ncols: usize, band: Option<usize>) -> std::ops::Range<usize> {
     match band {
@@ -812,7 +839,7 @@ fn dp_fill_grid_impl<const PRUNE: bool, F>(
 }
 
 /// Convert a band width expressed as a fraction of the domain into an index
-/// radius for [`dp_grid_solve_banded`].
+/// radius for [`dp_grid_solve_moves`].
 ///
 /// `band_frac` is the largest allowed warp displacement `|γ(t) − t|` as a
 /// fraction of the number of grid points. Returns `None` (unbounded search)
@@ -848,10 +875,12 @@ pub(crate) fn dp_alignment_core(q1: &[f64], q2: &[f64], argvals: &[f64], lambda:
 }
 
 /// Core DP alignment, optionally restricted to a Sakoe–Chiba band of `band`
-/// grid-index radius (see [`dp_grid_solve_banded`] / [`band_radius`]).
+/// grid-index radius (see [`dp_grid_solve_moves`] / [`band_radius`]).
 ///
 /// `band = None` is identical to [`dp_alignment_core`]. A finite band confines
 /// the warp to a diagonal corridor, trading unbounded warps for a large speedup.
+/// Exact pruning is applied whenever [`dp_prune_is_exact`] holds (bit-identical
+/// to the unpruned fill).
 pub(crate) fn dp_alignment_core_banded(
     q1: &[f64],
     q2: &[f64],
@@ -859,7 +888,8 @@ pub(crate) fn dp_alignment_core_banded(
     lambda: f64,
     band: Option<usize>,
 ) -> Vec<f64> {
-    dp_alignment_core_with_penalty(q1, q2, argvals, band, |sc, tc, sr, tr| {
+    let prune = dp_prune_is_exact(argvals, lambda);
+    dp_alignment_core_with_penalty(q1, q2, argvals, band, prune, |sc, tc, sr, tr| {
         dp_lambda_penalty(argvals, sc, tc, sr, tr, lambda)
     })
 }
@@ -893,18 +923,25 @@ pub(super) fn dp_l2psi_penalty(
 /// `penalty(sc, tc, sr, tr)` is added to the data edge weight of every move
 /// (it must be a pointwise function of the edge slope integrated over the edge
 /// for the DP to be exact). [`dp_alignment_core_banded`] passes the first-order
-/// [`dp_lambda_penalty`] closure, so its numerics are unchanged.
+/// [`dp_lambda_penalty`] closure, so its numerics are unchanged. `prune`
+/// enables exact candidate pruning; pass it only when the penalty is
+/// non-negative and the grid strictly increasing ([`dp_prune_is_exact`]).
 pub(crate) fn dp_alignment_core_with_penalty<P>(
     q1: &[f64],
     q2: &[f64],
     argvals: &[f64],
     band: Option<usize>,
+    prune: bool,
     penalty: P,
 ) -> Vec<f64>
 where
     P: Fn(usize, usize, usize, usize) -> f64,
 {
-    dp_alignment_core_opts(q1, q2, argvals, band, &DpEngineOptions::CLASSIC, penalty)
+    let opts = DpEngineOptions {
+        moves: DpMoves::classic(prune),
+        ..DpEngineOptions::CLASSIC
+    };
+    dp_alignment_core_opts(q1, q2, argvals, band, &opts, penalty)
 }
 
 /// Full option set of the 1-D elastic DP (see [`WarpOptimConfig`]'s
@@ -920,7 +957,8 @@ pub(super) struct DpEngineOptions<'a> {
 }
 
 impl DpEngineOptions<'static> {
-    /// The classic engine (35 moves, original grid, piecewise-constant cost).
+    /// The classic engine (35 moves, original grid, piecewise-constant cost),
+    /// unpruned (the reference fill; pruned variants are bit-identical).
     pub(super) const CLASSIC: Self = Self {
         moves: DP_MOVES_CLASSIC,
         scl: 1,
