@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T04:49:01.077Z"
+last_updated: "2026-11-26T05:05:07.928Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 87960934c7ea07218f4108709b47bd551dafface
+state_head: d530b82cb9995543e1f1f58b3642203cf5d3d04e
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-7oe: ALN-LB (GH #58, closes) DTW lower bounds LB_Kim/LB_Keogh/LB_Webb + EAPrunedDTW + exact 1-NN (tslearn/dtaidistance/GIWebb Java goldens; 1-NN 4.3x single / 6.9x batch vs brute force)
+Last activity: 2026-11-26 - Completed quick task 261126-85x: ALN-ABMETRIC (GH #59, closes) general (a,b) elastic metrics for planar curves via the Kurtek–Needham F-transform (CurveShapeMetric on CurveShapeConfig, ab_transform/inverse; geomstats 2.8.0 goldens)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -194,6 +194,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-6po | ALN-SPARSE (GH #53, closes) closed sparse elastic means (elasdics fit_mean_closed, any d) + platform-robust smooth-mean goldens | 2026-11-26 | 76a75d07 | [261126-6po-aln-sparse-53-closed-sparse-elastic-mean](./quick/261126-6po-aln-sparse-53-closed-sparse-elastic-mean/) |
 | 261126-78p | ALN-ELDIST #57 aeon elastic-distance family (DDTW WDTW WDDTW ADTW ERP EDR TWE MSM LCSS) | 2026-11-26 | 724c9822 | [261126-78p-aln-eldist-57-aeon-elastic-distance-fami](./quick/261126-78p-aln-eldist-57-aeon-elastic-distance-fami/) |
 | 261126-7oe | ALN-LB (#58) DTW lower bounds (LB_Kim/Keogh/Webb), EAPrunedDTW and exact 1-NN search | 2026-11-26 | 87960934 | [261126-7oe-aln-lb-58-dtw-lower-bounds-lb-kim-keogh-](./quick/261126-7oe-aln-lb-58-dtw-lower-bounds-lb-kim-keogh-/) |
+| 261126-85x | ALN-ABMETRIC (GH #59) general (a,b) elastic metrics for planar curves via F-transform | 2026-11-26 | d530b82c | [261126-85x-aln-abmetric-59-general-a-b-elastic-metr](./quick/261126-85x-aln-abmetric-59-general-a-b-elastic-metr/) |
 
 ## Deferred Items
 
