@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T06:40:29.961Z"
+last_updated: "2026-11-26T06:56:20.176Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 004c71419d797a3000b9f0caf344acffb0bba4d2
+state_head: 1d4d5ce10e53bf58ee77fbf6b891a49a1c2fc8a2
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-amx: ALN-EXPFAM part 2 (GH #60, closes) two-step GFPCA (gfpca_two_step, native mgcv/gamm4 replacement), npc_criterion, periodic templates, piecewise_linear2 warps + priors; R registr 2.2.1 goldens
+Last activity: 2026-11-26 - Completed quick task 261126-apa: ALN-PHTEST (GH #62, closes) elastic amplitude/phase permutation test (elastic_phase_amplitude_test + inference::permanova; vegan 2.7.8 adonis2 goldens)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -197,6 +197,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-85x | ALN-ABMETRIC (GH #59) general (a,b) elastic metrics for planar curves via F-transform | 2026-11-26 | d530b82c | [261126-85x-aln-abmetric-59-general-a-b-elastic-metr](./quick/261126-85x-aln-abmetric-59-general-a-b-elastic-metr/) |
 | 261126-8kh | ALN-EXPFAM (GH #60, refs) exponential-family registration with variational-EM GFPCA (registr register_fpca port: gaussian/binomial/gamma/poisson, irregular, incomplete curves; registr 2.2.1 goldens) | 2026-11-26 | 00fe89fc | [261126-8kh-aln-expfam-60-exponential-family-registr](./quick/261126-8kh-aln-expfam-60-exponential-family-registr/) |
 | 261126-amx | ALN-EXPFAM part 2: two-step GFPCA, npc_criterion, periodic, piecewise_linear2 (#60) | 2026-11-26 | 004c7141 | [261126-amx-aln-expfam-part-2-two-step-gfpca-npc-cri](./quick/261126-amx-aln-expfam-part-2-two-step-gfpca-npc-cri/) |
+| 261126-apa | ALN-PHTEST (#62) elastic amplitude/phase permutation test (PERMANOVA; vegan 2.7.8 adonis2 goldens) | 2026-11-26 | 1d4d5ce1 | [261126-apa-aln-phtest-62-elastic-phase-amplitude-pe](./quick/261126-apa-aln-phtest-62-elastic-phase-amplitude-pe/) |
 
 ## Deferred Items
 
