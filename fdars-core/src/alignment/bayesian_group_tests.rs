@@ -466,10 +466,9 @@ fn more_noise_widens_bands() {
 
 #[test]
 fn credible_bands_cover_truth() {
-    // Small fixed-seed Monte-Carlo study, warps inside the model's warp space.
-    // Coverage of the 95% pointwise bands (interior points, 5 curves, 3 data
-    // seeds) is asserted with a margin for MC error and the SRSF-noise
-    // misspecification (noise is added to f, not to q); measured values in SUMMARY.
+    // Small fixed-seed Monte-Carlo study, warps inside the model's warp space, noise added
+    // to f (not to the SRSF): the model is misspecified, see the module docs "Calibration"
+    // (in-model data: `calibration_tests`, ≈ nominal). Measured 0.874 (deterministic).
     let mut cov = Vec::new();
     for seed in 0..3u64 {
         let (data, t, truth) = synth_in_model(31, 0.02, 100 + seed);
@@ -482,7 +481,7 @@ fn credible_bands_cover_truth() {
     }
     let mean = cov.iter().sum::<f64>() / cov.len() as f64;
     println!("short-study coverage {mean:.3} {cov:?}");
-    assert!(mean > 0.75, "mean coverage {mean} ({cov:?})");
+    assert!(mean > 0.85, "mean coverage {mean} ({cov:?})");
 }
 
 #[test]
@@ -501,11 +500,13 @@ fn credible_bands_cover_truth_long_study() {
     }
     let mean = cov.iter().sum::<f64>() / cov.len() as f64;
     // Measured 0.829 (per-seed 0.57–1.00) for nominal 0.95 (2026-11-26, also 0.822 with
-    // 30 template basis functions): pointwise bands under-cover somewhat because the
-    // SRSF of noisy curves is not the model's iid-Gaussian SRSF noise and the warps are
-    // posterior-centred. Asserted at the same margin as the short study.
+    // 30 template basis functions; unchanged by the #64 fix, which touches only template
+    // summaries). The same samplers on data simulated from the model cover ≈ nominally
+    // (0.92–0.96, `calibration_tests`), so the shortfall is misspecification: the SRSF of
+    // f + iid noise is heteroscedastic, correlated and heavy-tailed where f' ≈ 0, not the
+    // model's iid-Gaussian SRSF noise (module docs "Calibration").
     println!("long-study coverage {mean:.3} {cov:?}");
-    assert!(mean > 0.75, "mean coverage {mean} ({cov:?})");
+    assert!(mean > 0.80, "mean coverage {mean} ({cov:?})");
 }
 
 #[test]
@@ -784,10 +785,63 @@ fn result_hash(r: &BayesianGroupResult) -> u64 {
     h
 }
 
+/// Hash of the [`result_hash`] fields that do not depend on the re-centred template
+/// (everything except the template SRSF / function summaries and draws).
+fn warp_hash(r: &BayesianGroupResult) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    for m in [
+        &r.gammas,
+        &r.gammas_median,
+        &r.gammas_lower,
+        &r.gammas_upper,
+        &r.aligned_data,
+    ] {
+        fnv(&mut h, m.as_slice());
+    }
+    for v in [
+        &r.warp_acceptance,
+        &r.rhat_warps,
+        &r.mode_spread,
+        &r.sigma2_draws,
+    ] {
+        fnv(&mut h, v);
+    }
+    fnv(
+        &mut h,
+        &[
+            r.sigma2_mean,
+            r.sigma2_lower,
+            r.sigma2_upper,
+            r.template_acceptance,
+            r.rhat_sigma2,
+            r.rhat_log_likelihood,
+        ],
+    );
+    for g in &r.gamma_draws {
+        fnv(&mut h, g.as_slice());
+    }
+    for c in &r.chains {
+        fnv(
+            &mut h,
+            &[c.seed as f64, c.mode_log_likelihood, c.template_acceptance],
+        );
+        fnv(&mut h, c.posterior_mean_gammas.as_slice());
+        fnv(&mut h, c.mode_gammas.as_slice());
+        for v in [&c.warp_acceptance, &c.sigma2_trace, &c.log_likelihood_trace] {
+            fnv(&mut h, v);
+        }
+    }
+    h
+}
+
 #[test]
 fn default_pcn_sampler_is_bit_identical_to_pcn_release() {
     // Pinned on the pCN-only implementation (commit 065279f0) before the infHMC
     // sampler was added: the default sampler must keep producing identical results.
+    // GH #64 changed only the re-centred template summaries (exact B-spline evaluation
+    // instead of warping the linear interpolant): every field that does not depend on them
+    // (`warp_hash`) and the whole `center_draws = false` result keep their pre-#64 hashes,
+    // computed on c038fd46; the full default hash changed from 0x17c8a7166fdb441d.
     let (data, t, _) = synth(31, 0.01, 2);
     let mut cfg = small_cfg(11);
     cfg.n_iter = 300;
@@ -795,15 +849,27 @@ fn default_pcn_sampler_is_bit_identical_to_pcn_release() {
     cfg.thin = 2;
     cfg.n_chains = 2;
     let r = bayesian_align_group(&data, &t, &cfg).unwrap();
-    let h = result_hash(&r);
-    println!("pcn result hash {h:#018x}");
+    let (h, hw) = (result_hash(&r), warp_hash(&r));
+    println!("pcn result hash {h:#018x}, warp hash {hw:#018x}");
     assert_eq!(
-        h, PCN_RELEASE_HASH,
-        "default pCN results changed: {h:#018x}"
+        hw, PCN_RELEASE_WARP_HASH,
+        "pCN warp/σ² results changed: {hw:#018x}"
+    );
+    assert_eq!(h, PCN_RESULT_HASH, "default pCN results changed: {h:#018x}");
+    cfg.center_draws = false;
+    let h_raw = result_hash(&bayesian_align_group(&data, &t, &cfg).unwrap());
+    assert_eq!(
+        h_raw, PCN_RELEASE_RAW_HASH,
+        "pCN center_draws=false results changed: {h_raw:#018x}"
     );
 }
 
-const PCN_RELEASE_HASH: u64 = 0x17c8_a716_6fdb_441d;
+/// Pre-#64 (c038fd46) hash of the template-independent fields of the default run.
+const PCN_RELEASE_WARP_HASH: u64 = 0x8544_396a_c9c4_e4f3;
+/// Pre-#64 (c038fd46) full hash of the `center_draws = false` run.
+const PCN_RELEASE_RAW_HASH: u64 = 0xe256_f6f0_c204_2509;
+/// Full hash of the default run after the #64 template-centring fix.
+const PCN_RESULT_HASH: u64 = 0x423a_b6ba_faae_cb16;
 
 // ─── infHMC sampler ─────────────────────────────────────────────────────────
 

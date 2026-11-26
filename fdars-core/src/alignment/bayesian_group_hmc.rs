@@ -74,12 +74,20 @@ impl Problem {
             return None;
         }
         let q = &self.q[i];
+        let qt = self.q_abscissae(i);
+        let ql = qt.len();
         let (mut qv, mut qd) = (vec![0.0; tl], vec![0.0; tl]);
         for j in 0..tl {
             let g = cum[j] / total;
-            qv[j] = linear_interp(t, q, g);
-            let k = ((g * (tl - 1) as f64).floor().max(0.0) as usize).min(tl - 2);
-            qd[j] = (q[k + 1] - q[k]) / (t[k + 1] - t[k]);
+            qv[j] = linear_interp(qt, q, g);
+            let k = if self.q_grid.is_none() {
+                ((g * (tl - 1) as f64).floor().max(0.0) as usize).min(tl - 2)
+            } else {
+                qt.partition_point(|&x| x <= g)
+                    .saturating_sub(1)
+                    .min(ql - 2)
+            };
+            qd[j] = (q[k + 1] - q[k]) / (qt[k + 1] - qt[k]);
         }
         Some(WarpForward {
             v,

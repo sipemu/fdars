@@ -71,6 +71,46 @@
 //! [`BayesianGroupResult::rhat_sigma2`], [`BayesianGroupResult::mode_spread`] and
 //! [`BayesianGroupResult::multimodal_curves`] (Sarle's bimodality coefficient of the pooled
 //! per-curve warp draws), which flag such chains.
+//!
+//! # Calibration of the credible bands
+//!
+//! Studied in GH #64 (`calibration_tests`): data simulated from the model itself (template
+//! in the B-spline span, warps in the warp span, curve SRSFs observed so that
+//! `q_i(γ_i(t_j))·ψ_i(t_j) = q*(t_j) + ε_ij`, `ε` iid Gaussian), 5 curves × 31 points, 40 data
+//! sets × 4 chains, coverage of nominal-95% pointwise bands of the centred warps / template
+//! SRSF (mean ± Monte-Carlo SE):
+//!
+//! | sampler | SRSF noise σ | warps | template | posterior σ² / true σ² |
+//! |---|---|---|---|---|
+//! | infHMC | 0.01 | 0.964 ± 0.008 | 0.945 ± 0.008 | 1.04 |
+//! | infHMC | 0.1 | 0.945 ± 0.011 | 0.915 ± 0.011 | 0.90 |
+//! | pCN (`injective_warps`, 40 000 it) | 0.1 | 0.923 ± 0.014 | 0.924 ± 0.010 | 1.00 |
+//! | infHMC | 0.3 | 0.926 ± 0.023 | 0.909 ± 0.016 | 0.74 |
+//!
+//! So the samplers are calibrated for their own model. Two model properties remain:
+//!
+//! * The likelihood evaluates the *linear interpolant* of each curve's noisy SRSF at the
+//!   warped points; between grid nodes interpolation averages neighbouring noise values, so
+//!   warps can lower the residual sum of squares by "smoothing" the noise. It is a pointwise
+//!   pseudo-likelihood rather than a density of the data: σ² is under-estimated by a factor
+//!   that grows with the noise level (0.90 at σ = 0.1, 0.74 at σ = 0.3 above) and the bands
+//!   become slightly narrow.
+//! * For curves observed with noise in function space (`f_i + iid noise`, the usual case) the
+//!   SRSF noise is heteroscedastic, correlated between neighbouring points (finite
+//!   differences) and heavy-tailed where `f' ≈ 0`: in the original study (5 curves, 31
+//!   points, f-noise sd 0.02) warp bands covered 0.83–0.87. Treat the bands as approximate
+//!   under such data, and prefer modest grids / pre-smoothed curves.
+//!
+//! The σ² prior `InvGamma(α₀, β₀)` with fdasrsf's `β₀ = 0.1` adds about `2β₀/(nT)` to the
+//! posterior σ² (≈ 0.0013 for n·T = 155); when the SRSF noise variance is not large compared
+//! with that, the prior dominates and the bands widen (they over-cover). The study above uses
+//! `alpha0 = beta0 = 1e-6`; lower them if the SRSF noise is known to be small.
+//!
+//! Raw (`center_draws = false`) warp bands over-cover (≈ 0.98): they include the
+//! non-identified common phase that drifts between centring steps; the centred bands are
+//! the calibrated ones. Before GH #64 the re-centred template draws warped the linear
+//! interpolant of the template's grid values, whose chord error biased every draw and cut
+//! template coverage to 0.83–0.90 in the same study; they now evaluate the B-spline exactly.
 
 use super::dp_alignment_core;
 use super::karcher::sqrt_mean_inverse;
@@ -180,8 +220,10 @@ pub struct BayesianGroupConfig {
     /// Summarise re-centred draws: each retained draw's warps are composed with the
     /// inverse of their Karcher mean (and its template warped to match) before the
     /// posterior summaries are formed. This removes the joint template/warp
-    /// non-identifiability from the reported posterior (exact, no re-projection).
-    /// `false` summarises the raw chain states, as fdasrsf does.
+    /// non-identifiability from the reported posterior (exact, no re-projection; the
+    /// template B-spline is evaluated at the centring warp). `false` summarises the raw
+    /// chain states, as fdasrsf does; their warp bands include the non-identified common
+    /// phase and over-cover (see the module docs, "Calibration").
     pub center_draws: bool,
     /// Start every chain from the DP (dynamic-programming) alignment of each curve
     /// to the initial template, projected onto the warp basis and centred. Only the
@@ -620,6 +662,9 @@ struct Problem {
     btb: nalgebra::DMatrix<f64>,
     /// Restrict shooting vectors to the injectivity radius `‖v‖ < π`.
     injective: bool,
+    /// Per-curve abscissae of `q[i]` when they are not the sampling grid `t` (test-only
+    /// in-model calibration studies place data exactly at `γ_i(t_j)`); `None` = `t`.
+    q_grid: Option<Vec<Vec<f64>>>,
 }
 
 /// Current warp of one curve.
@@ -687,6 +732,7 @@ impl Problem {
             warp_var,
             btb,
             injective: cfg.injective_warps || cfg.sampler == BayesianSampler::InfHmc,
+            q_grid: None,
             warp_basis: warp_tangent_basis(&t, nh),
             t,
             q,
@@ -705,6 +751,19 @@ impl Problem {
 
     fn t_len(&self) -> usize {
         self.t.len()
+    }
+
+    /// Abscissae of the curve SRSF `q[i]` (the sampling grid unless overridden).
+    fn q_abscissae(&self, i: usize) -> &[f64] {
+        self.q_grid.as_ref().map_or(&self.t, |g| &g[i])
+    }
+
+    /// Curve SRSF `q[i]` on the sampling grid (initialisation only).
+    fn q_on_grid(&self, i: usize) -> std::borrow::Cow<'_, [f64]> {
+        match &self.q_grid {
+            None => std::borrow::Cow::Borrowed(&self.q[i]),
+            Some(g) => std::borrow::Cow::Owned(reparameterize_curve(&self.q[i], &g[i], &self.t)),
+        }
     }
 
     /// Z-mixture pCN proposal `√(1−β²)·c + β·ξ`, `ξ ~ N(0, diag(sd²))`.
@@ -761,7 +820,7 @@ impl Problem {
         gamma.iter_mut().for_each(|g| *g /= total);
         let scale = total.sqrt().recip();
         let psi: Vec<f64> = psi_raw.iter().map(|p| p * scale).collect();
-        let qg = reparameterize_curve(&self.q[i], &self.t, &gamma);
+        let qg = reparameterize_curve(&self.q[i], self.q_abscissae(i), &gamma);
         let warped = qg.iter().zip(&psi).map(|(&a, &b)| a * b).collect();
         Some(Warp {
             coef,
@@ -787,6 +846,20 @@ impl Problem {
 
     fn template_from_coef(&self, coef: &[f64]) -> Vec<f64> {
         Self::expand(&self.tmpl_basis, coef, self.t_len())
+    }
+
+    /// Group action on the B-spline template, evaluated exactly:
+    /// `(q*, γ)(t_j) = q*(γ(t_j)) · √γ'(t_j)` with `q*` the spline itself (not the linear
+    /// interpolant of its grid values) and `γ'` by finite differences, as [`warp_srsf`].
+    fn warp_template(&self, coef: &[f64], gamma: &[f64]) -> Vec<f64> {
+        let x: Vec<f64> = gamma.iter().map(|g| g.clamp(0.0, 1.0)).collect();
+        let basis = template_bspline_basis(&x, self.tmpl_basis.len(), 3);
+        let h = 1.0 / (self.t_len() - 1) as f64;
+        Self::expand(&basis, coef, self.t_len())
+            .iter()
+            .zip(&gradient_uniform(gamma, h))
+            .map(|(&v, &d)| v * d.max(0.0).sqrt())
+            .collect()
     }
 
     fn template_coef(&self, q_star: &[f64]) -> Vec<f64> {
@@ -842,6 +915,8 @@ fn unit_psi(gamma: &[f64], t: &[f64]) -> Vec<f64> {
 struct Draw {
     warp_coefs: Vec<Vec<f64>>,
     template: Vec<f64>,
+    /// B-spline coefficients of `template`.
+    tmpl_coef: Vec<f64>,
     sigma2: f64,
     log_lik: f64,
 }
@@ -868,13 +943,14 @@ impl ChainState {
         let n = prob.n_curves();
         // Template start: the curve SRSF closest to the pointwise mean SRSF.
         let t_len = prob.t_len();
+        let q: Vec<_> = (0..n).map(|i| prob.q_on_grid(i)).collect();
         let mean: Vec<f64> = (0..t_len)
-            .map(|j| prob.q.iter().map(|q| q[j]).sum::<f64>() / n as f64)
+            .map(|j| q.iter().map(|q| q[j]).sum::<f64>() / n as f64)
             .collect();
         let medoid = (0..n)
-            .min_by(|&a, &b| sse(&prob.q[a], &mean).total_cmp(&sse(&prob.q[b], &mean)))
+            .min_by(|&a, &b| sse(&q[a], &mean).total_cmp(&sse(&q[b], &mean)))
             .unwrap_or(0);
-        let tmpl_coef = prob.template_coef(&prob.q[medoid]);
+        let tmpl_coef = prob.template_coef(&q[medoid]);
         let template = prob.template_from_coef(&tmpl_coef);
         if template.iter().any(|v| !v.is_finite()) {
             return Err(FdarError::ComputationFailed {
@@ -892,7 +968,7 @@ impl ChainState {
                     return identity(i);
                 }
                 // DP alignment to the initial template, projected onto the warp basis.
-                let gamma = dp_alignment_core(&template, &prob.q[i], &prob.t, 0.0);
+                let gamma = dp_alignment_core(&template, &q[i], &prob.t, 0.0);
                 prob.warp_from_coef(i, prob.coef_from_gamma(&gamma))
                     .unwrap_or_else(|| identity(i))
             })
@@ -986,6 +1062,7 @@ impl ChainState {
         Draw {
             warp_coefs: self.warps.iter().map(|w| w.coef.clone()).collect(),
             template: self.template.clone(),
+            tmpl_coef: self.tmpl_coef.clone(),
             sigma2: self.sigma2,
             log_lik: prob.log_likelihood(self.sse.iter().sum(), self.sigma2),
         }
@@ -1212,7 +1289,10 @@ fn bimodality_coefficient(x: &[f64]) -> f64 {
 }
 
 /// Warps and template of one retained draw on the unit grid, optionally
-/// re-centred so that the Karcher mean of its warps is the identity.
+/// re-centred so that the Karcher mean of its warps is the identity. The re-centred
+/// template is the B-spline evaluated exactly at the centring warp: warping the linear
+/// interpolant of its grid values instead biases every draw by the interpolation (chord)
+/// error, which shifted the template bands off the truth (GH #64).
 struct RealDraw {
     gammas: Vec<Vec<f64>>,
     psis: Vec<Vec<f64>>,
@@ -1244,7 +1324,7 @@ fn realise(prob: &Problem, d: &Draw, center: bool) -> RealDraw {
     RealDraw {
         psis: gammas.iter().map(|g| unit_psi(g, &prob.t)).collect(),
         gammas,
-        template: warp_srsf(&d.template, &prob.t, &gam_i),
+        template: prob.warp_template(&d.tmpl_coef, &gam_i),
     }
 }
 
@@ -1627,3 +1707,7 @@ mod hmc;
 #[cfg(test)]
 #[path = "bayesian_group_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "bayesian_group_calibration_tests.rs"]
+mod calibration_tests;

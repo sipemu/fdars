@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Bayesian group alignment band calibration (GH #64 ALN-CAV).** One fix to the posterior
+summaries of `bayesian_align_group`; the chains, warp / σ² summaries and every
+`center_draws = false` result are bit-identical (FNV-hash tests pinned on the previous commit).
+
+### Fixed
+
+- `bayesian_align_group` with `center_draws = true` (the default): the re-centred template
+  draws (`template_srsf*`, `template*`, `template_srsf_draws`, per-chain `template_srsf_mean` /
+  `mode_template_srsf`) warped the *linear interpolant* of the template's grid values by the
+  centring warp; its chord error biased every draw and shifted the template bands off the
+  truth. The B-spline template is now evaluated exactly at the centring warp. On data simulated
+  from the model (40 data sets × 4 chains, infHMC) template-band coverage at nominal 95% went
+  from 0.899 ± 0.012 to 0.945 ± 0.008 (SRSF noise 0.01) and from 0.827 ± 0.014 to
+  0.915 ± 0.011 (noise 0.1).
+
+### Documentation
+
+- `bayesian_group` module docs: "Calibration of the credible bands" — in-model coverage study
+  (warps 0.92–0.96, template 0.91–0.95 for both samplers: the samplers are calibrated), the
+  remaining misfit (pointwise interpolated-SRSF pseudo-likelihood under-estimates σ² by
+  0.90× at noise 0.1, 0.74× at 0.3; function-space noise is not iid SRSF noise — 0.83–0.87
+  warp coverage in the original study), the `beta0` floor `≈ 2β₀/(nT)` on σ², and why raw
+  (`center_draws = false`) warp bands over-cover. A function-space likelihood option was not
+  added. Coverage tests tightened (short f-noise study > 0.85, long > 0.80) and new in-model
+  calibration tests (short + `#[ignore]` long study).
+
 **RBFGS optimiser coverage: N-d, landmarks, robust Karcher, band semantics, λ scale (GH #67
 ALN-CAV).** Additive and non-breaking: defaults (and the default RBFGS path) are bit-identical
 (FNV-hash tests recorded before the change); no new crate dependency.
