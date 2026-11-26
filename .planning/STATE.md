@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T21:31:21.909Z"
+last_updated: "2026-11-26T22:44:14.254Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 222ac2e2efe8c520cf154aa205716b10751f7bce
+state_head: 3ade8a991a40e953759c5720f32f91310b9faa08
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-t4g: GH #76 localised amplitude/phase group differences (scb_two_sample_band, ITP grid regions + itp_two_pop permutation fix, elastic_local_difference_test)
+Last activity: 2026-11-26 - Completed quick task 261126-vzq: GH #77 transfer_alignment warp order, #78 landmark identity warps, #79 TSRVF Schild/pole ladders
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -213,6 +213,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-mun | ALN-CAV regenerate fdasrvf goldens with 2.6.0 (#74) | 2026-11-26 | 2cf3defc | [261126-mun-aln-cav-regenerate-fdasrvf-goldens-with-](./quick/261126-mun-aln-cav-regenerate-fdasrvf-goldens-with-/) |
 | 261126-nrt | Fix CI: portable bit-identity pins + rustdoc errors | 2026-11-26 | 6147fdf4 | [261126-nrt-fix-ci-portable-bit-identity-pins-rustdo](./quick/261126-nrt-fix-ci-portable-bit-identity-pins-rustdo/) |
 | 261126-t4g | ALN localised group differences: SCB band, ITP regions, elastic_local_difference_test (#76) | 2026-11-26 | 222ac2e2 | [261126-t4g-aln-localised-group-differences-scb-band](./quick/261126-t4g-aln-localised-group-differences-scb-band/) |
+| 261126-vzq | Fix alignment bugs #77 transfer warp order, #78 landmark_register zero warps, #79 TSRVF ladders | 2026-11-26 | 3ade8a99 | [261126-vzq-fix-alignment-bugs-77-transfer-warp-orde](./quick/261126-vzq-fix-alignment-bugs-77-transfer-warp-orde/) |
 
 ## Deferred Items
 
