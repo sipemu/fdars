@@ -77,7 +77,7 @@ R and Rust (`sim`, mimicking `simulate_unregistered_curves`: cubic Bernstein war
 - IRLS converged to 1e-12 relative deviance (R glm: 1e-8).
 - `ln Γ` instead of `log(gamma(·))` in the gamma loss.
 
-## Not done (remaining for #60)
+## Not done (remaining for #60) — all done in quick 261126-amx (`004c7141`, closes #60)
 - `fpca_type = "two-step"` (`gfpca_twoStep`: Hall covariance binning + gamm4 GLMM) — the only
   route R offers with a family-specific (non-gaussian) GFPCA for gamma/poisson.
 - `npc_criterion` (variance-explained choice of npc with the Kt = 20 override).

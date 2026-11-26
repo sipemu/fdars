@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T05:34:41.078Z"
+last_updated: "2026-11-26T06:40:29.961Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 00fe89fc9496911f022bc0b34ad49e289c29f413
+state_head: 004c71419d797a3000b9f0caf344acffb0bba4d2
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-8kh: ALN-EXPFAM (GH #60, refs) exponential-family registration with variational-EM GFPCA (register_fpca / register_expfam / gfpca_variational; R registr 2.2.1 goldens; two-step GFPCA remaining)
+Last activity: 2026-11-26 - Completed quick task 261126-amx: ALN-EXPFAM part 2 (GH #60, closes) two-step GFPCA (gfpca_two_step, native mgcv/gamm4 replacement), npc_criterion, periodic templates, piecewise_linear2 warps + priors; R registr 2.2.1 goldens
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -196,6 +196,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-7oe | ALN-LB (#58) DTW lower bounds (LB_Kim/Keogh/Webb), EAPrunedDTW and exact 1-NN search | 2026-11-26 | 87960934 | [261126-7oe-aln-lb-58-dtw-lower-bounds-lb-kim-keogh-](./quick/261126-7oe-aln-lb-58-dtw-lower-bounds-lb-kim-keogh-/) |
 | 261126-85x | ALN-ABMETRIC (GH #59) general (a,b) elastic metrics for planar curves via F-transform | 2026-11-26 | d530b82c | [261126-85x-aln-abmetric-59-general-a-b-elastic-metr](./quick/261126-85x-aln-abmetric-59-general-a-b-elastic-metr/) |
 | 261126-8kh | ALN-EXPFAM (GH #60, refs) exponential-family registration with variational-EM GFPCA (registr register_fpca port: gaussian/binomial/gamma/poisson, irregular, incomplete curves; registr 2.2.1 goldens) | 2026-11-26 | 00fe89fc | [261126-8kh-aln-expfam-60-exponential-family-registr](./quick/261126-8kh-aln-expfam-60-exponential-family-registr/) |
+| 261126-amx | ALN-EXPFAM part 2: two-step GFPCA, npc_criterion, periodic, piecewise_linear2 (#60) | 2026-11-26 | 004c7141 | [261126-amx-aln-expfam-part-2-two-step-gfpca-npc-cri](./quick/261126-amx-aln-expfam-part-2-two-step-gfpca-npc-cri/) |
 
 ## Deferred Items
 
