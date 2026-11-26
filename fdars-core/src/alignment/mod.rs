@@ -14,12 +14,15 @@
 //! - [`reparameterize_curve`] / [`compose_warps`] — Warping utilities
 //! - [`iterative_shift_registration`] — iterative least-squares shift registration
 //!   with template re-estimation; [`landmark_shift_registration`] — landmark shift
+//! - [`affine_registration`] — shift / dilation / affine warp registration `h(t) = a·t + b`
+//!   to a (re-estimated) template, L2 / normalised-L2 / Pearson criteria (R fdacluster)
 //! - [`continuous_registration`] — Ramsay–Li continuous registration (R `register.fd`,
 //!   least-squares and minimum-eigenvalue criteria) with monotone B-spline warps
 //! - [`curve_shape_align_pair`] / [`curve_shape_distance`] / [`curve_shape_karcher_mean`] /
 //!   [`curve_shape_pca`] — elastic shape analysis of R^d curves (open or closed) modulo
 //!   rotation, scale, reparametrisation and starting point ([`CurveShapeConfig`])
 
+mod affine;
 mod bayesian;
 mod closed;
 mod clustering;
@@ -60,6 +63,14 @@ mod warp_stats;
 mod tests;
 
 // Re-export all public items so that `crate::alignment::X` continues to work.
+pub use affine::{
+    affine_registration, affine_warp_curves, AffineDomain, AffineMetric, AffineRegistrationConfig,
+    AffineRegistrationResult, AffineWarps, LinearWarpClass,
+};
+pub(crate) use affine::{
+    align_curve_to_template, center_warps, max_warp_change, mean_template, validate_linear_inputs,
+    Warp,
+};
 pub use bayesian::{bayesian_align_pair, BayesianAlignConfig, BayesianAlignmentResult};
 pub use closed::{
     elastic_align_pair_closed, elastic_distance_closed, karcher_mean_closed, ClosedAlignmentResult,

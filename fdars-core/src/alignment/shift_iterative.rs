@@ -180,7 +180,7 @@ pub struct ShiftedCurves {
     pub argvals: Vec<f64>,
 }
 
-fn validate_data_grid(data: &FdMatrix, argvals: &[f64]) -> Result<(), FdarError> {
+pub(crate) fn validate_data_grid(data: &FdMatrix, argvals: &[f64]) -> Result<(), FdarError> {
     let (n, m) = data.shape();
     if n == 0 || m == 0 {
         return Err(FdarError::InvalidDimension {

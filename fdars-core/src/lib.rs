@@ -270,14 +270,15 @@ pub use covariance::{
 
 // Re-export alignment types and functions
 pub use alignment::{
-    align_to_target, alignment_quality, amplitude_distance, amplitude_distance_at_warp_generic,
-    amplitude_self_distance_matrix, bayesian_align_pair, closure_residual, compose_warps,
-    continuous_registration, curve_from_set, curve_geodesic, curve_geodesic_nd,
-    curve_shape_align_pair, curve_shape_distance, curve_shape_karcher_covariance,
-    curve_shape_karcher_mean, curve_shape_pca, curve_shape_self_distance_matrix, curve_srvf,
-    curves_to_set, cut_dendrogram, diagnose_alignment, diagnose_pairwise, elastic_align_pair,
-    elastic_align_pair_closed, elastic_align_pair_constrained, elastic_align_pair_multires,
-    elastic_align_pair_nd, elastic_align_pair_penalized, elastic_align_pair_with_config,
+    affine_registration, affine_warp_curves, align_to_target, alignment_quality,
+    amplitude_distance, amplitude_distance_at_warp_generic, amplitude_self_distance_matrix,
+    bayesian_align_pair, closure_residual, compose_warps, continuous_registration, curve_from_set,
+    curve_geodesic, curve_geodesic_nd, curve_shape_align_pair, curve_shape_distance,
+    curve_shape_karcher_covariance, curve_shape_karcher_mean, curve_shape_pca,
+    curve_shape_self_distance_matrix, curve_srvf, curves_to_set, cut_dendrogram,
+    diagnose_alignment, diagnose_pairwise, elastic_align_pair, elastic_align_pair_closed,
+    elastic_align_pair_constrained, elastic_align_pair_multires, elastic_align_pair_nd,
+    elastic_align_pair_penalized, elastic_align_pair_with_config,
     elastic_align_pair_with_landmarks, elastic_cross_distance_matrix,
     elastic_cross_distance_matrix_banded, elastic_cross_distance_matrix_with_band,
     elastic_cross_distance_matrix_with_config, elastic_decomposition, elastic_depth,
@@ -297,8 +298,9 @@ pub use alignment::{
     srsf_inverse_nd, srsf_transform, srsf_transform_nd, srvf_to_curve, transfer_alignment,
     tsrvf_from_alignment, tsrvf_from_alignment_with_method, tsrvf_inverse, tsrvf_transform,
     tsrvf_transform_with_method, warp_complexity, warp_inverse_error, warp_smoothness,
-    warp_statistics, AlignmentDiagnostic, AlignmentDiagnosticSummary, AlignmentQuality,
-    AlignmentResult, AlignmentResultNd, AlignmentSetResult, BayesianAlignConfig,
+    warp_statistics, AffineDomain, AffineMetric, AffineRegistrationConfig,
+    AffineRegistrationResult, AffineWarps, AlignmentDiagnostic, AlignmentDiagnosticSummary,
+    AlignmentQuality, AlignmentResult, AlignmentResultNd, AlignmentSetResult, BayesianAlignConfig,
     BayesianAlignmentResult, ClosedAlignmentResult, ClosedKarcherMeanResult,
     ConstrainedAlignmentResult, ContinuousRegistrationConfig, ContinuousRegistrationCriterion,
     ContinuousRegistrationResult, CurveShapeAlignment, CurveShapeConfig, CurveShapeKarcherResult,
@@ -307,12 +309,12 @@ pub use alignment::{
     GenerativeModelResult, GeodesicPath, GeodesicPathNd, IterativeShiftConfig,
     IterativeShiftResult, KMedoidsConfig, KMedoidsResult, KarcherMeanResult, KarcherMeanResultNd,
     LambdaCvConfig, LambdaCvResult, LandmarkLocation, LandmarkShiftConfig, LandmarkShiftResult,
-    Linkage, MultiresConfig, OrbitRepresentative, PartialMatchConfig, PartialMatchResult,
-    PcaNdResult, PersistenceDiagramResult, PhaseBoxplot, RobustKarcherConfig, RobustKarcherResult,
-    ShapeCiConfig, ShapeCiResult, ShapeDistanceResult, ShapeMeanResult, ShapeQuotient,
-    ShiftExtrapolation, ShiftRegistrationResult, ShiftTemplate, ShiftedCurves, TransferAlignConfig,
-    TransferAlignResult, TransportMethod, TsrvfResult, WarpObjectivePenalty, WarpOptimConfig,
-    WarpOptimMethod, WarpPenaltyType, WarpStatistics,
+    LinearWarpClass, Linkage, MultiresConfig, OrbitRepresentative, PartialMatchConfig,
+    PartialMatchResult, PcaNdResult, PersistenceDiagramResult, PhaseBoxplot, RobustKarcherConfig,
+    RobustKarcherResult, ShapeCiConfig, ShapeCiResult, ShapeDistanceResult, ShapeMeanResult,
+    ShapeQuotient, ShiftExtrapolation, ShiftRegistrationResult, ShiftTemplate, ShiftedCurves,
+    TransferAlignConfig, TransferAlignResult, TransportMethod, TsrvfResult, WarpObjectivePenalty,
+    WarpOptimConfig, WarpOptimMethod, WarpPenaltyType, WarpStatistics,
 };
 
 // Re-export commonly used items
@@ -639,8 +641,8 @@ pub use wavelet::{
 // Re-export advanced clustering types (DBSCAN, kCFC, funFEM, align-cluster)
 pub use clustering_advanced::{
     align_cluster_fd, dbscan_fd, funfem_cluster, kcfc_cluster, AlignClusterConfig,
-    AlignClusterResult, DbscanConfig, DbscanResult, FunFemConfig, FunFemResult, KcfcConfig,
-    KcfcResult,
+    AlignClusterResult, AlignClusterWarp, DbscanConfig, DbscanResult, FunFemConfig, FunFemResult,
+    KcfcConfig, KcfcResult,
 };
 
 // Re-export distance metric types and functions

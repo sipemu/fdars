@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Shift / dilation / affine warp registration + linear warp classes in `align_cluster_fd`
+(GH #50 ALN-AFFINE).** Additive and non-breaking; `align_cluster_fd` defaults are
+bit-identical (default warp class `Elastic` runs the unchanged elastic path); no new crate
+dependency.
+
+### Added
+
+- `alignment::affine_registration(data, argvals, LinearWarpClass, ShiftTemplate,
+  &AffineRegistrationConfig)` — registration with linear warps `h(t) = a·t + b`
+  (`LinearWarpClass::{None, Shift, Dilation, Affine}`) to a re-estimated mean, fixed or
+  closure template (reuses `ShiftTemplate` / `ShiftExtrapolation`), minimising
+  `AffineMetric::{L2, NormalizedL2, Pearson}` (R fdacluster 0.4.2 definitions) on the full
+  grid (`AffineDomain::Full`, default, with extrapolation) or on the warped-domain overlap
+  (`AffineDomain::Overlap`, fdacluster); bounds = fdacluster `warping_options` (0.15, 0.15);
+  deterministic grid search + golden-section / Nelder–Mead refinement; optional warp
+  centring (mean dilation 1, mean shift 0). Returns `AffineRegistrationResult`.
+- `alignment::affine_warp_curves` — apply `gᵢ(t) = fᵢ((t − bᵢ)/aᵢ)`.
+- `clustering_advanced::AlignClusterWarp::{Elastic (default), None, Shift, Dilation,
+  Affine}` with new sealed-config fields `AlignClusterConfig::warp_class` and
+  `::linear_config`; `AlignClusterResult::affine_warps: Option<AffineWarps>` (per-curve
+  dilations/shifts for linear classes). Linear classes run fdacluster-style k-means
+  alignment (`fdakmeans(warping_class, centroid_type = "mean", metric)`).
+- Validation: exact recovery of synthetic affine warps, invariants, hand-computed metrics,
+  and golden values from R fdacluster 0.4.2 `fdakmeans` (k = 1 affine/dilation/shift,
+  k = 2 shift/affine) compared through frame-invariant relative warps (max deviation
+  9e-4 / 2.2e-4 / 1.1e-4 for k = 1; 1.6e-4 / 2.6e-3 for k = 2; memberships identical).
+
 **Configurable elastic DP: neighbourhood, `dp_scl` refinement, DP2 cost, pruning (GH #49
 ALN-DPACC).** Additive and non-breaking; defaults are bit-identical (existing FNV hash tests
 unchanged); no new crate dependency.

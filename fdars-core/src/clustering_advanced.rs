@@ -17,12 +17,15 @@
 //! All algorithms are strictly additive relative to the existing `clustering` module.
 //! No existing public signature is modified.
 
+use crate::alignment::{AffineRegistrationConfig, AffineWarps, LinearWarpClass};
 use crate::distance::l2_distance_matrix;
 use crate::error::FdarError;
 use crate::helpers::simpsons_weights;
 use crate::matrix::FdMatrix;
 use crate::regression::{fdata_to_pc, FpcaResult};
 use rand::prelude::*;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
 
 // ────────────────────────────────────────────────────────────────────────────
 // DBSCAN over functional L2 distances
@@ -1545,6 +1548,15 @@ pub struct AlignClusterConfig {
     pub karcher_max_iter: usize,
     /// Convergence tolerance for Karcher mean (default: 1e-4).
     pub karcher_tol: f64,
+    /// Warp class used to align curves to the cluster templates (default
+    /// [`AlignClusterWarp::Elastic`], the original elastic k-means).
+    pub warp_class: AlignClusterWarp,
+    /// Metric, domain, bounds and optimiser settings for the linear warp
+    /// classes ([`AlignClusterWarp::Shift`] / `Dilation` / `Affine` / `None`);
+    /// ignored for `Elastic`. Its `max_iter` is not used (the outer loop uses
+    /// [`AlignClusterConfig::max_iter`]); its `tol` is the warp-parameter
+    /// convergence tolerance.
+    pub linear_config: AffineRegistrationConfig,
 }
 
 impl Default for AlignClusterConfig {
@@ -1557,6 +1569,40 @@ impl Default for AlignClusterConfig {
             elastic_lambda: 0.0,
             karcher_max_iter: 15,
             karcher_tol: 1e-4,
+            warp_class: AlignClusterWarp::Elastic,
+            linear_config: AffineRegistrationConfig::default(),
+        }
+    }
+}
+
+/// Warp class of [`align_cluster_fd`] (R `fdacluster::fdakmeans(warping_class = ...)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub enum AlignClusterWarp {
+    /// Elastic (SRSF / Fisher–Rao) alignment with Karcher-mean templates — a
+    /// boundary-preserving diffeomorphism class, fdacluster `"bpd"` with
+    /// `transformation = "srvf"` (default; original behaviour).
+    #[default]
+    Elastic,
+    /// No warping: k-means under the chosen [`crate::alignment::AffineMetric`] (fdacluster `"none"`).
+    None,
+    /// Shift `h(t) = t + b` (fdacluster `"shift"`).
+    Shift,
+    /// Dilation `h(t) = a·t` (fdacluster `"dilation"`).
+    Dilation,
+    /// Affine `h(t) = a·t + b` (fdacluster `"affine"`).
+    Affine,
+}
+
+impl AlignClusterWarp {
+    fn linear(self) -> Option<LinearWarpClass> {
+        match self {
+            Self::Elastic => None,
+            Self::None => Some(LinearWarpClass::None),
+            Self::Shift => Some(LinearWarpClass::Shift),
+            Self::Dilation => Some(LinearWarpClass::Dilation),
+            Self::Affine => Some(LinearWarpClass::Affine),
         }
     }
 }
@@ -1574,8 +1620,13 @@ pub struct AlignClusterResult {
     pub distances: FdMatrix,
     /// Number of outer iterations performed.
     pub iterations: usize,
-    /// Whether the algorithm converged (no label changes in last iteration).
+    /// Whether the algorithm converged (no label changes in last iteration;
+    /// for linear warp classes also warp changes ≤ `linear_config.tol`).
     pub converged: bool,
+    /// Per-curve linear warps `hᵢ(t) = aᵢ·t + bᵢ` to the assigned template
+    /// (linear warp classes only; `None` for [`AlignClusterWarp::Elastic`]).
+    /// Registered curves: [`crate::alignment::affine_warp_curves`].
+    pub affine_warps: Option<AffineWarps>,
 }
 
 /// Cluster functional data using elastic k-means with Karcher-mean templates.
@@ -1584,6 +1635,15 @@ pub struct AlignClusterResult {
 /// between reassigning each curve to the nearest template (by elastic distance)
 /// and updating each template to the Karcher mean of its cluster members.
 /// Empty clusters are reinitialized to a random non-member curve.
+///
+/// With a linear [`AlignClusterConfig::warp_class`] (`Shift`, `Dilation`,
+/// `Affine`, `None`) this is instead the k-means alignment of R
+/// `fdacluster::fdakmeans(warping_class, centroid_type = "mean", metric)`:
+/// each curve's warp to each template is fitted as in
+/// [`crate::alignment::affine_registration`] (`linear_config`), curves are
+/// assigned to the template of smallest dissimilarity, the warps are centred
+/// within each cluster and the template is the mean of the registered members.
+/// Unlike fdacluster, assignment is a plain argmin (no LP minimum cluster size).
 ///
 /// # Arguments
 ///
@@ -1595,7 +1655,9 @@ pub struct AlignClusterResult {
 ///
 /// Returns [`FdarError::InvalidDimension`] if `n == 0`, `m == 0`, or
 /// `argvals.len() != m`. Returns [`FdarError::InvalidParameter`] if
-/// `config.k == 0` or `config.k > n`.
+/// `config.k == 0` or `config.k > n`; for linear warp classes also
+/// [`FdarError::InvalidParameter`] for non-increasing `argvals` or an invalid
+/// `linear_config` (see [`AffineRegistrationConfig::validate`]).
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn align_cluster_fd(
     data: &FdMatrix,
@@ -1603,6 +1665,9 @@ pub fn align_cluster_fd(
     config: &AlignClusterConfig,
 ) -> Result<AlignClusterResult, FdarError> {
     let (n, m) = align_cluster_validate(data, argvals, config)?;
+    if let Some(class) = config.warp_class.linear() {
+        return align_cluster_linear(data, argvals, config, class);
+    }
     let k = config.k;
 
     // Initialize k templates by seeded random distinct-curve selection.
@@ -1655,6 +1720,7 @@ pub fn align_cluster_fd(
         distances,
         iterations,
         converged,
+        affine_warps: None,
     })
 }
 
@@ -1812,6 +1878,151 @@ fn align_cluster_update_templates(
         templates[ki] = km.mean;
     }
     Ok(template_changed)
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Align-and-cluster with linear (shift / dilation / affine) warps
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Fit every curve's warp to every template; `fits[i][ki] = (warp, distance)`.
+/// The warm start is the current warp for the assigned cluster, else identity.
+fn linear_fit_all(
+    curves: &[Vec<f64>],
+    argvals: &[f64],
+    templates: &[Vec<f64>],
+    class: LinearWarpClass,
+    lc: &AffineRegistrationConfig,
+    cluster: &[usize],
+    warps: &[crate::alignment::Warp],
+) -> Vec<Vec<(crate::alignment::Warp, f64)>> {
+    use crate::alignment::{align_curve_to_template, Warp};
+    crate::iter_maybe_parallel!(0..curves.len())
+        .map(|i| {
+            (0..templates.len())
+                .map(|ki| {
+                    let start = if cluster[i] == ki {
+                        warps[i]
+                    } else {
+                        Warp::IDENTITY
+                    };
+                    align_curve_to_template(&curves[i], argvals, &templates[ki], class, lc, start)
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// Assign each curve to its nearest template; returns whether any label changed.
+fn linear_assign(distances: &FdMatrix, cluster: &mut [usize]) -> bool {
+    let (n, k) = distances.shape();
+    let mut changed = false;
+    for i in 0..n {
+        let best = (0..k)
+            .min_by(|&a, &b| {
+                distances[(i, a)]
+                    .partial_cmp(&distances[(i, b)])
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap_or(0);
+        if cluster[i] != best {
+            cluster[i] = best;
+            changed = true;
+        }
+    }
+    changed
+}
+
+/// Centre each cluster's warps and set its template to the mean registered
+/// member; empty clusters are re-initialised as in the elastic path. Returns
+/// whether a template was re-initialised.
+fn linear_update_templates(
+    curves: &[Vec<f64>],
+    argvals: &[f64],
+    lc: &AffineRegistrationConfig,
+    cluster: &[usize],
+    warps: &mut [crate::alignment::Warp],
+    templates: &mut [Vec<f64>],
+    rng: &mut StdRng,
+) -> bool {
+    use crate::alignment::{center_warps, mean_template};
+    let n = curves.len();
+    let mut reinit = false;
+    for (ki, template) in templates.iter_mut().enumerate() {
+        let members: Vec<usize> = (0..n).filter(|&i| cluster[i] == ki).collect();
+        if members.is_empty() {
+            let non_members: Vec<usize> = (0..n).filter(|&i| cluster[i] != ki).collect();
+            if !non_members.is_empty() {
+                let pick = non_members[rng.gen_range(0..non_members.len())];
+                *template = curves[pick].clone();
+                reinit = true;
+            }
+            continue;
+        }
+        if lc.center_warps {
+            center_warps(warps, &members);
+        }
+        *template = mean_template(curves, &members, argvals, warps, lc);
+    }
+    reinit
+}
+
+/// `align_cluster_fd` with a linear warp class (fdacluster k-means alignment).
+fn align_cluster_linear(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &AlignClusterConfig,
+    class: LinearWarpClass,
+) -> Result<AlignClusterResult, FdarError> {
+    use crate::alignment::{max_warp_change, validate_linear_inputs, Warp};
+    let lc = &config.linear_config;
+    validate_linear_inputs(data, argvals, class, lc)?;
+    let (n, k) = (data.nrows(), config.k);
+    let len = argvals[argvals.len() - 1] - argvals[0];
+    let mut rng = StdRng::seed_from_u64(config.seed);
+    let mut templates = align_cluster_init_templates(data, n, k, &mut rng);
+    let curves: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
+
+    let mut cluster = vec![0usize; n];
+    let mut warps = vec![Warp::IDENTITY; n];
+    let mut distances = FdMatrix::zeros(n, k);
+    let (mut iterations, mut converged) = (0, false);
+    for _ in 0..config.max_iter {
+        iterations += 1;
+        let fits = linear_fit_all(&curves, argvals, &templates, class, lc, &cluster, &warps);
+        for (i, row) in fits.iter().enumerate() {
+            for (ki, &(_, d)) in row.iter().enumerate() {
+                distances[(i, ki)] = d;
+            }
+        }
+        let changed = linear_assign(&distances, &mut cluster);
+        let mut new_warps: Vec<Warp> = (0..n).map(|i| fits[i][cluster[i]].0).collect();
+        let reinit = linear_update_templates(
+            &curves,
+            argvals,
+            lc,
+            &cluster,
+            &mut new_warps,
+            &mut templates,
+            &mut rng,
+        );
+        let diff = max_warp_change(&warps, &new_warps, len);
+        warps = new_warps;
+        if !changed && !reinit && diff <= lc.tol {
+            converged = true;
+            break;
+        }
+    }
+    Ok(AlignClusterResult {
+        cluster,
+        templates,
+        distances,
+        iterations,
+        converged,
+        affine_warps: Some(AffineWarps {
+            dilations: warps.iter().map(|w| w.a).collect(),
+            shifts: warps.iter().map(|w| w.b).collect(),
+        }),
+    })
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -2455,6 +2666,7 @@ mod tests {
                 elastic_lambda: 0.0,
                 karcher_max_iter: 10,
                 karcher_tol: 1e-3,
+                ..Default::default()
             },
         )
         .unwrap();
@@ -2481,6 +2693,7 @@ mod tests {
                 elastic_lambda: 0.0,
                 karcher_max_iter: 10,
                 karcher_tol: 1e-3,
+                ..Default::default()
             },
         )
         .unwrap();
@@ -2571,5 +2784,221 @@ mod tests {
         assert_eq!(result.templates.len(), 2);
         assert!(result.templates.iter().all(|t| t.len() == m));
         assert_eq!(result.distances.shape(), (n, 2));
+    }
+
+    // ── Linear warp classes (ALN-AFFINE, GH #50) ─────────────────────────
+
+    fn mu0(s: f64) -> f64 {
+        (-((s - 0.45) / 0.12).powi(2)).exp() + 0.6 * (-((s - 0.7) / 0.08).powi(2)).exp()
+    }
+
+    fn mu1(s: f64) -> f64 {
+        0.8 * (-((s - 0.35) / 0.07).powi(2)).exp() - 0.5 * (-((s - 0.62) / 0.1).powi(2)).exp() + 0.3
+    }
+
+    /// `golden_affine.R` k = 2 data: 4 shifted copies of μ0 and 4 of μ1.
+    fn golden_k2_data() -> (FdMatrix, Vec<f64>) {
+        let bb = [-0.04, 0.02, 0.05, -0.01];
+        let m = 101;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let mut x = FdMatrix::zeros(8, m);
+        for i in 0..8 {
+            for (j, &s) in t.iter().enumerate() {
+                x[(i, j)] = if i < 4 {
+                    mu0(s + bb[i]) + 0.02 * (2.0 * PI * s + (i + 1) as f64).sin()
+                } else {
+                    mu1(s + bb[i - 4]) + 0.02 * (2.0 * PI * s + (i - 3) as f64).cos()
+                };
+            }
+        }
+        (x, t)
+    }
+
+    fn linear_cfg(
+        warp: AlignClusterWarp,
+        metric: crate::alignment::AffineMetric,
+        k: usize,
+    ) -> AlignClusterConfig {
+        let mut cfg = AlignClusterConfig {
+            k,
+            warp_class: warp,
+            ..Default::default()
+        };
+        cfg.linear_config.metric = metric;
+        cfg.linear_config.domain = crate::alignment::AffineDomain::Overlap;
+        cfg
+    }
+
+    /// Relative warps `h_r⁻¹ ∘ hᵢ` (frame invariant), as `(a, b)` pairs.
+    fn relative(a: &[f64], b: &[f64], r: usize) -> Vec<(f64, f64)> {
+        a.iter()
+            .zip(b)
+            .map(|(ai, bi)| (ai / a[r], (bi - b[r]) / a[r]))
+            .collect()
+    }
+
+    fn assert_golden_k2(res: &AlignClusterResult, fa: &[f64; 8], fb: &[f64; 8], tol: f64) {
+        // fdacluster memberships: 1 1 1 1 2 2 2 2 (equal up to label permutation).
+        assert!(res.cluster[..4].iter().all(|&c| c == res.cluster[0]));
+        assert!(res.cluster[4..].iter().all(|&c| c == res.cluster[4]));
+        assert_ne!(res.cluster[0], res.cluster[4]);
+        let w = res.affine_warps.as_ref().unwrap();
+        for r in [0usize, 4] {
+            let ours = relative(&w.dilations, &w.shifts, r);
+            let theirs = relative(fa, fb, r);
+            let dev = (r..r + 4)
+                .map(|i| {
+                    (ours[i].0 - theirs[i].0)
+                        .abs()
+                        .max((ours[i].1 - theirs[i].1).abs())
+                })
+                .fold(0.0, f64::max);
+            eprintln!(
+                "k2 cluster from curve {r}: max relative-warp deviation vs fdacluster {dev:.2e}"
+            );
+            for i in r..r + 4 {
+                assert!(
+                    (ours[i].0 - theirs[i].0).abs() < tol && (ours[i].1 - theirs[i].1).abs() < tol,
+                    "curve {i}: {:?} vs {:?}",
+                    ours[i],
+                    theirs[i]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_align_cluster_default_is_elastic_bit_identical() {
+        let (data, t, _) = two_tight_clusters(4, 20);
+        let mut cfg = AlignClusterConfig {
+            max_iter: 3,
+            karcher_max_iter: 3,
+            ..Default::default()
+        };
+        assert_eq!(cfg.warp_class, AlignClusterWarp::Elastic);
+        let r0 = align_cluster_fd(&data, &t, &cfg).unwrap();
+        cfg.warp_class = AlignClusterWarp::Elastic;
+        cfg.linear_config.max_shift = 0.5; // ignored by the elastic path
+        let r1 = align_cluster_fd(&data, &t, &cfg).unwrap();
+        assert_eq!(r0.cluster, r1.cluster);
+        assert_eq!(r0.templates, r1.templates);
+        assert_eq!(r0.distances, r1.distances);
+        assert_eq!(r0.iterations, r1.iterations);
+        assert!(r0.affine_warps.is_none());
+    }
+
+    #[test]
+    fn test_align_cluster_golden_fdacluster_k2_shift_l2() {
+        // fdacluster 0.4.2: fdakmeans(x = t, y = y2, n_clusters = 2, seeds = c(1, 5),
+        //   warping_class = "shift", metric = "l2") — golden_affine.R
+        let (data, t) = golden_k2_data();
+        let cfg = linear_cfg(
+            AlignClusterWarp::Shift,
+            crate::alignment::AffineMetric::L2,
+            2,
+        );
+        let res = align_cluster_fd(&data, &t, &cfg).unwrap();
+        let fb = [
+            -0.0439123479,
+            0.0148289050,
+            0.0437531150,
+            -0.0153905835,
+            -0.0447227140,
+            0.0146447615,
+            0.0440525563,
+            -0.0155873025,
+        ];
+        assert_golden_k2(&res, &[1.0; 8], &fb, 5e-4);
+        assert!(res.converged);
+    }
+
+    #[test]
+    fn test_align_cluster_golden_fdacluster_k2_affine_pearson() {
+        // fdakmeans(..., warping_class = "affine", metric = "pearson")
+        let (data, t) = golden_k2_data();
+        let cfg = linear_cfg(
+            AlignClusterWarp::Affine,
+            crate::alignment::AffineMetric::Pearson,
+            2,
+        );
+        let res = align_cluster_fd(&data, &t, &cfg).unwrap();
+        let fa = [
+            1.0228754504,
+            1.0232461129,
+            1.0270795069,
+            1.0315804342,
+            1.0407648060,
+            1.0379615984,
+            1.0277795089,
+            1.0095019775,
+        ];
+        let fb = [
+            -0.0560258387,
+            0.0039248828,
+            0.0317276585,
+            -0.0314347719,
+            -0.0625962950,
+            0.0002352175,
+            0.0343630059,
+            -0.0192879862,
+        ];
+        // Observed max deviation 2.6e-3 (shift/l2: 1.6e-4). fdacluster stops after
+        // 2 iterations on its 1e-3 relative distance tolerance; its own relative
+        // dilations differ from the noise-free truth (1) by up to 1.7e-2.
+        assert_golden_k2(&res, &fa, &fb, 5e-3);
+    }
+
+    #[test]
+    fn test_align_cluster_linear_recovers_shifts_and_centres() {
+        // Exact shifted copies: within-cluster relative shifts equal the truth and
+        // the cluster's shifts are centred (mean 0).
+        let bb = [-0.04, 0.02, 0.05, -0.01];
+        let m = 201;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let mut data = FdMatrix::zeros(8, m);
+        for i in 0..8 {
+            for (j, &s) in t.iter().enumerate() {
+                data[(i, j)] = if i < 4 {
+                    mu0(s + bb[i])
+                } else {
+                    mu1(s + bb[i - 4])
+                };
+            }
+        }
+        let cfg = AlignClusterConfig {
+            warp_class: AlignClusterWarp::Shift,
+            ..Default::default()
+        };
+        let res = align_cluster_fd(&data, &t, &cfg).unwrap();
+        let w = res.affine_warps.unwrap();
+        assert!(res.cluster[..4].iter().all(|&c| c == res.cluster[0]));
+        assert!(res.cluster[4..].iter().all(|&c| c == res.cluster[4]));
+        assert_ne!(res.cluster[0], res.cluster[4]);
+        for g in 0..2 {
+            let mean: f64 = w.shifts[4 * g..4 * g + 4].iter().sum::<f64>() / 4.0;
+            assert!(mean.abs() < 1e-12);
+            for i in 0..4 {
+                let rel = w.shifts[4 * g + i] - w.shifts[4 * g];
+                assert!((rel - (bb[i] - bb[0])).abs() < 2e-4, "{rel}");
+            }
+        }
+        assert!(w.dilations.iter().all(|&a| a == 1.0));
+        assert!(res.converged);
+    }
+
+    #[test]
+    fn test_align_cluster_linear_validation_and_none_class() {
+        let (data, t) = golden_k2_data();
+        let mut cfg = linear_cfg(
+            AlignClusterWarp::Affine,
+            crate::alignment::AffineMetric::L2,
+            2,
+        );
+        assert!(align_cluster_fd(&data, &t, &cfg).is_err()); // L2 + overlap + affine
+        cfg.warp_class = AlignClusterWarp::None;
+        let res = align_cluster_fd(&data, &t, &cfg).unwrap();
+        let w = res.affine_warps.unwrap();
+        assert!(w.dilations.iter().all(|&a| a == 1.0) && w.shifts.iter().all(|&b| b == 0.0));
+        assert_eq!(res.templates.len(), 2);
     }
 }
