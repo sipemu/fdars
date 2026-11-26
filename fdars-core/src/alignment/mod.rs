@@ -22,6 +22,9 @@
 //!   to a (re-estimated) template, L2 / normalised-L2 / Pearson criteria (R fdacluster)
 //! - [`continuous_registration`] — Ramsay–Li continuous registration (R `register.fd`,
 //!   least-squares and minimum-eigenvalue criteria) with monotone B-spline warps
+//! - [`register_fpca`] / [`register_expfam`] / [`gfpca_variational`] — likelihood-based
+//!   registration of gaussian, binary, gamma and count functional data (irregular grids,
+//!   incomplete curves) jointly with variational-EM generalized FPCA (R `registr`)
 //! - [`curve_shape_align_pair`] / [`curve_shape_distance`] / [`curve_shape_karcher_mean`] /
 //!   [`curve_shape_pca`] — elastic shape analysis of R^d curves (open or closed) modulo
 //!   rotation, scale, reparametrisation and starting point ([`CurveShapeConfig`]), with
@@ -45,6 +48,7 @@ mod differentiable;
 mod dpmeans;
 mod elastic_boxplot;
 mod elastic_depth;
+mod expfam;
 mod fpns;
 mod generative;
 mod geodesic;
@@ -132,6 +136,11 @@ pub use elastic_boxplot::{
     ElasticBoxplotConfig, ElasticBoxplots, ElasticPhaseBoxplot,
 };
 pub use elastic_depth::{elastic_depth, ElasticDepthResult};
+pub use expfam::{
+    evaluate_inverse_warp, gfpca_variational, register_expfam, register_fpca,
+    register_fpca_regular, CurveIncompleteness, ExpFamRegistration, ExpFamily, GfpcaConfig,
+    GfpcaResult, RegisterFpcaConfig, RegisterFpcaResult,
+};
 pub use fpns::{horiz_fpns, FpnsResult};
 pub use generative::{gauss_model, joint_gauss_model, GenerativeModelResult};
 pub use geodesic::{curve_geodesic, curve_geodesic_nd, GeodesicPath, GeodesicPathNd};

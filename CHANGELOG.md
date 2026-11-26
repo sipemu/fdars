@@ -13,6 +13,31 @@ Changed below).
 
 ## [Unreleased]
 
+**Exponential-family registration with generalized FPCA (GH #60 ALN-EXPFAM).** Additive and
+non-breaking (new module `alignment::expfam`; existing code untouched apart from re-exports); no new
+crate dependency.
+
+### Added
+
+- `alignment::register_fpca` / `register_fpca_regular` — port of R `registr` 2.2.1
+  `register_fpca` (Wrobel et al. 2019 JCGS; Wrobel & Bauer 2021 JOSS, `fpca_type =
+  "variationalEM"`): alternating likelihood-based registration with monotone cubic B-spline
+  inverse warps (`kh` basis functions per curve) and variational-EM generalized FPCA of the
+  registered data, for gaussian, binomial, gamma and poisson families (`ExpFamily`), irregular
+  long-format input (`IrregFdata`, curve-specific grids), optional `Y_template`, and incomplete
+  curves (`CurveIncompleteness::{Leading, Trailing, Full}` with endpoint penalty `lambda_inc`).
+- `alignment::register_expfam` — one registration pass to the spline-GLM population mean
+  (registr `registr` without an FPCA object); `ExpFamRegistration` (registered times, `hinv_beta`,
+  inner knots, per-curve losses, gamma scales).
+- `alignment::gfpca_variational` (+ `GfpcaConfig`, `GfpcaResult`) — registr `fpca_gauss` /
+  `bfpca` (Jaakkola–Jordan variational bound for binary data) on irregular data; reproduces R to
+  ~1e-7 given the same initial FPC coefficients (`psi_init`, `xi_init`).
+- `alignment::evaluate_inverse_warp`, `RegisterFpcaConfig`, `RegisterFpcaResult`.
+- Deviations (documented on the module): exact monotone reparameterisation + L-BFGS with analytic
+  gradients for all families instead of `constrOptim` (losses ≤ R's on every curve where R's
+  optimum is feasible); Rust RNG for the EM start; two-step GFPCA (`gfpca_twoStep`),
+  `npc_criterion`, periodic and parametric warps not ported.
+
 **General (a,b) elastic metrics for planar curves (GH #59 ALN-ABMETRIC).** Additive and
 non-breaking: new `CurveShapeConfig::metric` field (default `CurveShapeMetric::Srvf`, which keeps
 every existing result bit-identical); no new crate dependency.

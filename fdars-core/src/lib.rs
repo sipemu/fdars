@@ -328,6 +328,11 @@ pub use alignment::{
     TransferAlignResult, TransportMethod, TsrvfResult, WarpObjectivePenalty, WarpOptimConfig,
     WarpOptimMethod, WarpPenaltyType, WarpStatistics,
 };
+pub use alignment::{
+    evaluate_inverse_warp, gfpca_variational, register_expfam, register_fpca,
+    register_fpca_regular, CurveIncompleteness, ExpFamRegistration, ExpFamily, GfpcaConfig,
+    GfpcaResult, RegisterFpcaConfig, RegisterFpcaResult,
+};
 
 // Re-export commonly used items
 pub use helpers::{
