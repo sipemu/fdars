@@ -32,6 +32,22 @@ untouched apart from re-exports); no new crate dependency.
   distance matrix; pseudo-F, sums of squares and R² match R `vegan` 2.7.8 `adonis2` to 1e-10, and the
   p-value uses vegan's tie tolerance `F* ≥ F − √ε`.
 
+**Tang–Müller pairwise curve synchronisation (GH #61 ALN-WFDA).** Additive and non-breaking (new
+module `alignment::wfda`; existing code untouched apart from re-exports); no new crate dependency.
+
+### Added
+
+- `alignment::pairwise_synchronization(data, argvals, &WfdaConfig) -> WfdaResult` — port of R
+  fdapace 0.6.0 `WFDA` (Tang & Müller 2008, Biometrika): per curve, penalised monotone
+  piecewise-linear (`nknots` 1–7) or random-search pairwise warps to a seeded random subset of
+  partners (`subset_prop`), truncated (cost ≤ 0.9 quantile) or inverse-cost-weighted averaging
+  (`WfdaChoice`) into the inverse warp, inversion and registration; fdapace's data-driven default
+  λ. `WfdaResult` returns warps, inverse warps, aligned curves, costs, λ and the partners /
+  pairwise warps / pairwise costs. `WfdaCostMeasure::FdapaceLegacy` reproduces fdapace's pairwise
+  cost, which indexes a single matrix element instead of the partner curve; the default
+  `PairwiseFit` uses the intended data-fit cost. Golden-tested against fdapace 0.6.0 (warps within
+  1e-4).
+
 **Exponential-family registration with generalized FPCA (GH #60 ALN-EXPFAM).** Additive and
 non-breaking (new module `alignment::expfam`; existing code untouched apart from re-exports); no new
 crate dependency.
