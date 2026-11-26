@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T12:09:06.491Z"
+last_updated: "2026-11-26T12:42:00.444Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 18487a68c9119846d41a2731dab39ee4ba523173
+state_head: 2fc65ed46454c5f37eae3ca785899e4fcca4cb2b
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-hye: ALN-CAV exact DP pruning on by default in all elastic DP paths (closes #66)
+Last activity: 2026-11-26 - Completed quick task 261126-ic6: ALN-CAV elastic DP residual floor diagnosis + RBFGS/DP2 warp options for curve shapes (closes #65)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -201,6 +201,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-al4 | ALN-WFDA (GH #61): Tang–Müller pairwise curve synchronisation (fdapace WFDA) | 2026-11-26 | 8209d8e2 | [261126-al4-aln-wfda-tang-mueller-pairwise-synchroni](./quick/261126-al4-aln-wfda-tang-mueller-pairwise-synchroni/) |
 | 261126-cxk | Fix rustdoc -Dwarnings errors so CI Documentation job passes | 2026-11-26 | fef69806 | [261126-cxk-fix-rustdoc-dwarnings-errors-so-ci-docum](./quick/261126-cxk-fix-rustdoc-dwarnings-errors-so-ci-docum/) |
 | 261126-hye | ALN-CAV enable exact DP pruning by default (#66) | 2026-11-26 | 18487a68 | [261126-hye-aln-cav-enable-exact-dp-pruning-by-defau](./quick/261126-hye-aln-cav-enable-exact-dp-pruning-by-defau/) |
+| 261126-ic6 | ALN-CAV elastic DP residual floor: RBFGS + DP options for curve shape (#65) | 2026-11-26 | 2fc65ed4 | [261126-ic6-aln-cav-elastic-dp-residual-floor-rbfgs-](./quick/261126-ic6-aln-cav-elastic-dp-residual-floor-rbfgs-/) |
 
 ## Deferred Items
 
