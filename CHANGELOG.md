@@ -14,8 +14,8 @@ Changed below).
 ## [Unreleased]
 
 **Sparse / irregular elastic alignment and means (GH #53 ALN-SPARSE).** Additive and
-non-breaking: new `alignment::sparse` module only; no existing code path touched; no new crate
-dependency.
+non-breaking: new `alignment::sparse` module only (new config/result fields default to the
+previous behaviour); no existing code path touched; no new crate dependency.
 
 ### Added
 
@@ -37,7 +37,20 @@ dependency.
   (collinear-point and reparametrisation invariance, mean of one curve on different grids,
   dense-grid limit vs `karcher_mean`). Deviations (documented): closed-curve distance taken
   before wrapping the warp (elasdics reports an overestimate after wrapping); exact spline
-  integrals in the smooth mean; closed elastic means not provided.
+  integrals in the smooth mean.
+- Closed sparse elastic means: `SparseElasticMeanConfig { closed, pen_factor, closure_steps }`
+  (defaults `false`, `100`, `1`; open results bit-identical) — elasdics `fit_mean_closed`
+  generalised from 2-D to any `d`: all-pairs starting-point pre-alignment, periodic SRV spline,
+  penalised closedness via one Brent line search per iteration (port of R `optimise`) on the
+  analytic closure-penalty gradient, final closure step; `closure_steps > 1` adds Gauss–Newton
+  projections that close the mean to round-off. `SparseElasticMeanResult { closed,
+  start_indices }` and `closure_residual()`. Validated against elasdics 1.1.3: closed polygon
+  means (help-page spirals, noisy closed shapes) match coefficients, warps and closure residual
+  to 1e-9; closed smooth means compared on the exact objective; invariants (start-point
+  relabelling, reparametrisation, recovery from different grids/starts, 3-D).
+- The open smooth-mean golden test now asserts optimiser-independent quantities (objective
+  ≤ R's re-scored by the exact integrator, triangle-inequality distance bounds, a 5 %-of-norm
+  mean-curve margin from R's `rel.tol = 0.1`) instead of near-limit coefficient tolerances.
 
 **Bayesian group alignment (GH #52 ALN-BAYESGRP).** Additive and non-breaking: new
 `alignment::bayesian_group` module only; `bayesian_align_pair` and every existing code path

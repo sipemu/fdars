@@ -2,11 +2,12 @@
 #![allow(clippy::excessive_precision, clippy::field_reassign_with_default)]
 
 use super::golden::*;
-use super::smooth::LinSpline;
+use super::polygon::{prepare_curve, srv_from_polygon, SrvPoly};
+use super::smooth::{find_optimal_t_smooth, smooth_distance, LinSpline};
 use super::*;
 use crate::alignment::karcher_mean;
 
-fn curve2d(x1: &[f64], x2: &[f64]) -> FdMatrix {
+pub(super) fn curve2d(x1: &[f64], x2: &[f64]) -> FdMatrix {
     let v: Vec<f64> = x1.iter().zip(x2).flat_map(|(a, b)| [*a, *b]).collect();
     FdMatrix::from_column_major(v, 2, x1.len()).unwrap()
 }
@@ -21,21 +22,21 @@ fn example_curves() -> (FdMatrix, FdMatrix) {
     (c1, curve2d(&x1, &x2))
 }
 
-fn assert_vec_close(a: &[f64], b: &[f64], tol: f64, what: &str) {
+pub(super) fn assert_vec_close(a: &[f64], b: &[f64], tol: f64, what: &str) {
     assert_eq!(a.len(), b.len(), "{what}: length");
     for (k, (x, y)) in a.iter().zip(b).enumerate() {
         assert!((x - y).abs() <= tol, "{what}[{k}]: {x} vs {y}");
     }
 }
 
-fn spiral_curves() -> Vec<SparseCurve> {
+pub(super) fn spiral_curves() -> Vec<SparseCurve> {
     SPIRAL
         .iter()
         .map(|(x1, x2)| SparseCurve::new(curve2d(x1, x2)))
         .collect()
 }
 
-fn knots(n: usize) -> Vec<f64> {
+pub(super) fn knots(n: usize) -> Vec<f64> {
     let mut k: Vec<f64> = (0..n).map(|i| i as f64 / (n - 1) as f64).collect();
     k[n - 1] = 1.0;
     k
@@ -49,7 +50,7 @@ fn spiral_at(s: &[f64]) -> FdMatrix {
 }
 
 /// Deterministic pseudo-random sorted grid in [0, 1] with `m` points.
-fn random_grid(m: usize, seed: u64) -> Vec<f64> {
+pub(super) fn random_grid(m: usize, seed: u64) -> Vec<f64> {
     let mut state = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
     let mut inc: Vec<f64> = (0..m - 1)
         .map(|_| {
@@ -70,7 +71,24 @@ fn random_grid(m: usize, seed: u64) -> Vec<f64> {
     g
 }
 
-fn dist(a: &SparseCurve, b: &SparseCurve) -> f64 {
+/// Point-major interleaving of two coordinate vectors.
+pub(super) fn interleave(x1: &[f64], x2: &[f64]) -> Vec<f64> {
+    x1.iter().zip(x2).flat_map(|(a, b)| [*a, *b]).collect()
+}
+
+/// Piecewise-constant SRV of a prepared curve.
+pub(super) fn srv_of(c: &SparseCurve, closed: bool) -> SrvPoly {
+    srv_from_polygon(&prepare_curve(c, closed, "c").unwrap(), "c").unwrap()
+}
+
+/// Relative L2 difference `‖a − b‖/‖b‖`.
+pub(super) fn rel_l2(a: &[f64], b: &[f64]) -> f64 {
+    let num: f64 = a.iter().zip(b).map(|(x, y)| (x - y).powi(2)).sum();
+    let den: f64 = b.iter().map(|y| y * y).sum();
+    (num / den).sqrt()
+}
+
+pub(super) fn dist(a: &SparseCurve, b: &SparseCurve) -> f64 {
     sparse_elastic_align_pair(a, b, &SparseAlignConfig::default())
         .unwrap()
         .distance
@@ -215,25 +233,62 @@ fn golden_polygon_mean_spirals() {
 #[test]
 fn golden_smooth_mean_spirals() {
     // R: compute_elastic_mean(data_curves, knots = seq(0, 1, length = 11)) (smooth).
-    // elasdics optimises with constrOptim on integrate(rel.tol = 0.1); this crate
-    // integrates exactly, so compare within optimiser tolerance.
+    //
+    // elasdics aligns with constrOptim(reltol = eps·100/i) on H_k integrated by
+    // integrate(rel.tol = 0.1); this crate integrates exactly and searches each warp
+    // coordinate. Both are local ascents, so coefficients / warps agree only to the
+    // optimiser accuracy, and a tight fixed coefficient tolerance would hinge on
+    // floating-point details of either optimiser. The assertions therefore target
+    // quantities that are well defined despite optimiser differences:
+    //  (a) our exact integrator reproduces R's high-accuracy (rel.tol = 1e-13)
+    //      recomputation of its own final distances, so R's solution is scored on
+    //      exactly the objective we minimise;
+    //  (b) the Fréchet objective Σ d² of our fit is no worse than R's (at R's
+    //      coefficients and warps). (Comparing with every curve optimally re-aligned
+    //      to R's mean is not a well-defined golden: the eps = 0.01 stopping rule
+    //      ends both fits at different, not fully optimised points.);
+    //  (c) the two mean curves are elastically close: R's warps carry up to
+    //      rel.tol = 0.1 relative error in each H_k, i.e. ≈ rel.tol/2 = 5 % in each
+    //      √H_k term of the cross product, so R's mean is only determined to ≈ 5 % of
+    //      its SRV norm — margin 0.05·‖μ_R‖ ≈ 0.126 (observed 0.097);
+    //  (d) per-curve distances obey the triangle inequality
+    //      |d(q_i, μ) − d(q_i, μ_R)| ≤ d(μ, μ_R) (+ optimiser slack 1e-3);
+    //  (e) loose sanity bounds on coefficients (rel. L2 < 0.1, observed 0.049) and
+    //      warps (0.02, observed 0.006).
     let mut cfg = SparseElasticMeanConfig::default();
     cfg.knots = knots(11);
     let curves = spiral_curves();
     let res = sparse_elastic_mean(&curves, &cfg).unwrap();
     assert!(res.converged);
     assert_eq!(res.coefs.shape(), (2, 11));
-    // (a) SRV mean coefficients: relative L2 difference
-    let mut num = 0.0;
-    let mut den = 0.0;
-    for j in 0..11 {
-        num += (res.coefs[(0, j)] - SMOOTH_COEF_X1[j]).powi(2)
-            + (res.coefs[(1, j)] - SMOOTH_COEF_X2[j]).powi(2);
-        den += SMOOTH_COEF_X1[j].powi(2) + SMOOTH_COEF_X2[j].powi(2);
+    let r_coefs = interleave(&SMOOTH_COEF_X1, &SMOOTH_COEF_X2);
+    let mean_r = LinSpline {
+        d: 2,
+        knots: &res.knots,
+        c: &r_coefs,
+    };
+    let srvs: Vec<_> = curves.iter().map(|c| srv_of(c, false)).collect();
+    // (a) + (b)
+    let mut obj_r = 0.0;
+    let mut d_r_star = Vec::new();
+    for (i, srv) in srvs.iter().enumerate() {
+        let d_r = smooth_distance(&mean_r, srv, SMOOTH_TOPT[i]);
+        assert!(
+            (d_r - SMOOTH_FINAL_DIST[i]).abs() < 1e-9,
+            "{d_r} vs R {}",
+            SMOOTH_FINAL_DIST[i]
+        );
+        obj_r += d_r * d_r;
+        // optimal warp to R's mean, for the triangle inequality (d)
+        let t_star = find_optimal_t_smooth(&mean_r, srv, SMOOTH_TOPT[i], 1e-8);
+        let d_star = smooth_distance(&mean_r, srv, &t_star);
+        assert!(d_star <= d_r + 1e-12);
+        d_r_star.push(d_star);
     }
-    let rel = (num / den).sqrt();
-    assert!(rel < 0.05, "relative coefficient difference {rel}");
-    // (b) the two mean curves are elastically close (norm of mean SRV ≈ 2.52)
+    let obj: f64 = res.distances.iter().map(|x| x * x).sum();
+    assert!(obj <= obj_r + 1e-9, "objective {obj} vs R {obj_r}");
+    // (c)
+    let norm_r = mean_r.norm_sq().sqrt();
     let grid = knots(401);
     let ours = SparseCurve::with_param(res.mean_curve(&grid, false).unwrap(), grid.clone());
     let r_res = SparseElasticMeanResult {
@@ -242,16 +297,20 @@ fn golden_smooth_mean_spirals() {
     };
     let theirs = SparseCurve::with_param(r_res.mean_curve(&grid, false).unwrap(), grid);
     let d_means = dist(&theirs, &ours);
-    assert!(d_means < 0.1, "elastic distance between means {d_means}");
-    // (c) distances to the mean agree with R's exact-integral recomputation
-    for (ours, theirs) in res.distances.iter().zip(&SMOOTH_FINAL_DIST) {
-        assert!((ours - theirs).abs() < 0.03, "dist {ours} vs R {theirs}");
+    assert!(
+        d_means < 0.05 * norm_r,
+        "elastic distance between means {d_means} (‖μ_R‖ = {norm_r})"
+    );
+    // (d)
+    for (ours, theirs) in res.distances.iter().zip(&d_r_star) {
+        assert!(
+            (ours - theirs).abs() <= d_means + 1e-3,
+            "dist {ours} vs R {theirs} (d_means {d_means})"
+        );
     }
-    // exact integration finds a better (lower) Fréchet objective than R's coarse one
-    let obj: f64 = res.distances.iter().map(|x| x * x).sum();
-    let obj_r: f64 = SMOOTH_FINAL_DIST.iter().map(|x| x * x).sum();
-    assert!(obj <= obj_r, "objective {obj} vs R {obj_r}");
-    // (d) parametrisations agree
+    // (e)
+    let rel = rel_l2(res.coefs.as_slice(), &r_coefs);
+    assert!(rel < 0.1, "relative coefficient difference {rel}");
     for i in 0..4 {
         assert_vec_close(&res.params_optim[i], SMOOTH_TOPT[i], 0.02, "t_optim");
     }

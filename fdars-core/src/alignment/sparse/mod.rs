@@ -19,12 +19,14 @@
 //!   elasdics coordinate-wise **analytic** maximisation of the warped inner
 //!   product `Σ_k √(Δs_k ∫_{t_k}^{t_{k+1}} ⟨q_k, p(u)⟩_+² du)` (warps may be
 //!   non-strictly increasing, i.e. the closure of the warping group).
-//! * [`sparse_elastic_mean`] (elasdics `compute_elastic_mean`, open curves) —
-//!   an elastic (Fréchet) mean whose SRV is a spline on given `knots`:
+//! * [`sparse_elastic_mean`] (elasdics `compute_elastic_mean`, open and closed
+//!   curves) — an elastic (Fréchet) mean whose SRV is a spline on given `knots`:
 //!   [`SparseMeanType::Smooth`] (linear SRV spline, differentiable mean curve)
 //!   or [`SparseMeanType::Polygon`] (constant SRV spline, polygonal mean).
 //!   Alternates a least-squares spline fit of the warped SRVs with the
-//!   alignment of every observation to the current mean.
+//!   alignment of every observation to the current mean. Closed means
+//!   (`closed = true`, elasdics `fit_mean_closed`) pre-align the starting
+//!   points, use a periodic spline and enforce closedness by a penalty.
 //! * [`sparse_curves_from_irreg`] converts 1-D irregular functional data
 //!   ([`IrregFdata`]) into sparse curves.
 //!
@@ -46,17 +48,24 @@
 //!    at its returned parametrisation, to the *returned* mean (elasdics'
 //!    `dist_to_mean` refers to the mean of the previous iteration).
 //! 4. The duplicate-point threshold uses `max|x|·ε` instead of `max(x)·ε`.
-//! 5. Closed elastic means (elasdics `fit_mean_closed`, a 2-D-only penalised
-//!    fit) are not provided.
+//! 5. Closed elastic means work in any dimension `d ≥ 1` (elasdics
+//!    `fit_mean_closed` is 2-D only); the gradient of the closure penalty is
+//!    analytic (elasdics: `numDeriv::grad` on numerical integrals), and the
+//!    optional extra closure steps (`closure_steps > 1`) are an addition.
 
+mod closed_mean;
 mod discrete;
 #[cfg(test)]
 mod golden;
+#[cfg(test)]
+mod golden_closed;
 mod mean;
 mod polygon;
 mod smooth;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_closed;
 
 pub use mean::{
     sparse_elastic_mean, SparseElasticMeanConfig, SparseElasticMeanResult, SparseMeanType,

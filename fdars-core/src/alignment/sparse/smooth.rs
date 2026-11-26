@@ -10,7 +10,7 @@
 //! elasdics' `constrOptim` (BFGS in a log-barrier); both are local ascent from
 //! the same start.
 
-use super::polygon::{dot, sq, SrvPoly};
+use super::polygon::{add_norm_jacobian, dot, sq, SrvPoly};
 
 /// Linear SRV spline: value `c[j*d..(j+1)*d]` at `knots[j]`, linear in between.
 pub(super) struct LinSpline<'a> {
@@ -248,29 +248,31 @@ pub(super) fn smooth_distance(p: &LinSpline<'_>, q: &SrvPoly, t: &[f64]) -> f64 
     }
 }
 
+/// 8-point Gauss–Legendre nodes / weights on `[-1, 1]`.
+const GL_X: [f64; 8] = [
+    -0.960_289_856_497_536_3,
+    -0.796_666_477_413_626_7,
+    -0.525_532_409_916_329,
+    -0.183_434_642_495_649_8,
+    0.183_434_642_495_649_8,
+    0.525_532_409_916_329,
+    0.796_666_477_413_626_7,
+    0.960_289_856_497_536_3,
+];
+const GL_W: [f64; 8] = [
+    0.101_228_536_290_376_26,
+    0.222_381_034_453_374_47,
+    0.313_706_645_877_887_3,
+    0.362_683_783_378_362,
+    0.362_683_783_378_362,
+    0.313_706_645_877_887_3,
+    0.222_381_034_453_374_47,
+    0.101_228_536_290_376_26,
+];
+
 /// `β(x) = ∫_0^x p|p|` at sorted `xs`, by 8-point Gauss–Legendre on every piece
 /// between consecutive evaluation points and knots. Point-major output.
 pub(super) fn integrate_curve(p: &LinSpline<'_>, xs: &[f64]) -> Vec<f64> {
-    const GL_X: [f64; 8] = [
-        -0.960_289_856_497_536_3,
-        -0.796_666_477_413_626_7,
-        -0.525_532_409_916_329,
-        -0.183_434_642_495_649_8,
-        0.183_434_642_495_649_8,
-        0.525_532_409_916_329,
-        0.796_666_477_413_626_7,
-        0.960_289_856_497_536_3,
-    ];
-    const GL_W: [f64; 8] = [
-        0.101_228_536_290_376_26,
-        0.222_381_034_453_374_47,
-        0.313_706_645_877_887_3,
-        0.362_683_783_378_362,
-        0.362_683_783_378_362,
-        0.313_706_645_877_887_3,
-        0.222_381_034_453_374_47,
-        0.101_228_536_290_376_26,
-    ];
     let d = p.d;
     let mut out = vec![0.0; xs.len() * d];
     let mut acc = vec![0.0; d];
@@ -298,4 +300,32 @@ pub(super) fn integrate_curve(p: &LinSpline<'_>, xs: &[f64]) -> Vec<f64> {
         out[n * d..(n + 1) * d].copy_from_slice(&acc);
     }
     out
+}
+
+/// Jacobian of the closure residual `e = ∫_0^1 p|p|` with respect to the
+/// point-major coefficients of `p` (same quadrature as [`integrate_curve`], so
+/// it is the exact Jacobian of the discretised residual); row-major `d × ncoef`.
+pub(super) fn closure_jacobian(p: &LinSpline<'_>) -> Vec<f64> {
+    let d = p.d;
+    let nc = p.c.len();
+    let mut jac = vec![0.0; d * nc];
+    let mut buf = vec![0.0; d];
+    for j in 0..p.nint() {
+        let (a, b) = (p.knots[j], p.knots[j + 1]);
+        let (mid, half) = (0.5 * (a + b), 0.5 * (b - a));
+        for (gx, gw) in GL_X.iter().zip(&GL_W) {
+            let u = mid + half * gx;
+            p.eval(u, &mut buf);
+            let nrm = sq(&buf).sqrt();
+            if nrm == 0.0 {
+                continue;
+            }
+            // d(p|p|)/dp = |p| I + p pᵀ/|p|
+            let w1 = (u - a) / (b - a);
+            for (jj, phi) in [(j, 1.0 - w1), (j + 1, w1)] {
+                add_norm_jacobian(&mut jac, nc, jj * d, half * gw * phi, &buf, nrm);
+            }
+        }
+    }
+    jac
 }

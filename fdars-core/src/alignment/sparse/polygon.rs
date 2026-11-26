@@ -58,6 +58,25 @@ pub(super) fn dot(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
+/// Add `f · d(v|v|)/dv = f · (|v| I + v vᵀ/|v|)` (with `nrm = |v| > 0`) to the
+/// row-major `d × nc` Jacobian `jac`, columns `col0..col0 + d`.
+pub(super) fn add_norm_jacobian(
+    jac: &mut [f64],
+    nc: usize,
+    col0: usize,
+    f: f64,
+    v: &[f64],
+    nrm: f64,
+) {
+    for (a, va) in v.iter().enumerate() {
+        let row = &mut jac[a * nc + col0..a * nc + col0 + v.len()];
+        for (b, (cell, vb)) in row.iter_mut().zip(v).enumerate() {
+            let delta = if a == b { nrm } else { 0.0 };
+            *cell += f * (delta + va * vb / nrm);
+        }
+    }
+}
+
 /// Validate a user-supplied parametrisation (elasdics `check_param`).
 fn check_param(t: &[f64], m: usize, closed: bool) -> Result<(), FdarError> {
     if t.len() != m {

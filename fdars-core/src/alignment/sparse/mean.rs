@@ -1,6 +1,7 @@
 //! Elastic means of sparsely observed open curves (elasdics
 //! `compute_elastic_mean` / `fit_mean` / `get_model_data` / `make_design`).
 
+use super::closed_mean::fit_mean_closed;
 use super::discrete::{compute_distance, find_optimal_t_discrete, Reference};
 use super::polygon::{
     eval_polygon, points_from_srv, prepare_curve, srv_from_points_unchecked, srv_from_polygon,
@@ -53,6 +54,28 @@ pub struct SparseElasticMeanConfig {
     pub eps: f64,
     /// Maximum number of fit/align iterations (≥ 1). Default 50.
     pub max_iter: usize,
+    /// Treat the curves as closed (elasdics `closed = TRUE`, `fit_mean_closed`):
+    /// every curve is closed by appending its first point when needed, curves
+    /// are pre-aligned over their starting points, the mean SRV spline is
+    /// periodic (smooth) and the closedness of the mean is enforced by a penalty
+    /// (see [`sparse_elastic_mean`]). Requires at least 3 knots. Default `false`.
+    pub closed: bool,
+    /// Closed means only: penalty factor of the closedness constraint
+    /// (elasdics `pen_factor`); iteration `i` weighs the least-squares loss by
+    /// `1/(pen_factor·i)` against the squared closure residual. Finite and
+    /// `> 0`. Default `100`.
+    pub pen_factor: f64,
+    /// Closed means only: number of final closure steps. The penalised fit
+    /// closes the mean only approximately; elasdics finishes with one gradient
+    /// line search on the squared closure residual alone, applied on
+    /// convergence — the default `1` reproduces exactly that (`0` skips it).
+    /// Every further step is a Gauss–Newton projection
+    /// `δ = −Jᵀ(JJᵀ)⁻¹ e` onto closed curves (minimum-norm coefficient
+    /// correction, applied whether or not the iteration converged, stopping
+    /// once the residual no longer decreases), which drives the closure
+    /// residual ([`SparseElasticMeanResult::closure_residual`]) to round-off
+    /// within a few steps. Default `1`.
+    pub closure_steps: usize,
 }
 
 impl Default for SparseElasticMeanConfig {
@@ -62,6 +85,9 @@ impl Default for SparseElasticMeanConfig {
             mean_type: SparseMeanType::Smooth,
             eps: 0.01,
             max_iter: 50,
+            closed: false,
+            pen_factor: 100.0,
+            closure_steps: 1,
         }
     }
 }
@@ -77,13 +103,20 @@ pub struct SparseElasticMeanResult {
     pub knots: Vec<f64>,
     /// SRV spline coefficients, `d × nbasis` (column `j` = coefficient vector `j`):
     /// `nbasis = K + 1` (values at the knots) for `Smooth`, `K` (value on knot
-    /// interval `j`) for `Polygon`. elasdics `coefs` transposed.
+    /// interval `j`) for `Polygon`; for a closed `Smooth` mean `nbasis = K`
+    /// (periodic: the value at knot `K` equals column 0). elasdics `coefs`
+    /// transposed.
     pub coefs: FdMatrix,
-    /// Observed points of every curve after duplicate removal, `d × m_i`.
+    /// Observed points of every curve after duplicate removal (and, for closed
+    /// means, closure by appending the first point), `d × m_i`.
     pub curves: Vec<FdMatrix>,
     /// Initial parametrisation of every curve (length `m_i`).
     pub params: Vec<Vec<f64>>,
-    /// Optimal parametrisation of every curve when aligned to the mean.
+    /// Optimal parametrisation of every curve's points when aligned to the mean
+    /// (length `m_i`). Open: non-decreasing from 0 to 1. Closed (as elasdics):
+    /// in the original point order, the curve's start point
+    /// `start_indices[i]` has parameter 0, values increase cyclically from
+    /// there, and the closing (last) point repeats the first point's value.
     pub params_optim: Vec<Vec<f64>>,
     /// Elastic distance of every curve (at `params_optim`) to the returned mean.
     pub distances: Vec<f64>,
@@ -91,11 +124,45 @@ pub struct SparseElasticMeanResult {
     pub n_iter: usize,
     /// Whether the coefficient criterion fell below `eps` within `max_iter`.
     pub converged: bool,
+    /// Whether the mean is a closed-curve mean.
+    pub closed: bool,
+    /// Closed means: index of the observed point of every curve chosen as its
+    /// starting point by the pre-alignment (the point mapped to the mean's
+    /// parameter 0). All zero for open means.
+    pub start_indices: Vec<usize>,
 }
 
 impl SparseElasticMeanResult {
     fn d(&self) -> usize {
         self.coefs.nrows()
+    }
+
+    /// Point-major coefficients on the non-periodic basis (a closed smooth
+    /// mean's periodic coefficients get the value at knot `K` appended).
+    fn full_coefs(&self) -> Vec<f64> {
+        expand_coefs(self.coefs.as_slice(), self.d(), self.mean_type, self.closed)
+    }
+
+    /// Closure residual `β(1) − β(0) = ∫_0^1 p|p|` of the mean curve (length
+    /// `d`): zero for an exactly closed curve. Exact for `Polygon`, 8-point
+    /// Gauss–Legendre per knot interval for `Smooth` (as [`Self::mean_curve`]).
+    ///
+    /// # Examples
+    /// See [`sparse_elastic_mean`].
+    pub fn closure_residual(&self) -> Vec<f64> {
+        let d = self.d();
+        let full = self.full_coefs();
+        match self.mean_type {
+            SparseMeanType::Smooth => integrate_curve(
+                &LinSpline {
+                    d,
+                    knots: &self.knots,
+                    c: &full,
+                },
+                &[1.0],
+            ),
+            SparseMeanType::Polygon => polygon_endpoint(d, &self.knots, &full),
+        }
     }
 
     /// Evaluate the mean SRV at parameter values `t` (in `[0, 1]`); `d × len`.
@@ -105,7 +172,8 @@ impl SparseElasticMeanResult {
     pub fn srv_eval(&self, t: &[f64]) -> FdMatrix {
         let d = self.d();
         let mut out = FdMatrix::zeros(d, t.len());
-        let c = self.coefs.as_slice();
+        let full = self.full_coefs();
+        let c = &full[..];
         let k = self.knots.len();
         for (n, &x) in t.iter().enumerate() {
             match self.mean_type {
@@ -151,7 +219,8 @@ impl SparseElasticMeanResult {
             });
         }
         let d = self.d();
-        let c = self.coefs.as_slice();
+        let full = self.full_coefs();
+        let c = &full[..];
         let mut pts = match self.mean_type {
             SparseMeanType::Smooth => integrate_curve(
                 &LinSpline {
@@ -206,12 +275,68 @@ fn validate_mean_config(cfg: &SparseElasticMeanConfig) -> Result<(), FdarError> 
             message: "must be >= 1".to_string(),
         });
     }
+    if cfg.closed && k.len() < 3 {
+        return Err(FdarError::InvalidParameter {
+            parameter: "knots",
+            message: "a closed mean needs at least 3 knots".to_string(),
+        });
+    }
+    if cfg.closed && !(cfg.pen_factor.is_finite() && cfg.pen_factor > 0.0) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "pen_factor",
+            message: format!("must be finite and > 0, got {}", cfg.pen_factor),
+        });
+    }
     Ok(())
 }
 
-/// Spline design row at `x` (elasdics `make_design`, `closed = FALSE`):
-/// indicator of the knot interval (polygon) or hat functions (smooth).
-fn design_row(knots: &[f64], mean_type: SparseMeanType, x: f64, row: &mut [f64]) {
+/// Number of spline basis functions (elasdics `make_design` columns).
+pub(super) fn nbasis(knots: &[f64], mean_type: SparseMeanType, closed: bool) -> usize {
+    match mean_type {
+        SparseMeanType::Smooth if !closed => knots.len(),
+        _ => knots.len() - 1,
+    }
+}
+
+/// Point-major coefficients on the non-periodic basis: a closed smooth spline's
+/// `K` periodic coefficients get the value at knot `K` (= coefficient 0) appended.
+pub(super) fn expand_coefs(
+    coefs: &[f64],
+    d: usize,
+    mean_type: SparseMeanType,
+    closed: bool,
+) -> Vec<f64> {
+    let mut full = coefs.to_vec();
+    if closed && mean_type == SparseMeanType::Smooth {
+        full.extend_from_slice(&coefs[..d]);
+    }
+    full
+}
+
+/// End point `∫_0^1 p|p|` of the polygon with constant SRV `c_j` on knot
+/// interval `j` (point-major `c`).
+pub(super) fn polygon_endpoint(d: usize, knots: &[f64], c: &[f64]) -> Vec<f64> {
+    let mut e = vec![0.0; d];
+    for (j, w) in knots.windows(2).enumerate() {
+        let cj = &c[j * d..(j + 1) * d];
+        let f = (w[1] - w[0]) * cj.iter().map(|v| v * v).sum::<f64>().sqrt();
+        for (ea, v) in e.iter_mut().zip(cj) {
+            *ea += f * v;
+        }
+    }
+    e
+}
+
+/// Spline design row at `x` (elasdics `make_design`): indicator of the knot
+/// interval (polygon) or hat functions (smooth; `closed`: the first and last
+/// hat merged into one periodic basis function).
+pub(super) fn design_row(
+    knots: &[f64],
+    mean_type: SparseMeanType,
+    closed: bool,
+    x: f64,
+    row: &mut [f64],
+) {
     row.fill(0.0);
     let j = knots
         .partition_point(|&v| v <= x)
@@ -222,14 +347,19 @@ fn design_row(knots: &[f64], mean_type: SparseMeanType, x: f64, row: &mut [f64])
         SparseMeanType::Smooth => {
             let w1 = (x - knots[j]) / (knots[j + 1] - knots[j]);
             row[j] = 1.0 - w1;
-            row[j + 1] = w1;
+            let next = if closed && j + 2 == knots.len() {
+                0
+            } else {
+                j + 1
+            };
+            row[next] += w1;
         }
     }
 }
 
 /// Long-format model data: covariate `m` and warped SRV rows (elasdics
 /// `get_model_data`).
-fn model_data(
+pub(super) fn model_data(
     srvs: &[SrvPoly],
     t_optims: &[Vec<f64>],
     knots: &[f64],
@@ -268,10 +398,9 @@ fn model_data(
 fn normal_equations(
     m: &[f64],
     y: &[f64],
-    d: usize,
-    c: usize,
+    (d, c): (usize, usize),
     knots: &[f64],
-    mean_type: SparseMeanType,
+    (mean_type, closed): (SparseMeanType, bool),
     nbasis: usize,
 ) -> (DMatrix<f64>, DVector<f64>) {
     let mut xtx = DMatrix::<f64>::zeros(nbasis, nbasis);
@@ -282,7 +411,7 @@ fn normal_equations(
         if !yv.is_finite() || !mn.is_finite() {
             continue;
         }
-        design_row(knots, mean_type, mn, &mut row);
+        design_row(knots, mean_type, closed, mn, &mut row);
         let nz: Vec<usize> = (0..nbasis).filter(|&a| row[a] != 0.0).collect();
         for &a in &nz {
             xty[a] += row[a] * yv;
@@ -296,14 +425,18 @@ fn normal_equations(
 
 /// Least-squares spline coefficients per coordinate, dropping non-finite
 /// responses (elasdics `lm(q ~ -1 + design)`); point-major `nbasis × d`.
-fn fit_coefs(m: &[f64], y: &[f64], d: usize, knots: &[f64], mean_type: SparseMeanType) -> Vec<f64> {
-    let nbasis = match mean_type {
-        SparseMeanType::Smooth => knots.len(),
-        SparseMeanType::Polygon => knots.len() - 1,
-    };
+pub(super) fn fit_coefs(
+    m: &[f64],
+    y: &[f64],
+    d: usize,
+    knots: &[f64],
+    mean_type: SparseMeanType,
+    closed: bool,
+) -> Vec<f64> {
+    let nbasis = nbasis(knots, mean_type, closed);
     let mut coefs = vec![0.0; nbasis * d];
     for c in 0..d {
-        let (xtx, xty) = normal_equations(m, y, d, c, knots, mean_type, nbasis);
+        let (xtx, xty) = normal_equations(m, y, (d, c), knots, (mean_type, closed), nbasis);
         let sol = xtx
             .svd(true, true)
             .solve(&xty, 1e-12)
@@ -315,8 +448,8 @@ fn fit_coefs(m: &[f64], y: &[f64], d: usize, knots: &[f64], mean_type: SparseMea
     coefs
 }
 
-/// Align every curve to the current mean.
-fn align_all(
+/// Align every curve to the current mean (`coefs` on the non-periodic basis).
+pub(super) fn align_all(
     srvs: &[SrvPoly],
     t_optims: &[Vec<f64>],
     knots: &[f64],
@@ -343,8 +476,9 @@ fn align_all(
         .collect()
 }
 
-/// Distance of every curve at its parametrisation to the mean.
-fn distances_to_mean(
+/// Distance of every curve at its parametrisation to the mean (`coefs` on the
+/// non-periodic basis).
+pub(super) fn distances_to_mean(
     srvs: &[SrvPoly],
     t_optims: &[Vec<f64>],
     knots: &[f64],
@@ -368,8 +502,8 @@ fn distances_to_mean(
         .collect()
 }
 
-/// Elastic (Fréchet) mean of sparsely observed open curves (elasdics
-/// `compute_elastic_mean`, `closed = FALSE`).
+/// Elastic (Fréchet) mean of sparsely observed open or closed curves (elasdics
+/// `compute_elastic_mean`).
 ///
 /// Each curve is a polygon through its own observed points (any number per
 /// curve, any dimension `d ≥ 1`); the mean is a curve whose SRV is a spline on
@@ -387,10 +521,27 @@ fn distances_to_mean(
 /// it with [`SparseElasticMeanResult::mean_curve`] /
 /// [`SparseElasticMeanResult::srv_eval`].
 ///
+/// **Closed curves** (`config.closed = true`, elasdics `fit_mean_closed`,
+/// generalised from `d = 2` to any `d`): every curve is closed by appending its
+/// first point when needed; all pairs of curves are pre-aligned over the
+/// starting point (every observed point is tried) and every curve is rotated to
+/// its best start against the reference curve with the smallest sum of squared
+/// pre-aligned distances. The mean SRV spline is periodic (the smooth hat
+/// basis wraps around; `coefs` then has `K` columns). Each iteration aligns the
+/// rotated curves to the mean, refits the spline and takes one gradient line
+/// search (Brent's method on `[-1, 1]`, as R `optimise`) on
+/// `‖Xc − y‖²/(pen_factor·i) + |∫_0^1 p|p||²`, which pulls the mean towards
+/// closure; on convergence a final step on the closure residual alone follows,
+/// plus `closure_steps − 1` optional Gauss–Newton projections (see
+/// [`SparseElasticMeanConfig::closure_steps`]). As in elasdics the polygon
+/// aligner uses the fixed tolerance `10⁻³` inside the closed fit.
+///
 /// # Errors
 /// [`FdarError::InvalidDimension`] for an empty curve list or mixed
 /// dimensions; [`FdarError::InvalidParameter`] for invalid curves / knots /
-/// `eps` / `max_iter`.
+/// `eps` / `max_iter` / `pen_factor`, fewer than 3 knots for a closed mean, or
+/// a closed curve whose given parametrisation ends at 1 although its last point
+/// differs from the first.
 ///
 /// # Examples
 /// ```
@@ -417,6 +568,43 @@ fn distances_to_mean(
 /// assert!((mean[(0, 2)] + 2.0).abs() < 0.05 && mean[(1, 2)].abs() < 0.05);
 /// assert!(res.distances.iter().all(|&dist| dist < 0.15));
 /// ```
+///
+/// A closed mean of an ellipse observed at different points, each observation
+/// starting somewhere else:
+/// ```
+/// use fdars_core::alignment::{sparse_elastic_mean, SparseCurve, SparseElasticMeanConfig};
+/// use fdars_core::matrix::FdMatrix;
+/// use std::f64::consts::PI;
+/// let curves: Vec<SparseCurve> = [(30usize, 0.0), (36, 0.3), (42, 0.7)]
+///     .iter()
+///     .map(|&(m, start)| {
+///         let mut v = Vec::new();
+///         for j in 0..m {
+///             let s = 2.0 * PI * (start + j as f64 / m as f64);
+///             v.extend([1.5 * s.cos(), s.sin()]);
+///         }
+///         SparseCurve::new(FdMatrix::from_column_major(v, 2, m).unwrap())
+///     })
+///     .collect();
+/// let mut cfg = SparseElasticMeanConfig::default();
+/// cfg.knots = (0..=12).map(|k| k as f64 / 12.0).collect();
+/// cfg.closed = true;
+/// cfg.closure_steps = 10; // close the mean to round-off
+/// let res = sparse_elastic_mean(&curves, &cfg).unwrap();
+/// assert!(res.converged && res.closed);
+/// assert_eq!(res.coefs.shape(), (2, 12)); // periodic smooth basis
+/// let gap = res.closure_residual();
+/// assert!(gap[0].hypot(gap[1]) < 1e-10);
+/// // the mean is an ellipse: its width is ≈ 3 and its height ≈ 2
+/// let grid: Vec<f64> = (0..=200).map(|k| k as f64 / 200.0).collect();
+/// let mean = res.mean_curve(&grid, true).unwrap();
+/// let xs: Vec<f64> = (0..201).map(|k| mean[(0, k)]).collect();
+/// let ys: Vec<f64> = (0..201).map(|k| mean[(1, k)]).collect();
+/// let span = |v: &[f64]| v.iter().cloned().fold(f64::MIN, f64::max) - v.iter().cloned().fold(f64::MAX, f64::min);
+/// assert!((span(&xs) - 3.0).abs() < 0.05 && (span(&ys) - 2.0).abs() < 0.05);
+/// // remaining distances: the 30–42-gons vs. the smooth mean (discretisation)
+/// assert!(res.distances.iter().all(|&dist| dist < 0.25));
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn sparse_elastic_mean(
     curves: &[SparseCurve],
@@ -432,7 +620,7 @@ pub fn sparse_elastic_mean(
     }
     let polys = curves
         .iter()
-        .map(|c| prepare_curve(c, false, "curves"))
+        .map(|c| prepare_curve(c, config.closed, "curves"))
         .collect::<Result<Vec<_>, _>>()?;
     let d = polys[0].d;
     if let Some(bad) = polys.iter().position(|p| p.d != d) {
@@ -446,6 +634,9 @@ pub fn sparse_elastic_mean(
         .iter()
         .map(|p| srv_from_polygon(p, "curves"))
         .collect::<Result<Vec<_>, _>>()?;
+    if config.closed {
+        return fit_mean_closed(&polys, &srvs, config);
+    }
     let (knots, mean_type) = (&config.knots[..], config.mean_type);
 
     let mut t_optims: Vec<Vec<f64>> = srvs.iter().map(|s| s.t.clone()).collect();
@@ -456,7 +647,7 @@ pub fn sparse_elastic_mean(
     for it in 1..=config.max_iter {
         n_iter = it;
         let (m, y) = model_data(&srvs, &t_optims, knots, mean_type);
-        coefs = fit_coefs(&m, &y, d, knots, mean_type);
+        coefs = fit_coefs(&m, &y, d, knots, mean_type, false);
         let crit = coefs_old.as_ref().map_or(1.0, |old| {
             let num: f64 = coefs.iter().zip(old).map(|(a, b)| (a - b).powi(2)).sum();
             num / coefs.iter().map(|a| a * a).sum::<f64>()
@@ -484,5 +675,7 @@ pub fn sparse_elastic_mean(
         distances,
         n_iter,
         converged,
+        closed: false,
+        start_indices: vec![0; polys.len()],
     })
 }
