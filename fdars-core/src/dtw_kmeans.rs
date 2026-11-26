@@ -29,7 +29,7 @@ use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 use crate::metric::dba::{dba_from_init, DBA_P};
-use crate::metric::dtw::dtw_distance_windowed;
+use crate::metric::dtw::dtw_distance_windowed_flat;
 use crate::metric::DtwWindow;
 use rand::prelude::*;
 #[cfg(feature = "parallel")]
@@ -46,7 +46,12 @@ pub enum DtwKMeansInit {
     KMeansPlusPlus,
     /// Explicit initial centroids (`n_clusters × m`, finite). Every restart
     /// starts from them, so `n_init > 1` only repeats the same run.
+    /// Univariate; [`dtw_kmeans_multivariate`] accepts it when `d = 1`.
     Centroids(FdMatrix),
+    /// Explicit initial centroids for [`dtw_kmeans_multivariate`]:
+    /// `n_clusters` finite matrices of shape `d × m` (channels as rows).
+    /// [`dtw_kmeans`] accepts it when every matrix is `1 × m`.
+    CentroidsMultivariate(Vec<FdMatrix>),
 }
 
 /// Configuration for [`dtw_kmeans`].
@@ -138,7 +143,7 @@ impl DtwKMeansResult {
         let rows = validated_rows(new_data, "new_data")?;
         let refs: Vec<&[f64]> = rows.iter().map(Vec::as_slice).collect();
         let cents = matrix_rows(&self.centroids);
-        let (labels, _) = nearest(&refs, &cents, self.window)?;
+        let (labels, _) = nearest(&refs, 1, &cents, self.window)?;
         Ok(labels)
     }
 }
@@ -181,12 +186,186 @@ impl DtwKMeansResult {
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn dtw_kmeans(data: &FdMatrix, config: &DtwKMeansConfig) -> Result<DtwKMeansResult, FdarError> {
     let rows = validated_rows(data, "data")?;
-    validate_config(config, rows.len(), rows[0].len())?;
+    let m = rows[0].len();
+    validate_config(config, rows.len(), m)?;
+    let init = match &config.init {
+        DtwKMeansInit::Centroids(c) => {
+            validate_init_centroids(c, config.n_clusters, m)?;
+            Some(matrix_rows(c))
+        }
+        DtwKMeansInit::CentroidsMultivariate(cs) => Some(multivariate_init(cs, config, 1, m)?),
+        DtwKMeansInit::KMeansPlusPlus => None,
+    };
     let refs: Vec<&[f64]> = rows.iter().map(Vec::as_slice).collect();
+    let run = best_run(&refs, 1, init.as_deref(), config)?;
+    let k = run.centroids.len();
+    let flat: Vec<f64> = (0..m)
+        .flat_map(|j| run.centroids.iter().map(move |c| c[j]))
+        .collect();
+    Ok(DtwKMeansResult {
+        centroids: FdMatrix::from_column_major(flat, k, m)?,
+        cluster: run.cluster,
+        inertia: run.inertia,
+        iter: run.iter,
+        converged: run.converged,
+        n_init_best: run.n_init_best,
+        window: config.window,
+    })
+}
 
-    let mut best: Option<DtwKMeansResult> = None;
+/// Result of [`dtw_kmeans_multivariate`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct DtwKMeansMultivariateResult {
+    /// DBA centroids, one `d × m` matrix (channels as rows) per cluster.
+    pub centroids: Vec<FdMatrix>,
+    /// Cluster label of each training series (values in `0..k`).
+    pub cluster: Vec<usize>,
+    /// Mean multichannel DTW cost `(1/n) Σ_i DTW²(x_i, centroid[cluster[i]])`.
+    pub inertia: f64,
+    /// Lloyd iterations run by the winning restart.
+    pub iter: usize,
+    /// Whether the winning restart met `tol` before `max_iter`.
+    pub converged: bool,
+    /// Index (0-based) of the winning restart.
+    pub n_init_best: usize,
+    /// The window used for fitting, reused by
+    /// [`DtwKMeansMultivariateResult::predict`].
+    pub window: DtwWindow,
+}
+
+impl DtwKMeansMultivariateResult {
+    /// Assign new `d × m` series to the nearest fitted centroid
+    /// (multichannel DTW cost, same window).
+    ///
+    /// # Errors
+    /// [`FdarError::InvalidDimension`] if `new_data` is empty or a series has
+    /// the wrong number of channels; [`FdarError::InvalidParameter`] if it
+    /// holds non-finite values or the window is unfeasible;
+    /// [`FdarError::ComputationFailed`] if no admissible path exists.
+    pub fn predict(&self, new_data: &[FdMatrix]) -> Result<Vec<usize>, FdarError> {
+        let d = self.centroids.first().map_or(1, FdMatrix::nrows);
+        validated_series(new_data, "new_data", d)?;
+        let refs: Vec<&[f64]> = new_data.iter().map(FdMatrix::as_slice).collect();
+        let cents: Vec<Vec<f64>> = self
+            .centroids
+            .iter()
+            .map(|c| c.as_slice().to_vec())
+            .collect();
+        let (labels, _) = nearest(&refs, d, &cents, self.window)?;
+        Ok(labels)
+    }
+}
+
+/// DTW k-means of multivariate series with DBA centroids (tslearn
+/// `TimeSeriesKMeans(metric="dtw")` on `(n_ts, sz, d)` data).
+///
+/// Each element of `data` is one `d × m` series (channels as rows, time points
+/// as columns; all series share `d` and `m`). Assignment and DBA alignments use
+/// the dependent multichannel DTW of
+/// [`dtw_distance_multivariate`](crate::metric::dtw::dtw_distance_multivariate)
+/// (squared Euclidean cost across channels, as tslearn), the centroids are
+/// multivariate DBA barycenters
+/// ([`dtw_barycenter_averaging_multivariate`](crate::metric::dba::dtw_barycenter_averaging_multivariate)).
+/// The Lloyd loop, restarts, k-means++ seeding and empty-cluster handling are
+/// those of [`dtw_kmeans`] (see the [module docs](self)). Explicit initial
+/// centroids are given as [`DtwKMeansInit::CentroidsMultivariate`]
+/// (`n_clusters` matrices of shape `d × m`); [`DtwKMeansInit::Centroids`] is
+/// accepted when `d = 1`. With `d = 1` the result is bit-identical to
+/// [`dtw_kmeans`].
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `data` is empty, a series is empty or
+///   has a different shape, or initial centroids have the wrong shape.
+/// - [`FdarError::InvalidParameter`] as for [`dtw_kmeans`].
+/// - [`FdarError::ComputationFailed`] if no admissible warping path exists.
+///
+/// # Examples
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::{dtw_kmeans_multivariate, DtwKMeansConfig};
+/// // Six 2-channel series: three with an up-bump in channel 0, three with a
+/// // down-bump in channel 1, at slightly different positions.
+/// let m = 20;
+/// let series: Vec<FdMatrix> = (0..6)
+///     .map(|i| {
+///         let c = 0.3 + 0.05 * (i % 3) as f64;
+///         let mut v = vec![0.0; 2 * m];
+///         for t in 0..m {
+///             let b = (-((t as f64 / (m - 1) as f64 - c) / 0.08).powi(2)).exp();
+///             v[2 * t + if i < 3 { 0 } else { 1 }] = if i < 3 { b } else { -b };
+///         }
+///         FdMatrix::from_column_major(v, 2, m).unwrap()
+///     })
+///     .collect();
+/// let res = dtw_kmeans_multivariate(&series, &DtwKMeansConfig::default()).unwrap();
+/// assert_eq!(res.cluster[0], res.cluster[2]);
+/// assert_ne!(res.cluster[0], res.cluster[3]);
+/// assert_eq!(res.predict(&series).unwrap(), res.cluster);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn dtw_kmeans_multivariate(
+    data: &[FdMatrix],
+    config: &DtwKMeansConfig,
+) -> Result<DtwKMeansMultivariateResult, FdarError> {
+    let d = data.first().map_or(1, FdMatrix::nrows);
+    let m = validated_series(data, "data", d)?;
+    validate_config(config, data.len(), m)?;
+    let init = match &config.init {
+        DtwKMeansInit::Centroids(c) if d == 1 => {
+            validate_init_centroids(c, config.n_clusters, m)?;
+            Some(matrix_rows(c))
+        }
+        DtwKMeansInit::Centroids(_) => {
+            return Err(FdarError::InvalidParameter {
+                parameter: "init",
+                message: format!(
+                    "DtwKMeansInit::Centroids is univariate; use CentroidsMultivariate for {d} channels"
+                ),
+            })
+        }
+        DtwKMeansInit::CentroidsMultivariate(cs) => Some(multivariate_init(cs, config, d, m)?),
+        DtwKMeansInit::KMeansPlusPlus => None,
+    };
+    let refs: Vec<&[f64]> = data.iter().map(FdMatrix::as_slice).collect();
+    let run = best_run(&refs, d, init.as_deref(), config)?;
+    let centroids = run
+        .centroids
+        .into_iter()
+        .map(|c| FdMatrix::from_column_major(c, d, m))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(DtwKMeansMultivariateResult {
+        centroids,
+        cluster: run.cluster,
+        inertia: run.inertia,
+        iter: run.iter,
+        converged: run.converged,
+        n_init_best: run.n_init_best,
+        window: config.window,
+    })
+}
+
+/// Outcome of one Lloyd run (channel-interleaved centroids).
+struct Run {
+    centroids: Vec<Vec<f64>>,
+    cluster: Vec<usize>,
+    inertia: f64,
+    iter: usize,
+    converged: bool,
+    n_init_best: usize,
+}
+
+/// All restarts; the lowest-inertia run wins (first on ties).
+fn best_run(
+    rows: &[&[f64]],
+    d: usize,
+    init: Option<&[Vec<f64>]>,
+    config: &DtwKMeansConfig,
+) -> Result<Run, FdarError> {
+    let mut best: Option<Run> = None;
     for r in 0..config.n_init {
-        let mut run = run_restart(&refs, config, config.seed.wrapping_add(r as u64))?;
+        let mut run = run_restart(rows, d, init, config, config.seed.wrapping_add(r as u64))?;
         run.n_init_best = r;
         if best.as_ref().map_or(true, |b| run.inertia < b.inertia) {
             best = Some(run);
@@ -217,6 +396,39 @@ fn validated_rows(data: &FdMatrix, parameter: &'static str) -> Result<Vec<Vec<f6
     Ok(matrix_rows(data))
 }
 
+/// Validate a non-empty collection of finite `d × m` series of one shape;
+/// returns `m`.
+fn validated_series(
+    data: &[FdMatrix],
+    parameter: &'static str,
+    d: usize,
+) -> Result<usize, FdarError> {
+    let Some(first) = data.first() else {
+        return Err(FdarError::InvalidDimension {
+            parameter,
+            expected: "at least one series".to_string(),
+            actual: "0 series".to_string(),
+        });
+    };
+    let m = first.ncols();
+    for x in data {
+        if d == 0 || m == 0 || x.shape() != (d, m) {
+            return Err(FdarError::InvalidDimension {
+                parameter,
+                expected: format!("non-empty series of one shape {d}x{m} (channels x points)"),
+                actual: format!("{}x{}", x.nrows(), x.ncols()),
+            });
+        }
+        if x.as_slice().iter().any(|v| !v.is_finite()) {
+            return Err(FdarError::InvalidParameter {
+                parameter,
+                message: "all values must be finite".to_string(),
+            });
+        }
+    }
+    Ok(m)
+}
+
 fn matrix_rows(data: &FdMatrix) -> Vec<Vec<f64>> {
     (0..data.nrows()).map(|i| data.row(i)).collect()
 }
@@ -244,10 +456,7 @@ fn validate_config(config: &DtwKMeansConfig, n: usize, m: usize) -> Result<(), F
         }
     }
     config.window.row_bounds(m, m)?;
-    match &config.init {
-        DtwKMeansInit::Centroids(c) => validate_init_centroids(c, k, m),
-        DtwKMeansInit::KMeansPlusPlus => Ok(()),
-    }
+    Ok(())
 }
 
 fn validate_init_centroids(c: &FdMatrix, k: usize, m: usize) -> Result<(), FdarError> {
@@ -267,23 +476,56 @@ fn validate_init_centroids(c: &FdMatrix, k: usize, m: usize) -> Result<(), FdarE
     Ok(())
 }
 
+/// Validate `n_clusters` multivariate initial centroids of shape `d × m`.
+fn multivariate_init(
+    cs: &[FdMatrix],
+    config: &DtwKMeansConfig,
+    d: usize,
+    m: usize,
+) -> Result<Vec<Vec<f64>>, FdarError> {
+    let k = config.n_clusters;
+    if cs.len() != k || cs.iter().any(|c| c.shape() != (d, m)) {
+        return Err(FdarError::InvalidDimension {
+            parameter: "init",
+            expected: format!("{k} initial centroids of shape {d}x{m}"),
+            actual: format!(
+                "{} centroids of shapes {:?}",
+                cs.len(),
+                cs.iter().map(FdMatrix::shape).collect::<Vec<_>>()
+            ),
+        });
+    }
+    if cs
+        .iter()
+        .any(|c| c.as_slice().iter().any(|v| !v.is_finite()))
+    {
+        return Err(FdarError::InvalidParameter {
+            parameter: "init",
+            message: "initial centroids must be finite".to_string(),
+        });
+    }
+    Ok(cs.iter().map(|c| c.as_slice().to_vec()).collect())
+}
+
 /// One full Lloyd run from its own initialisation.
 fn run_restart(
     rows: &[&[f64]],
+    d: usize,
+    init: Option<&[Vec<f64>]>,
     config: &DtwKMeansConfig,
     seed: u64,
-) -> Result<DtwKMeansResult, FdarError> {
+) -> Result<Run, FdarError> {
     let window = config.window;
-    let mut centroids = match &config.init {
-        DtwKMeansInit::Centroids(c) => matrix_rows(c),
-        DtwKMeansInit::KMeansPlusPlus => kmeans_plus_plus(rows, config.n_clusters, window, seed)?,
+    let mut centroids = match init {
+        Some(c) => c.to_vec(),
+        None => kmeans_plus_plus(rows, d, config.n_clusters, window, seed)?,
     };
     let mut old_inertia = f64::INFINITY;
     let mut iter = 0;
     let mut converged = false;
     for _ in 0..config.max_iter {
-        let (labels, inertia) = assign_with_recovery(rows, &mut centroids, window)?;
-        update_centroids(rows, &labels, &mut centroids, config)?;
+        let (labels, inertia) = assign_with_recovery(rows, d, &mut centroids, window)?;
+        update_centroids(rows, d, &labels, &mut centroids, config)?;
         iter += 1;
         if (old_inertia - inertia).abs() < config.tol {
             converged = true;
@@ -291,25 +533,21 @@ fn run_restart(
         }
         old_inertia = inertia;
     }
-    let (cluster, inertia) = assign_with_recovery(rows, &mut centroids, window)?;
-    let m = centroids[0].len();
-    let flat: Vec<f64> = (0..m)
-        .flat_map(|j| centroids.iter().map(move |c| c[j]))
-        .collect();
-    Ok(DtwKMeansResult {
-        centroids: FdMatrix::from_column_major(flat, centroids.len(), m)?,
+    let (cluster, inertia) = assign_with_recovery(rows, d, &mut centroids, window)?;
+    Ok(Run {
+        centroids,
         cluster,
         inertia,
         iter,
         converged,
         n_init_best: 0,
-        window,
     })
 }
 
 /// DTW cost of every series to every centroid → (argmin labels, own costs).
 fn nearest(
     rows: &[&[f64]],
+    d: usize,
     centroids: &[Vec<f64>],
     window: DtwWindow,
 ) -> Result<(Vec<usize>, Vec<f64>), FdarError> {
@@ -318,9 +556,9 @@ fn nearest(
             let mut arg = 0;
             let mut best = f64::INFINITY;
             for (c, cent) in centroids.iter().enumerate() {
-                let d = dtw_distance_windowed(rows[i], cent, DBA_P, window)?;
-                if d < best {
-                    best = d;
+                let dist = dtw_distance_windowed_flat(rows[i], cent, d, DBA_P, window)?;
+                if dist < best {
+                    best = dist;
                     arg = c;
                 }
             }
@@ -334,10 +572,11 @@ fn nearest(
 /// `(labels, inertia)`.
 fn assign_with_recovery(
     rows: &[&[f64]],
+    d: usize,
     centroids: &mut [Vec<f64>],
     window: DtwWindow,
 ) -> Result<(Vec<usize>, f64), FdarError> {
-    let (mut labels, mut own) = nearest(rows, centroids, window)?;
+    let (mut labels, mut own) = nearest(rows, d, centroids, window)?;
     let k = centroids.len();
     loop {
         let mut sizes = vec![0usize; k];
@@ -367,6 +606,7 @@ fn assign_with_recovery(
 /// DBA update of every centroid over its members, warm-started in place.
 fn update_centroids(
     rows: &[&[f64]],
+    d: usize,
     labels: &[usize],
     centroids: &mut [Vec<f64>],
     config: &DtwKMeansConfig,
@@ -384,6 +624,7 @@ fn update_centroids(
         let weights = vec![1.0; members.len()];
         let res = dba_from_init(
             &members,
+            d,
             &weights,
             std::mem::take(cent),
             config.dba_max_iter,
@@ -399,6 +640,7 @@ fn update_centroids(
 /// `_k_init_metric`).
 fn kmeans_plus_plus(
     rows: &[&[f64]],
+    d: usize,
     k: usize,
     window: DtwWindow,
     seed: u64,
@@ -408,21 +650,21 @@ fn kmeans_plus_plus(
     let trials = 2 + (k as f64).ln().floor() as usize;
     let first = rng.gen_range(0..n);
     let mut centers = vec![rows[first].to_vec()];
-    let mut closest = costs_to(rows, rows[first], window)?;
+    let mut closest = costs_to(rows, d, rows[first], window)?;
     let mut pot: f64 = closest.iter().sum();
     for _ in 1..k {
         let mut cum = Vec::with_capacity(n);
         let mut acc = 0.0;
-        for &d in &closest {
-            acc += d;
+        for &dist in &closest {
+            acc += dist;
             cum.push(acc);
         }
         let mut best: Option<(f64, usize, Vec<f64>)> = None;
         for _ in 0..trials {
             let target = rng.gen::<f64>() * pot;
             let cand = cum.partition_point(|&c| c < target).min(n - 1);
-            let d = costs_to(rows, rows[cand], window)?;
-            let merged: Vec<f64> = closest.iter().zip(&d).map(|(a, b)| a.min(*b)).collect();
+            let dc = costs_to(rows, d, rows[cand], window)?;
+            let merged: Vec<f64> = closest.iter().zip(&dc).map(|(a, b)| a.min(*b)).collect();
             let p: f64 = merged.iter().sum();
             if best.as_ref().map_or(true, |(bp, _, _)| p < *bp) {
                 best = Some((p, cand, merged));
@@ -437,15 +679,21 @@ fn kmeans_plus_plus(
     Ok(centers)
 }
 
-fn costs_to(rows: &[&[f64]], center: &[f64], window: DtwWindow) -> Result<Vec<f64>, FdarError> {
+fn costs_to(
+    rows: &[&[f64]],
+    d: usize,
+    center: &[f64],
+    window: DtwWindow,
+) -> Result<Vec<f64>, FdarError> {
     iter_maybe_parallel!(0..rows.len())
-        .map(|i| dtw_distance_windowed(center, rows[i], DBA_P, window))
+        .map(|i| dtw_distance_windowed_flat(center, rows[i], d, DBA_P, window))
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::metric::dtw::dtw_distance_windowed;
 
     // Golden values: tslearn 0.10.0
     // `TimeSeriesKMeans(n_clusters=2, metric="dtw", init=K[[0, 1]], n_init=1,

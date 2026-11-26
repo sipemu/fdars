@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**DTW family gaps (GH #73 ALN-CAV).** Additive only: every existing function returns
+bit-identical results (the multivariate variants with one channel reproduce the univariate
+ones bit-for-bit, pinned by tests).
+
+### Added
+
+- **Multivariate (multichannel) series** for the DTW family — one `d × m` `FdMatrix` per
+  series (channels as rows, aeon's `(n_channels, n_timepoints)` layout), collections as
+  `&[FdMatrix]`, with aeon / tslearn's dependent semantics (squared Euclidean cost across
+  channels): `dtw_distance_multivariate`, `dtw_path_multivariate`,
+  `dtw_pairwise_distance_multivariate`; `dtw_barycenter_averaging_multivariate`
+  (`DbaMultivariateResult`, new `DbaInit::CustomMultivariate`, variable-length series with
+  tslearn's `nanmean` initialisation); `dtw_kmeans_multivariate`
+  (`DtwKMeansMultivariateResult` + `predict`, new `DtwKMeansInit::CentroidsMultivariate`);
+  and `<name>_{distance,pairwise_distance,cost_matrix,alignment_path}_multivariate` for the
+  whole aeon elastic family (DDTW, WDTW, WDDTW, ADTW, ERP, EDR, TWE, MSM with aeon's
+  `independent` per-channel sum / dependent vector cost, LCSS). Golden-tested against aeon
+  1.6.0 and tslearn 0.10.0 (`dtw_path`, `dtw_barycenter_averaging`, `TimeSeriesKMeans`).
+- **Shape DTW** (Zhao & Itti 2018, aeon `shape_dtw_*`): `shape_dtw_distance`,
+  `shape_dtw_pairwise_distance`, `shape_dtw_cost_matrix`, `shape_dtw_alignment_path` (+
+  `_multivariate`), with `reach` and `ShapeDtwDescriptor` — `Identity` (aeon's default) plus
+  sktime's `Paa`, `Dwt`, `Slope` and `Derivative` descriptors. Golden-tested against aeon
+  1.6.0 (other descriptors via sktime 1.3.0 transformers fed to aeon as precomputed
+  transformations).
+
 **Bayesian group alignment band calibration (GH #64 ALN-CAV).** One fix to the posterior
 summaries of `bayesian_align_group`; the chains, warp / σ² summaries and every
 `center_draws = false` result are bit-identical (FNV-hash tests pinned on the previous commit).

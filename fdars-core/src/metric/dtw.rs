@@ -190,11 +190,22 @@ fn dtw_fill_row(
     curr: &mut [f64],
     xi: f64,
     y: &[f64],
-    (lo, hi): (usize, usize),
+    bounds: (usize, usize),
     cost: LocalCost,
 ) {
+    fill_row_with(prev, curr, bounds, |j| cost.eval(xi, y[j]));
+}
+
+/// [`dtw_fill_row`] with an arbitrary per-column cost `cell(j)` (0-based `j`).
+#[inline]
+fn fill_row_with(
+    prev: &[f64],
+    curr: &mut [f64],
+    (lo, hi): (usize, usize),
+    cell: impl Fn(usize) -> f64,
+) {
     for j in (lo + 1)..=hi {
-        let c = cost.eval(xi, y[j - 1]);
+        let c = cell(j - 1);
         curr[j] = c + prev[j].min(curr[j - 1]).min(prev[j - 1]);
     }
 }
@@ -339,6 +350,272 @@ pub fn dtw_distance_windowed(
     } else {
         Err(no_path_error("dtw_distance_windowed"))
     }
+}
+
+// ---------------------------------------------------------------------------
+// Multivariate (multichannel) DTW
+// ---------------------------------------------------------------------------
+
+/// Channel-aware local cost `‖a − b‖₂^p` between two time points of a
+/// channel-interleaved series. A single channel uses [`LocalCost`] directly,
+/// so `d = 1` is bit-identical to the univariate DTW; for `p = 2` and `d > 1`
+/// it is the squared Euclidean distance accumulated from `0.0` in channel order
+/// (aeon / tslearn's dependent multichannel cost).
+#[derive(Clone, Copy)]
+pub(crate) struct ChannelCost(LocalCost);
+
+impl ChannelCost {
+    pub(crate) fn new(p: f64) -> Self {
+        ChannelCost(LocalCost::new(p))
+    }
+
+    #[inline]
+    pub(crate) fn eval(self, a: &[f64], b: &[f64]) -> f64 {
+        if a.len() == 1 {
+            return self.0.eval(a[0], b[0]);
+        }
+        let mut s = 0.0;
+        for (u, w) in a.iter().zip(b) {
+            let t = u - w;
+            s += t * t;
+        }
+        match self.0 {
+            LocalCost::Squared => s,
+            LocalCost::Absolute => s.sqrt(),
+            LocalCost::Power(p) => s.powf(p / 2.0),
+        }
+    }
+}
+
+/// Validate a `d × m` multivariate series pair and return `d`.
+pub(crate) fn validate_mv_pair(x: &FdMatrix, y: &FdMatrix, p: f64) -> Result<usize, FdarError> {
+    let d = x.nrows();
+    if d == 0 || y.nrows() != d || x.ncols() == 0 || y.ncols() == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "x/y",
+            expected: "two non-empty d x m series with the same d >= 1 channels (rows)".to_string(),
+            actual: format!(
+                "{}x{} and {}x{}",
+                x.nrows(),
+                x.ncols(),
+                y.nrows(),
+                y.ncols()
+            ),
+        });
+    }
+    validate_dtw_inputs(&[0.0], &[0.0], p)?;
+    Ok(d)
+}
+
+/// Common channel count of the (non-empty) series of a collection pair.
+pub(crate) fn validate_mv_collection(
+    parameter: &'static str,
+    data: &[FdMatrix],
+    d: Option<usize>,
+) -> Result<Option<usize>, FdarError> {
+    let mut d = d;
+    for x in data {
+        if x.nrows() == 0 || x.ncols() == 0 || d.is_some_and(|e| e != x.nrows()) {
+            return Err(FdarError::InvalidDimension {
+                parameter,
+                expected: format!(
+                    "non-empty d x m series with {} channels (rows)",
+                    d.map_or("the same d >= 1".to_string(), |e| e.to_string())
+                ),
+                actual: format!("{}x{}", x.nrows(), x.ncols()),
+            });
+        }
+        d = Some(x.nrows());
+    }
+    Ok(d)
+}
+
+/// Windowed DTW cost of two channel-interleaved series with `d` channels
+/// (`x.len() = n·d`). `d = 1` delegates to [`dtw_distance_windowed`].
+pub(crate) fn dtw_distance_windowed_flat(
+    x: &[f64],
+    y: &[f64],
+    d: usize,
+    p: f64,
+    window: DtwWindow,
+) -> Result<f64, FdarError> {
+    if d == 1 {
+        return dtw_distance_windowed(x, y, p, window);
+    }
+    validate_dtw_inputs(x, y, p)?;
+    let (n, m) = (x.len() / d, y.len() / d);
+    let bounds = window.row_bounds(n, m)?;
+    let cost = ChannelCost::new(p);
+    let mut prev = vec![f64::INFINITY; m + 1];
+    let mut curr = vec![f64::INFINITY; m + 1];
+    prev[0] = 0.0;
+    for (i, &b) in bounds.iter().enumerate() {
+        curr.fill(f64::INFINITY);
+        let xi = &x[i * d..(i + 1) * d];
+        fill_row_with(&prev, &mut curr, b, |j| {
+            cost.eval(xi, &y[j * d..(j + 1) * d])
+        });
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    let total = prev[m];
+    if total.is_finite() {
+        Ok(total)
+    } else {
+        Err(no_path_error("dtw_distance_multivariate"))
+    }
+}
+
+/// Optimal warping path of two channel-interleaved series with `d` channels.
+/// `d = 1` delegates to [`dtw_path`].
+pub(crate) fn dtw_path_flat(
+    x: &[f64],
+    y: &[f64],
+    d: usize,
+    p: f64,
+    window: DtwWindow,
+) -> Result<DtwPath, FdarError> {
+    if d == 1 {
+        return dtw_path(x, y, p, window);
+    }
+    validate_dtw_inputs(x, y, p)?;
+    let (n, m) = (x.len() / d, y.len() / d);
+    let bounds = window.row_bounds(n, m)?;
+    let cost = ChannelCost::new(p);
+    let mut acc = vec![vec![f64::INFINITY; m + 1]; n + 1];
+    acc[0][0] = 0.0;
+    for i in 1..=n {
+        let (before, after) = acc.split_at_mut(i);
+        let xi = &x[(i - 1) * d..i * d];
+        fill_row_with(&before[i - 1], &mut after[0], bounds[i - 1], |j| {
+            cost.eval(xi, &y[j * d..(j + 1) * d])
+        });
+    }
+    let total = acc[n][m];
+    if !total.is_finite() {
+        return Err(no_path_error("dtw_path_multivariate"));
+    }
+    Ok(DtwPath {
+        path: dtw_traceback(&acc, n, m),
+        cost: total,
+    })
+}
+
+/// DTW between two multivariate series (dependent DTW, aeon / tslearn).
+///
+/// `x` is `d × n` and `y` is `d × m`: one channel per row, one time point per
+/// column (aeon's `(n_channels, n_timepoints)` layout; tslearn's
+/// `(sz, d)` transposed). The local cost of aligning time points `i` and `j`
+/// is `‖x_{·,i} − y_{·,j}‖₂^p`; for `p = 2` this is the squared Euclidean
+/// distance across channels, so the result equals aeon's
+/// `dtw_distance(x, y)` and the square of tslearn's `dtw(x.T, y.T)`. The
+/// returned cost is accumulated without a root, like [`dtw_distance_windowed`].
+/// With `d = 1` the result is bit-identical to
+/// `dtw_distance_windowed(x.row(0), y.row(0), p, window)`.
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if a series is empty or the channel
+///   counts differ.
+/// - [`FdarError::InvalidParameter`] if `p` is not finite and `> 0`, or the
+///   window is invalid / unfeasible for these lengths.
+/// - [`FdarError::ComputationFailed`] if no admissible path reaches the end cell.
+///
+/// # Examples
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::{dtw_distance_multivariate, DtwWindow};
+/// // Two channels: x = [[0, 1, 2], [0, 0, 1]], y = [[0, 2], [0, 1]].
+/// let x = FdMatrix::from_column_major(vec![0.0, 0.0, 1.0, 0.0, 2.0, 1.0], 2, 3).unwrap();
+/// let y = FdMatrix::from_column_major(vec![0.0, 0.0, 2.0, 1.0], 2, 2).unwrap();
+/// let d = dtw_distance_multivariate(&x, &y, 2.0, DtwWindow::None).unwrap();
+/// // Optimal path (0,0), (1,0) or (1,1), (2,1): best cost 1 + 0 = 1.
+/// assert_eq!(d, 1.0);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn dtw_distance_multivariate(
+    x: &FdMatrix,
+    y: &FdMatrix,
+    p: f64,
+    window: DtwWindow,
+) -> Result<f64, FdarError> {
+    let d = validate_mv_pair(x, y, p)?;
+    dtw_distance_windowed_flat(x.as_slice(), y.as_slice(), d, p, window)
+}
+
+/// Optimal DTW warping path between two multivariate series.
+///
+/// Same local cost and conventions as [`dtw_distance_multivariate`] and the
+/// same traceback tie-breaking as [`dtw_path`] (tslearn's `dtw_path`); the
+/// `cost` equals [`dtw_distance_multivariate`] bit-for-bit. With `d = 1` the
+/// result is identical to [`dtw_path`] on the single channel.
+///
+/// # Errors
+/// As for [`dtw_distance_multivariate`].
+///
+/// # Examples
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::{dtw_path_multivariate, DtwWindow};
+/// let x = FdMatrix::from_column_major(vec![1.0, 0.0, 2.0, 1.0, 3.0, 1.0], 2, 3).unwrap();
+/// let y = FdMatrix::from_column_major(vec![1.0, 0.0, 2.0, 1.0, 2.0, 1.0, 3.0, 1.0], 2, 4)
+///     .unwrap();
+/// let res = dtw_path_multivariate(&x, &y, 2.0, DtwWindow::None).unwrap();
+/// assert_eq!(res.path, vec![(0, 0), (1, 1), (1, 2), (2, 3)]);
+/// assert_eq!(res.cost, 0.0);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn dtw_path_multivariate(
+    x: &FdMatrix,
+    y: &FdMatrix,
+    p: f64,
+    window: DtwWindow,
+) -> Result<DtwPath, FdarError> {
+    let d = validate_mv_pair(x, y, p)?;
+    dtw_path_flat(x.as_slice(), y.as_slice(), d, p, window)
+}
+
+/// DTW distance matrix of collections of multivariate series.
+///
+/// Each element of `data` (and `other`) is one `d × m` series (channels as
+/// rows); all series share `d`, lengths may differ (the window is sized per
+/// pair). `other = None` returns the symmetric self-distance matrix (zero
+/// diagonal), otherwise the `data.len() × other.len()` cross-distance matrix,
+/// with entries [`dtw_distance_multivariate`] (aeon `dtw_pairwise_distance`).
+/// Pairs run in parallel with the `parallel` feature.
+///
+/// # Errors
+/// As for [`dtw_distance_multivariate`], for any pair.
+///
+/// # Examples
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::{dtw_distance_multivariate, dtw_pairwise_distance_multivariate, DtwWindow};
+/// let s: Vec<FdMatrix> = (0..3)
+///     .map(|k| FdMatrix::from_column_major(
+///         (0..10).map(|t| ((t * 3 + k * 5) % 7) as f64).collect(), 2, 5,
+///     ).unwrap())
+///     .collect();
+/// let d = dtw_pairwise_distance_multivariate(&s, None, 2.0, DtwWindow::None).unwrap();
+/// assert_eq!(d[(0, 0)], 0.0);
+/// assert_eq!(d[(0, 2)], dtw_distance_multivariate(&s[0], &s[2], 2.0, DtwWindow::None).unwrap());
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn dtw_pairwise_distance_multivariate(
+    data: &[FdMatrix],
+    other: Option<&[FdMatrix]>,
+    p: f64,
+    window: DtwWindow,
+) -> Result<FdMatrix, FdarError> {
+    let d = validate_mv_collection("data", data, None)?;
+    let d = match other {
+        Some(o) => validate_mv_collection("other", o, d)?,
+        None => d,
+    }
+    .unwrap_or(1);
+    validate_dtw_inputs(&[0.0], &[0.0], p)?;
+    let second = other.unwrap_or(data);
+    super::pairwise_result(data.len(), other.map(<[FdMatrix]>::len), |i, j| {
+        dtw_distance_windowed_flat(data[i].as_slice(), second[j].as_slice(), d, p, window)
+    })
 }
 
 #[cfg(test)]

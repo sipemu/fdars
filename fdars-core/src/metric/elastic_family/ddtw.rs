@@ -3,22 +3,23 @@
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 
-use super::{elastic_family_fns, last_cell, ElasticDistancePath, Lattice, Recipe, Traceback};
+use super::{
+    elastic_family_fns, last_cell, sqe, ElasticDistancePath, Lattice, Recipe, Ser, Traceback,
+};
 use crate::metric::window::DtwWindow;
 
 /// aeon `_dtw_cost_matrix`: squared local cost, padded lattice with
 /// `T[0][0] = 0` and `inf` borders.
-pub(super) fn dtw_lattice(x: &[f64], y: &[f64], bounds: &[(usize, usize)]) -> Lattice {
+pub(super) fn dtw_lattice(x: Ser, y: Ser, bounds: &[(usize, usize)]) -> Lattice {
     let mut lat = Lattice::new(x.len(), y.len(), f64::INFINITY);
     lat.set(0, 0, 0.0);
     lat.fill(bounds, |a, b, diag, up, left| {
-        let d = x[a] - y[b];
-        d * d + up.min(left).min(diag)
+        sqe(x.at(a), y.at(b)) + up.min(left).min(diag)
     });
     lat
 }
 
-type Builder = fn(&[f64], &[f64], &[(usize, usize)]) -> Lattice;
+type Builder = fn(Ser, Ser, &[(usize, usize)]) -> Lattice;
 
 fn recipe() -> Result<Recipe<Builder>, FdarError> {
     Ok(Recipe {
@@ -38,6 +39,10 @@ elastic_family_fns! {
     pairwise: ddtw_pairwise_distance,
     cost: ddtw_cost_matrix,
     path: ddtw_alignment_path,
+    distance_mv: ddtw_distance_multivariate,
+    pairwise_mv: ddtw_pairwise_distance_multivariate,
+    cost_mv: ddtw_cost_matrix_multivariate,
+    path_mv: ddtw_alignment_path_multivariate,
     params: (),
     params_doc: "DTW with squared local cost on aeon's slope derivative \
         `q'_i = ((q_i − q_{i−1}) + (q_{i+1} − q_{i−1}) / 2) / 2` (Keogh & Pazzani), \

@@ -32,7 +32,7 @@ use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
-use super::dtw::{dtw_distance_windowed, dtw_path};
+use super::dtw::{dtw_distance_windowed_flat, dtw_path_flat, validate_mv_collection};
 use super::window::DtwWindow;
 
 /// DBA uses the squared local cost `(a − b)²`.
@@ -55,8 +55,12 @@ pub enum DbaInit {
     Medoid,
     /// A user-supplied starting barycenter (finite, non-empty). Its length sets
     /// the barycenter length (tslearn's `init_barycenter`). In a k-means loop
-    /// this is the previous centroid.
+    /// this is the previous centroid. Univariate only.
     Custom(Vec<f64>),
+    /// A user-supplied `d × size` starting barycenter for
+    /// [`dtw_barycenter_averaging_multivariate`] (channels as rows; finite,
+    /// non-empty). [`dtw_barycenter_averaging`] accepts it only with one row.
+    CustomMultivariate(FdMatrix),
 }
 
 /// Configuration for [`dtw_barycenter_averaging`].
@@ -174,23 +178,129 @@ pub fn dtw_barycenter_averaging(
         });
     }
     if data.as_slice().iter().any(|v| !v.is_finite()) {
-        return Err(FdarError::InvalidParameter {
-            parameter: "data",
-            message: "all values must be finite".to_string(),
-        });
+        return Err(non_finite_data());
     }
     let weights = resolve_weights(config.weights.as_deref(), n)?;
     let rows: Vec<Vec<f64>> = (0..n).map(|i| data.row(i)).collect();
     let refs: Vec<&[f64]> = rows.iter().map(Vec::as_slice).collect();
-    let init = initial_barycenter(&refs, &weights, config)?;
+    let init = initial_barycenter(&refs, 1, &weights, config)?;
     dba_from_init(
         &refs,
+        1,
         &weights,
         init,
         config.max_iter,
         config.tol,
         config.window,
     )
+}
+
+/// Result of [`dtw_barycenter_averaging_multivariate`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct DbaMultivariateResult {
+    /// The DBA barycenter as a `d × size` matrix (channels as rows).
+    pub barycenter: FdMatrix,
+    /// Weighted DTW inertia of the returned barycenter (as
+    /// [`DbaResult::cost`], with the multichannel squared Euclidean cost of
+    /// [`dtw_distance_multivariate`](super::dtw::dtw_distance_multivariate)).
+    pub cost: f64,
+    /// Number of DBA iterations performed.
+    pub n_iter: usize,
+    /// Whether the cost change dropped below `tol` before `max_iter`.
+    pub converged: bool,
+}
+
+/// DTW Barycenter Averaging of multivariate series (tslearn
+/// `dtw_barycenter_averaging` on `(n_ts, sz, d)` data).
+///
+/// Each element of `data` is one `d × m_k` series (channels as rows, time
+/// points as columns); all series share `d`, their lengths may differ. The
+/// alignments use the dependent multichannel DTW of
+/// [`dtw_distance_multivariate`](super::dtw::dtw_distance_multivariate)
+/// (squared Euclidean cost across channels) and each barycenter time point is
+/// the weighted mean of the aligned series *vectors*, exactly as in tslearn.
+/// Configuration and stopping rule are those of [`dtw_barycenter_averaging`]:
+/// [`DbaInit::Mean`] averages the series pointwise over the series that reach
+/// each time point (tslearn's `nanmean` of the NaN-padded dataset, length
+/// `max m_k`) and resamples every channel linearly to the barycenter size;
+/// [`DbaInit::CustomMultivariate`] supplies a `d × size` start (a
+/// [`DbaInit::Custom`] vector is accepted when `d = 1`). With `d = 1` the
+/// result is bit-identical to [`dtw_barycenter_averaging`].
+///
+/// # Errors
+/// - [`FdarError::InvalidDimension`] if `data` is empty, a series is empty,
+///   channel counts differ, a weight vector has the wrong length, or a custom
+///   init has the wrong shape.
+/// - [`FdarError::InvalidParameter`] as for [`dtw_barycenter_averaging`].
+/// - [`FdarError::ComputationFailed`] if no admissible warping path exists.
+///
+/// # Examples
+/// ```
+/// use fdars_core::matrix::FdMatrix;
+/// use fdars_core::{dtw_barycenter_averaging_multivariate, DbaConfig};
+/// // Two-channel series (column-major 2 × 6): a bump up in channel 0 and down in
+/// // channel 1, the second series shifted by one sample.
+/// let x0 = vec![0.0, 0.0, 1.0, -1.0, 2.0, -2.0, 1.0, -1.0, 0.0, 0.0, 0.0, 0.0];
+/// let x1 = vec![0.0, 0.0, 0.0, 0.0, 1.0, -1.0, 2.0, -2.0, 1.0, -1.0, 0.0, 0.0];
+/// let data = [
+///     FdMatrix::from_column_major(x0.clone(), 2, 6).unwrap(),
+///     FdMatrix::from_column_major(x1, 2, 6).unwrap(),
+/// ];
+/// let res = dtw_barycenter_averaging_multivariate(&data, &DbaConfig::default()).unwrap();
+/// assert_eq!(res.barycenter.shape(), (2, 6));
+/// // Averaging a series with itself returns it exactly.
+/// let same = [data[0].clone(), data[0].clone()];
+/// let fixed = dtw_barycenter_averaging_multivariate(&same, &DbaConfig::default()).unwrap();
+/// assert_eq!(fixed.barycenter.as_slice(), &x0[..]);
+/// assert_eq!(fixed.cost, 0.0);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn dtw_barycenter_averaging_multivariate(
+    data: &[FdMatrix],
+    config: &DbaConfig,
+) -> Result<DbaMultivariateResult, FdarError> {
+    if data.is_empty() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "data",
+            expected: "at least one series".to_string(),
+            actual: "0 series".to_string(),
+        });
+    }
+    let d = validate_mv_collection("data", data, None)?.unwrap_or(1);
+    if data
+        .iter()
+        .any(|x| x.as_slice().iter().any(|v| !v.is_finite()))
+    {
+        return Err(non_finite_data());
+    }
+    let weights = resolve_weights(config.weights.as_deref(), data.len())?;
+    let refs: Vec<&[f64]> = data.iter().map(FdMatrix::as_slice).collect();
+    let init = initial_barycenter(&refs, d, &weights, config)?;
+    let res = dba_from_init(
+        &refs,
+        d,
+        &weights,
+        init,
+        config.max_iter,
+        config.tol,
+        config.window,
+    )?;
+    let size = res.barycenter.len() / d;
+    Ok(DbaMultivariateResult {
+        barycenter: FdMatrix::from_column_major(res.barycenter, d, size)?,
+        cost: res.cost,
+        n_iter: res.n_iter,
+        converged: res.converged,
+    })
+}
+
+fn non_finite_data() -> FdarError {
+    FdarError::InvalidParameter {
+        parameter: "data",
+        message: "all values must be finite".to_string(),
+    }
 }
 
 /// Validate (or default) the per-series weights.
@@ -215,34 +325,67 @@ fn resolve_weights(weights: Option<&[f64]>, n: usize) -> Result<Vec<f64>, FdarEr
     Ok(w.to_vec())
 }
 
-/// Build the starting barycenter requested by `config`.
+/// Pointwise mean of channel-interleaved series over the series that reach
+/// each flat position (tslearn's `nanmean` of the NaN-padded dataset). For
+/// equal lengths this is the plain mean `Σ_k x_k[j] / n`.
+fn nan_mean(rows: &[&[f64]]) -> Vec<f64> {
+    let len = rows.iter().map(|r| r.len()).max().unwrap_or(0);
+    (0..len)
+        .map(|j| {
+            let reach = || rows.iter().filter(move |r| j < r.len());
+            reach().map(|r| r[j]).sum::<f64>() / reach().count() as f64
+        })
+        .collect()
+}
+
+/// Build the starting barycenter requested by `config` (channel-interleaved,
+/// `d` channels).
 fn initial_barycenter(
     rows: &[&[f64]],
+    d: usize,
     weights: &[f64],
     config: &DbaConfig,
 ) -> Result<Vec<f64>, FdarError> {
-    let m = rows[0].len();
+    let m = rows[0].len() / d;
     if config.barycenter_size == Some(0) {
         return Err(FdarError::InvalidParameter {
             parameter: "barycenter_size",
             message: "must be at least 1".to_string(),
         });
     }
-    let size = config.barycenter_size.unwrap_or(m);
     match &config.init {
         DbaInit::Mean => {
-            let mean: Vec<f64> = (0..m)
-                .map(|j| rows.iter().map(|r| r[j]).sum::<f64>() / rows.len() as f64)
-                .collect();
-            Ok(interpolate_linear(&mean, size))
+            let mean = nan_mean(rows);
+            let size = config.barycenter_size.unwrap_or(mean.len() / d);
+            Ok(interpolate_channels(&mean, d, size))
         }
         DbaInit::Medoid => {
-            let idx = dtw_medoid_index(rows, weights, config.window)?;
-            Ok(interpolate_linear(rows[idx], size))
+            let idx = dtw_medoid_index_flat(rows, d, weights, config.window)?;
+            let size = config.barycenter_size.unwrap_or(m);
+            Ok(interpolate_channels(rows[idx], d, size))
         }
         DbaInit::Custom(b) => {
+            if d != 1 {
+                return Err(FdarError::InvalidParameter {
+                    parameter: "init",
+                    message: format!(
+                        "DbaInit::Custom is univariate; use DbaInit::CustomMultivariate for {d} channels"
+                    ),
+                });
+            }
             validate_custom_init(b, config.barycenter_size)?;
             Ok(b.clone())
+        }
+        DbaInit::CustomMultivariate(b) => {
+            if b.nrows() != d {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "init",
+                    expected: format!("a custom barycenter with {d} channels (rows)"),
+                    actual: format!("{}x{}", b.nrows(), b.ncols()),
+                });
+            }
+            validate_custom_init(b.as_slice(), config.barycenter_size.map(|s| s * d))?;
+            Ok(b.as_slice().to_vec())
         }
     }
 }
@@ -267,33 +410,53 @@ fn validate_custom_init(b: &[f64], size: Option<usize>) -> Result<(), FdarError>
 /// Linear interpolation of `a` (on an equispaced `[0, 1]` grid) onto `size`
 /// equispaced points — tslearn's `_init_avg` resampling. Identity when
 /// `size == a.len()`.
+#[cfg(test)]
 fn interpolate_linear(a: &[f64], size: usize) -> Vec<f64> {
-    let len = a.len();
+    interpolate_channels(a, 1, size)
+}
+
+/// [`interpolate_linear`] of every channel of a channel-interleaved series.
+fn interpolate_channels(a: &[f64], d: usize, size: usize) -> Vec<f64> {
+    let len = a.len() / d;
     if size == len {
         return a.to_vec();
     }
     if len == 1 {
-        return vec![a[0]; size];
+        return (0..size).flat_map(|_| a.iter().copied()).collect();
     }
     let span = (len - 1) as f64;
-    (0..size)
-        .map(|k| {
-            let q = if size == 1 {
-                0.0
-            } else {
-                k as f64 / (size - 1) as f64
-            };
-            let pos = q * span;
-            let lo = (pos.floor() as usize).min(len - 2);
-            let frac = pos - lo as f64;
-            a[lo] + (a[lo + 1] - a[lo]) * frac
-        })
-        .collect()
+    let mut out = Vec::with_capacity(size * d);
+    for k in 0..size {
+        let q = if size == 1 {
+            0.0
+        } else {
+            k as f64 / (size - 1) as f64
+        };
+        let pos = q * span;
+        let lo = (pos.floor() as usize).min(len - 2);
+        let frac = pos - lo as f64;
+        for c in 0..d {
+            let (u, w) = (a[lo * d + c], a[(lo + 1) * d + c]);
+            out.push(u + (w - u) * frac);
+        }
+    }
+    out
 }
 
 /// Index of the DTW medoid: `argmin_i Σ_k w_k · DTW²(x_i, x_k)`.
+#[cfg(test)]
 pub(crate) fn dtw_medoid_index(
     rows: &[&[f64]],
+    weights: &[f64],
+    window: DtwWindow,
+) -> Result<usize, FdarError> {
+    dtw_medoid_index_flat(rows, 1, weights, window)
+}
+
+/// DTW medoid of channel-interleaved series with `d` channels.
+pub(crate) fn dtw_medoid_index_flat(
+    rows: &[&[f64]],
+    d: usize,
     weights: &[f64],
     window: DtwWindow,
 ) -> Result<usize, FdarError> {
@@ -301,16 +464,16 @@ pub(crate) fn dtw_medoid_index(
     let upper: Vec<Vec<f64>> = iter_maybe_parallel!(0..n)
         .map(|i| {
             ((i + 1)..n)
-                .map(|k| dtw_distance_windowed(rows[i], rows[k], DBA_P, window))
+                .map(|k| dtw_distance_windowed_flat(rows[i], rows[k], d, DBA_P, window))
                 .collect::<Result<Vec<f64>, FdarError>>()
         })
         .collect::<Result<Vec<_>, FdarError>>()?;
     let mut totals = vec![0.0; n];
     for (i, row) in upper.iter().enumerate() {
-        for (off, &d) in row.iter().enumerate() {
+        for (off, &dist) in row.iter().enumerate() {
             let k = i + 1 + off;
-            totals[i] += weights[k] * d;
-            totals[k] += weights[i] * d;
+            totals[i] += weights[k] * dist;
+            totals[k] += weights[i] * dist;
         }
     }
     let mut best = 0;
@@ -324,10 +487,12 @@ pub(crate) fn dtw_medoid_index(
 
 /// Run the DBA iterations from a given starting barycenter.
 ///
-/// `rows` are the series (any lengths), `weights` the validated per-series
-/// weights. Shared with the DTW k-means centroid step.
+/// `rows` are the series (any lengths), channel-interleaved with `d`
+/// channels, `weights` the validated per-series weights. Shared with the DTW
+/// k-means centroid step.
 pub(crate) fn dba_from_init(
     rows: &[&[f64]],
+    d: usize,
     weights: &[f64],
     init: Vec<f64>,
     max_iter: usize,
@@ -345,7 +510,7 @@ pub(crate) fn dba_from_init(
     let mut n_iter = 0;
     let mut converged = false;
     for _ in 0..max_iter {
-        let (next, cost) = dba_step(rows, weights, &barycenter, window)?;
+        let (next, cost) = dba_step(rows, d, weights, &barycenter, window)?;
         barycenter = next;
         n_iter += 1;
         if (cost_prev - cost).abs() < tol {
@@ -357,7 +522,7 @@ pub(crate) fn dba_from_init(
         }
         cost_prev = cost;
     }
-    let cost = dba_cost(rows, weights, &barycenter, window)?;
+    let cost = dba_cost(rows, d, weights, &barycenter, window)?;
     Ok(DbaResult {
         barycenter,
         cost,
@@ -370,39 +535,47 @@ pub(crate) fn dba_from_init(
 /// the cost of the barycenter *before* the update (tslearn's loss).
 fn dba_step(
     rows: &[&[f64]],
+    d: usize,
     weights: &[f64],
     barycenter: &[f64],
     window: DtwWindow,
 ) -> Result<(Vec<f64>, f64), FdarError> {
     let paths = iter_maybe_parallel!(0..rows.len())
-        .map(|k| dtw_path(barycenter, rows[k], DBA_P, window))
+        .map(|k| dtw_path_flat(barycenter, rows[k], d, DBA_P, window))
         .collect::<Result<Vec<_>, FdarError>>()?;
-    let size = barycenter.len();
-    let mut num = vec![0.0; size];
+    let size = barycenter.len() / d;
+    let mut num = vec![0.0; size * d];
     let mut den = vec![0.0; size];
     let mut cost = 0.0;
     for (k, p) in paths.iter().enumerate() {
         let w = weights[k];
         cost += p.cost * w;
         for &(i, j) in &p.path {
-            num[i] += w * rows[k][j];
+            for c in 0..d {
+                num[i * d + c] += w * rows[k][j * d + c];
+            }
             den[i] += w;
         }
     }
     let wsum: f64 = weights.iter().sum();
-    let next = num.iter().zip(&den).map(|(s, d)| s / d).collect();
+    let next = num
+        .iter()
+        .enumerate()
+        .map(|(q, s)| s / den[q / d])
+        .collect();
     Ok((next, cost / wsum))
 }
 
 /// Weighted DTW inertia `Σ_k w_k DTW²(b, x_k) / Σ_k w_k` (O(m) memory).
 pub(crate) fn dba_cost(
     rows: &[&[f64]],
+    d: usize,
     weights: &[f64],
     barycenter: &[f64],
     window: DtwWindow,
 ) -> Result<f64, FdarError> {
     let costs = iter_maybe_parallel!(0..rows.len())
-        .map(|k| dtw_distance_windowed(barycenter, rows[k], DBA_P, window))
+        .map(|k| dtw_distance_windowed_flat(barycenter, rows[k], d, DBA_P, window))
         .collect::<Result<Vec<f64>, FdarError>>()?;
     let wsum: f64 = weights.iter().sum();
     Ok(costs.iter().zip(weights).map(|(c, w)| c * w).sum::<f64>() / wsum)
