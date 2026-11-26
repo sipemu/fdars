@@ -92,7 +92,7 @@ pub(super) fn log_map(
         geometry::axpby(1.0, q, -1.0, mu)
     };
     if cfg.closed || cfg.scale {
-        geometry::project_tangent(&v, mu, grid, cfg.scale, cfg.closed)
+        geometry::project_tangent(&v, mu, grid, cfg.scale, cfg.closed, cfg.metric.ratio())
     } else {
         v
     }
@@ -123,7 +123,7 @@ pub(super) fn exp_map(
         q
     };
     if cfg.closed {
-        geometry::project_closed(&q, grid).0
+        geometry::project_closed_lam(&q, grid, cfg.metric.ratio()).0
     } else {
         q
     }
@@ -214,7 +214,7 @@ fn to_manifold(q: FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
         q
     };
     if cfg.closed {
-        geometry::project_closed(&q, grid).0
+        geometry::project_closed_lam(&q, grid, cfg.metric.ratio()).0
     } else {
         q
     }
@@ -709,7 +709,14 @@ impl CurveShapePcaResult {
             coef * sd,
             &self.components[component],
         );
-        let v = geometry::project_tangent(&v, &mean.mean_srvf, &grid, cfg.scale, cfg.closed);
+        let v = geometry::project_tangent(
+            &v,
+            &mean.mean_srvf,
+            &grid,
+            cfg.scale,
+            cfg.closed,
+            cfg.metric.ratio(),
+        );
         let q = exp_map(&mean.mean_srvf, &v, cfg, &grid);
         Ok(geometry::center(&transform_to_curve(&q, cfg, &grid), &grid))
     }

@@ -222,7 +222,14 @@ pub fn curve_shape_tangent_to_curve(
     }
     let grid = Grid::new(m);
     let cfg = &mean.config;
-    let field = geometry::project_tangent(&field, &mean.mean_srvf, &grid, cfg.scale, cfg.closed);
+    let field = geometry::project_tangent(
+        &field,
+        &mean.mean_srvf,
+        &grid,
+        cfg.scale,
+        cfg.closed,
+        cfg.metric.ratio(),
+    );
     let q = exp_map(&mean.mean_srvf, &field, cfg, &grid);
     Ok(geometry::center(&transform_to_curve(&q, cfg, &grid), &grid))
 }

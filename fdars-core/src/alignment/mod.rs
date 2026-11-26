@@ -33,7 +33,8 @@
 //!   rotation, scale, reparametrisation and starting point ([`CurveShapeConfig`]), with
 //!   TSRVF, depth, outliers, box plot and bootstrap CI downstream ([`curve_shape_depth`],
 //!   [`curve_shape_boxplot`], …); general `(a, b)` elastic metrics for planar curves via
-//!   the Kurtek–Needham F-transform ([`CurveShapeMetric`], [`ab_transform`])
+//!   the Kurtek–Needham F-transform ([`CurveShapeMetric`], [`ab_transform`]; open or
+//!   closed), and the exact piecewise-linear `(a, b)` distance [`ab_elastic_distance_pl`]
 //! - [`sparse_elastic_align_pair`] / [`sparse_elastic_mean`] — elastic alignment and
 //!   spline-SRV elastic means of curves observed at sparse, irregular, differing points
 //!   (polygon SRV, R `elasdics` `align_curves` / `compute_elastic_mean`)
@@ -124,13 +125,14 @@ pub use continuous::{
     ContinuousRegistrationResult,
 };
 pub use curve_shape::{
+    ab_closure_residual, ab_elastic_distance_pl, ab_elastic_match_pl, ab_project_closed,
     ab_transform, ab_transform_inverse, closure_residual, curve_from_set, curve_shape_align_pair,
     curve_shape_boxplot, curve_shape_boxplot_from_aligned, curve_shape_confidence_interval,
     curve_shape_depth, curve_shape_distance, curve_shape_karcher_covariance,
     curve_shape_karcher_mean, curve_shape_karcher_median, curve_shape_outlier_detection,
     curve_shape_pca, curve_shape_self_distance_matrix, curve_shape_tangent_to_curve,
     curve_shape_tsrvf, curve_srvf, curves_to_set, optimal_rotation, project_closed_srvf,
-    srvf_to_curve, CurveShapeAlignment, CurveShapeBoxplot, CurveShapeBoxplotConfig,
+    srvf_to_curve, AbPlMatching, CurveShapeAlignment, CurveShapeBoxplot, CurveShapeBoxplotConfig,
     CurveShapeCentre, CurveShapeCiConfig, CurveShapeCiResult, CurveShapeConfig,
     CurveShapeDepthResult, CurveShapeKarcherResult, CurveShapeMetric, CurveShapeOutlierConfig,
     CurveShapeOutlierResult, CurveShapePcaResult, CurveShapeTsrvfResult,
