@@ -86,6 +86,7 @@ pub(crate) use affine::{
 pub use bayesian::{bayesian_align_pair, BayesianAlignConfig, BayesianAlignmentResult};
 pub use bayesian_group::{
     bayesian_align_group, BayesianGroupChain, BayesianGroupConfig, BayesianGroupResult,
+    BayesianSampler,
 };
 pub use closed::{
     elastic_align_pair_closed, elastic_distance_closed, karcher_mean_closed, ClosedAlignmentResult,

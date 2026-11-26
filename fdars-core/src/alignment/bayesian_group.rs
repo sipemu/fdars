@@ -44,8 +44,33 @@
 //!   identifiable (centred) warps and template; fdasrsf summarises raw states.
 //!
 //! Random-walk pCN mixes slowly when the posterior is concentrated: check
-//! [`BayesianGroupResult::rhat_warps`], [`BayesianGroupResult::rhat_sigma2`] and
-//! [`BayesianGroupResult::mode_spread`] and lengthen `n_iter` if they are not ≈ 1 / small.
+//! [`BayesianGroupResult::rhat_warps`], [`BayesianGroupResult::rhat_sigma2`],
+//! [`BayesianGroupResult::ess_warps`] and [`BayesianGroupResult::mode_spread`] and lengthen
+//! `n_iter` if they are not ≈ 1 / large / small.
+//!
+//! # infHMC sampler
+//!
+//! [`BayesianSampler::InfHmc`] replaces the warp and template moves (same target posterior)
+//! by those of fdasrsf 2.7.5 `time_warping_bayes_infHMC` (fdasrvf 2.6.0
+//! `time_warping_bayes_infHMC`): each curve's warp coefficients are moved by
+//! infinite-dimensional (prior-preconditioned) Hamiltonian Monte Carlo (Beskos et al. 2011)
+//! with the exact gradient of the SRSF likelihood — the Gaussian prior part of the dynamics
+//! is integrated exactly by a rotation, the likelihood enters through half kicks
+//! `v ← v − ε/2 · C∇Φ` — with `1..=L` leapfrog steps and per-curve step sizes adapted by
+//! dual averaging during burn-in; the template is drawn exactly from its Gaussian full
+//! conditional. It typically gives a much higher effective sample size per iteration than
+//! pCN. Differences from fdasrsf's infHMC: the warp prior, template basis (quadratic
+//! B-splines with the pCN prior) and centring schedule are those of this module, so both
+//! samplers target the same posterior — given [`BayesianGroupConfig::injective_warps`],
+//! which infHMC always applies (as fdasrsf's infHMC, `‖v‖ < π`): `exp_1` is 2π-periodic in
+//! `‖v‖`, so without it every warp has further coefficient preimages near `‖v‖ ≈ 2πk`
+//! that pCN's large steps visit but local HMC moves cannot reach.
+//!
+//! infHMC moves locally: a chain that settles in a poor, well-separated mode (e.g. a bump
+//! aligned to the wrong peak) stays there. Run several chains and check
+//! [`BayesianGroupResult::rhat_sigma2`], [`BayesianGroupResult::mode_spread`] and
+//! [`BayesianGroupResult::multimodal_curves`] (Sarle's bimodality coefficient of the pooled
+//! per-curve warp draws), which flag such chains.
 
 use super::dp_alignment_core;
 use super::karcher::sqrt_mean_inverse;
@@ -62,6 +87,47 @@ use rand_distr::{Gamma, StandardNormal};
 use rayon::iter::ParallelIterator;
 
 // ─── Config / Result ─────────────────────────────────────────────────────────
+
+/// MCMC kernel used by [`bayesian_align_group`] for the warps and the template.
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{bayesian_align_group, BayesianGroupConfig, BayesianSampler};
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let m = 31;
+/// let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+/// let mut data = FdMatrix::zeros(3, m);
+/// for (i, s) in [-0.04, 0.0, 0.04].iter().enumerate() {
+///     for j in 0..m {
+///         data[(i, j)] = (-(t[j] + s - 0.5).powi(2) / 0.02).exp();
+///     }
+/// }
+/// let mut cfg = BayesianGroupConfig::default();
+/// cfg.sampler = BayesianSampler::InfHmc;
+/// cfg.n_iter = 300;
+/// cfg.burn_in = 150;
+/// cfg.n_warp_harmonics = 3;
+/// cfg.n_template_basis = 12;
+/// cfg.n_chains = 2;
+/// let res = bayesian_align_group(&data, &t, &cfg).unwrap();
+/// // Step sizes were adapted per curve; acceptance is near the 0.65 target.
+/// assert_eq!(res.chains[0].warp_step_sizes.len(), 3);
+/// assert!(res.warp_acceptance.iter().all(|&a| a > 0.3 && a < 0.95));
+/// assert_eq!(res.ess_warps.len(), 3);
+/// ```
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BayesianSampler {
+    /// Z-mixture preconditioned Crank–Nicolson Metropolis moves for warps and template
+    /// (fdasrsf `time_warping_bayes`). The default.
+    #[default]
+    Pcn,
+    /// Infinite-dimensional (prior-preconditioned) HMC for each curve's warp with the
+    /// exact likelihood gradient, conjugate Gibbs draw of the template
+    /// (fdasrsf `time_warping_bayes_infHMC`).
+    InfHmc,
+}
 
 /// Configuration for [`bayesian_align_group`].
 ///
@@ -123,6 +189,25 @@ pub struct BayesianGroupConfig {
     /// burn-in and chains stuck in poor modes. `false` starts at the identity warps,
     /// as fdasrsf does (`initcoef = 0`).
     pub init_dp: bool,
+    /// MCMC kernel (default [`BayesianSampler::Pcn`]). The `hmc_*` fields apply only to
+    /// [`BayesianSampler::InfHmc`]; `pcn_*` only to [`BayesianSampler::Pcn`].
+    pub sampler: BayesianSampler,
+    /// Initial infHMC step size ε (rotation angle), in `(0, π/2]`; fdasrsf `√h = 0.1`.
+    pub hmc_step_size: f64,
+    /// Maximum number L of leapfrog steps; each transition uses a uniform draw from `1..=L`.
+    pub hmc_max_leapfrog: usize,
+    /// Adapt each curve's step size by dual averaging during burn-in (then frozen).
+    pub hmc_adapt: bool,
+    /// Target acceptance probability of the step-size adaptation, in `(0, 1)`.
+    pub hmc_target_accept: f64,
+    /// Truncate the warp prior to the injectivity radius of the shooting representation,
+    /// `‖v‖ < π` (fdasrsf `time_warping_bayes_infHMC`). Without it (fdasrsf
+    /// `time_warping_bayes`) a warp has several coefficient preimages — `exp_1(v)` is
+    /// 2π-periodic in `‖v‖` — so the coefficient posterior has shells at `‖v‖ ≈ 2πk`
+    /// that pCN's large steps visit and that change the induced prior on γ. Always on
+    /// for [`BayesianSampler::InfHmc`], whose local moves cannot cross between shells;
+    /// default `false` for pCN (unchanged behaviour).
+    pub injective_warps: bool,
 }
 
 impl Default for BayesianGroupConfig {
@@ -145,6 +230,12 @@ impl Default for BayesianGroupConfig {
             credible_level: 0.95,
             center_draws: true,
             init_dp: true,
+            sampler: BayesianSampler::Pcn,
+            hmc_step_size: 0.1,
+            hmc_max_leapfrog: 10,
+            hmc_adapt: true,
+            hmc_target_accept: 0.65,
+            injective_warps: false,
         }
     }
 }
@@ -173,6 +264,8 @@ pub struct BayesianGroupChain {
     pub sigma2_trace: Vec<f64>,
     /// Log-likelihood of every retained draw.
     pub log_likelihood_trace: Vec<f64>,
+    /// Final (adapted) infHMC step size of each curve; empty for the pCN sampler.
+    pub warp_step_sizes: Vec<f64>,
 }
 
 /// Result of [`bayesian_align_group`]: posterior summaries pooled over all chains.
@@ -230,6 +323,19 @@ pub struct BayesianGroupResult {
     pub sigma2_draws: Vec<f64>,
     /// Per-chain summaries.
     pub chains: Vec<BayesianGroupChain>,
+    /// Effective sample size of σ² (Geyer initial monotone sequence, summed over chains).
+    pub ess_sigma2: f64,
+    /// Effective sample size of the log-likelihood.
+    pub ess_log_likelihood: f64,
+    /// Per-curve effective sample size of the warp summary `∫ (γ_i(t) − t) dt`.
+    pub ess_warps: Vec<f64>,
+    /// Per-curve Sarle bimodality coefficient `(g² + 1) / (κ + 3(n−1)²/((n−2)(n−3)))` of the
+    /// pooled draws of `∫ (γ_i(t) − t) dt` (g, κ: bias-corrected skewness and excess
+    /// kurtosis). About 1/3 for a Gaussian posterior; values above 5/9 suggest a bimodal
+    /// warp posterior (or chains stuck in different modes). NaN for degenerate samples.
+    pub warp_bimodality: Vec<f64>,
+    /// Curves flagged as multimodal: `warp_bimodality > 5/9`.
+    pub multimodal_curves: Vec<bool>,
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
@@ -294,6 +400,28 @@ fn validate_chain_config(c: &BayesianGroupConfig) -> Result<(), FdarError> {
             format!("must be in (0, 1), got {}", c.credible_level),
         ));
     }
+    if c.sampler == BayesianSampler::InfHmc {
+        validate_hmc_config(c)?;
+    }
+    Ok(())
+}
+
+fn validate_hmc_config(c: &BayesianGroupConfig) -> Result<(), FdarError> {
+    if !(c.hmc_step_size > 0.0 && c.hmc_step_size <= std::f64::consts::FRAC_PI_2) {
+        return Err(invalid(
+            "hmc_step_size",
+            format!("must be in (0, pi/2], got {}", c.hmc_step_size),
+        ));
+    }
+    if c.hmc_max_leapfrog == 0 {
+        return Err(invalid("hmc_max_leapfrog", "must be >= 1".to_string()));
+    }
+    if !(c.hmc_target_accept > 0.0 && c.hmc_target_accept < 1.0) {
+        return Err(invalid(
+            "hmc_target_accept",
+            format!("must be in (0, 1), got {}", c.hmc_target_accept),
+        ));
+    }
     Ok(())
 }
 
@@ -303,6 +431,9 @@ fn validate_proposal_config(c: &BayesianGroupConfig, t_len: usize) -> Result<(),
 }
 
 fn validate_pcn_mixture(c: &BayesianGroupConfig) -> Result<(), FdarError> {
+    if c.sampler != BayesianSampler::Pcn {
+        return Ok(());
+    }
     if c.pcn_betas.is_empty() || c.pcn_betas.len() != c.pcn_probs.len() {
         return Err(invalid(
             "pcn_betas/pcn_probs",
@@ -483,6 +614,12 @@ struct Problem {
     tmpl_pinv: nalgebra::DMatrix<f64>,
     betas: Vec<f64>,
     cum_probs: Vec<f64>,
+    /// Warp prior variances (infHMC preconditioner).
+    warp_var: Vec<f64>,
+    /// `BᵀB` of the template basis (conjugate template draw).
+    btb: nalgebra::DMatrix<f64>,
+    /// Restrict shooting vectors to the injectivity radius `‖v‖ < π`.
+    injective: bool,
 }
 
 /// Current warp of one curve.
@@ -521,7 +658,7 @@ impl Problem {
         let sigma_q = 5.0 * (quantile_sorted(&all, 0.95) - quantile_sorted(&all, 0.05));
         let sigma_q = if sigma_q > 0.0 { sigma_q } else { 1.0 };
         let nh = cfg.n_warp_harmonics;
-        let warp_sd = (0..2 * nh)
+        let warp_sd: Vec<f64> = (0..2 * nh)
             .map(|k| cfg.warp_prior_sd / (k / 2 + 1) as f64)
             .collect();
         let nb = cfg.n_template_basis;
@@ -538,7 +675,18 @@ impl Problem {
                 acc
             })
             .collect();
+        let warp_var = warp_sd.iter().map(|s: &f64| s * s).collect();
+        let btb = nalgebra::DMatrix::from_fn(nb, nb, |a, b| {
+            tmpl_basis[a]
+                .iter()
+                .zip(&tmpl_basis[b])
+                .map(|(x, y)| x * y)
+                .sum()
+        });
         Ok(Self {
+            warp_var,
+            btb,
+            injective: cfg.injective_warps || cfg.sampler == BayesianSampler::InfHmc,
             warp_basis: warp_tangent_basis(&t, nh),
             t,
             q,
@@ -592,6 +740,9 @@ impl Problem {
     fn warp_from_coef(&self, i: usize, coef: Vec<f64>) -> Option<Warp> {
         let v = Self::expand(&self.warp_basis, &coef, self.t_len());
         let r = l2_norm_l2(&v, &self.t);
+        if self.injective && r >= std::f64::consts::PI {
+            return None;
+        }
         let psi_raw: Vec<f64> = if r < 1e-12 {
             vec![1.0; self.t_len()]
         } else {
@@ -709,6 +860,7 @@ struct ChainRun {
     warp_accept: Vec<usize>,
     tmpl_accept: usize,
     n_updates: usize,
+    step_sizes: Vec<f64>,
 }
 
 impl ChainState {
@@ -846,10 +998,29 @@ fn run_chain(prob: &Problem, cfg: &BayesianGroupConfig, seed: u64) -> Result<Cha
     let mut warp_accept = vec![0usize; prob.n_curves()];
     let mut tmpl_accept = 0usize;
     let mut draws = Vec::new();
+    let mut hmc = (cfg.sampler == BayesianSampler::InfHmc)
+        .then(|| hmc::HmcWarpSampler::new(cfg, prob.n_curves()));
     // Iteration 0 is the initial state (as in the reference); updates run 1..n_iter.
     for it in 1..cfg.n_iter {
-        state.update_warps(prob, &mut rng, &mut warp_accept);
-        if state.update_template(prob, &mut rng) {
+        let tmpl_moved = match hmc.as_mut() {
+            None => {
+                state.update_warps(prob, &mut rng, &mut warp_accept);
+                state.update_template(prob, &mut rng)
+            }
+            Some(h) => {
+                h.sweep(
+                    prob,
+                    &mut state,
+                    it,
+                    cfg.burn_in,
+                    &mut rng,
+                    &mut warp_accept,
+                );
+                state.gibbs_template(prob, &mut rng)?;
+                true
+            }
+        };
+        if tmpl_moved {
             tmpl_accept += 1;
         }
         state.update_sigma2(prob, cfg, &mut rng)?;
@@ -866,6 +1037,7 @@ fn run_chain(prob: &Problem, cfg: &BayesianGroupConfig, seed: u64) -> Result<Cha
         warp_accept,
         tmpl_accept,
         n_updates: cfg.n_iter - 1,
+        step_sizes: hmc.map(|h| h.eps).unwrap_or_default(),
     })
 }
 
@@ -964,6 +1136,81 @@ fn split_rhat(chains: &[Vec<f64>]) -> f64 {
     (((nf - 1.0) / nf * w + b / nf) / w).sqrt()
 }
 
+/// Effective sample size of one chain: Geyer's initial monotone sequence estimator
+/// `n / (−1 + 2 Σ_m Γ_m)`, `Γ_m = ρ_{2m} + ρ_{2m+1}` truncated at the first
+/// non-positive pair and made monotone. NaN for fewer than 4 draws or a constant chain.
+fn geyer_ess(x: &[f64]) -> f64 {
+    let n = x.len();
+    if n < 4 {
+        return f64::NAN;
+    }
+    let nf = n as f64;
+    let mu = x.iter().sum::<f64>() / nf;
+    let d: Vec<f64> = x.iter().map(|v| v - mu).collect();
+    let autocov = |k: usize| -> f64 {
+        d[..n - k]
+            .iter()
+            .zip(&d[k..])
+            .map(|(a, b)| a * b)
+            .sum::<f64>()
+            / nf
+    };
+    let c0 = autocov(0);
+    if c0 <= 1e-300 || !c0.is_finite() {
+        return f64::NAN;
+    }
+    let mut tau = -1.0;
+    let mut prev = f64::INFINITY;
+    let mut k = 0;
+    while k + 1 < n {
+        let pair = (autocov(k) + autocov(k + 1)) / c0;
+        if pair <= 0.0 {
+            break;
+        }
+        let pair = pair.min(prev);
+        tau += 2.0 * pair;
+        prev = pair;
+        k += 2;
+    }
+    nf / tau.max(1.0 / nf)
+}
+
+/// ESS summed over chains (NaN chains ignored; NaN if all are).
+fn multi_chain_ess(chains: &[Vec<f64>]) -> f64 {
+    let vals: Vec<f64> = chains
+        .iter()
+        .map(|c| geyer_ess(c))
+        .filter(|v| v.is_finite())
+        .collect();
+    if vals.is_empty() {
+        f64::NAN
+    } else {
+        vals.iter().sum()
+    }
+}
+
+/// Sarle's bimodality coefficient with bias-corrected skewness and excess kurtosis
+/// (as `scipy.stats.skew/kurtosis(bias=False)`). NaN for n < 4 or zero variance.
+fn bimodality_coefficient(x: &[f64]) -> f64 {
+    let n = x.len();
+    if n < 4 {
+        return f64::NAN;
+    }
+    let nf = n as f64;
+    let mu = x.iter().sum::<f64>() / nf;
+    let moment = |p: i32| x.iter().map(|v| (v - mu).powi(p)).sum::<f64>() / nf;
+    let m2 = moment(2);
+    if m2 <= 1e-300 * mu.abs().max(1.0) || !m2.is_finite() {
+        return f64::NAN;
+    }
+    let g1 = moment(3) / m2.powf(1.5);
+    let g2 = moment(4) / (m2 * m2) - 3.0;
+    let skew = g1 * (nf * (nf - 1.0)).sqrt() / (nf - 2.0);
+    let denom23 = (nf - 2.0) * (nf - 3.0);
+    let kurt = (nf - 1.0) / denom23 * ((nf + 1.0) * g2 + 6.0);
+    (skew * skew + 1.0) / (kurt + 3.0 * (nf - 1.0).powi(2) / denom23)
+}
+
 /// Warps and template of one retained draw on the unit grid, optionally
 /// re-centred so that the Karcher mean of its warps is the identity.
 struct RealDraw {
@@ -1042,6 +1289,7 @@ fn summarize_chain(
         template_acceptance: run.tmpl_accept as f64 / upd,
         sigma2_trace: run.draws.iter().map(|d| d.sigma2).collect(),
         log_likelihood_trace: run.draws.iter().map(|d| d.log_lik).collect(),
+        warp_step_sizes: run.step_sizes.clone(),
     }
 }
 
@@ -1067,6 +1315,8 @@ struct WarpSummary {
     upper: Vec<f64>,
     draws: FdMatrix,
     rhat: f64,
+    ess: f64,
+    bimodality: f64,
 }
 
 fn summarize_curve(
@@ -1104,6 +1354,7 @@ fn summarize_curve(
                 .collect()
         })
         .collect();
+    let pooled_area: Vec<f64> = area.iter().flatten().copied().collect();
     WarpSummary {
         mean,
         median,
@@ -1111,6 +1362,8 @@ fn summarize_curve(
         upper,
         draws,
         rhat: split_rhat(&area),
+        ess: multi_chain_ess(&area),
+        bimodality: bimodality_coefficient(&pooled_area),
     }
 }
 
@@ -1249,6 +1502,7 @@ fn assemble(
         .collect();
     let spread = mode_spread(&chains, &out, n);
     sigma2_draws.shrink_to_fit();
+    let warp_bimodality: Vec<f64> = curves.iter().map(|c| c.bimodality).collect();
     BayesianGroupResult {
         gammas: rows_to_matrix(&mean_rows, m),
         gammas_median: rows_to_matrix(
@@ -1278,6 +1532,11 @@ fn assemble(
         rhat_sigma2: split_rhat(&sig_traces),
         rhat_log_likelihood: split_rhat(&ll_traces),
         rhat_warps: curves.iter().map(|c| c.rhat).collect(),
+        ess_sigma2: multi_chain_ess(&sig_traces),
+        ess_log_likelihood: multi_chain_ess(&ll_traces),
+        ess_warps: curves.iter().map(|c| c.ess).collect(),
+        multimodal_curves: warp_bimodality.iter().map(|&b| b > 5.0 / 9.0).collect(),
+        warp_bimodality,
         mode_spread: spread,
         gamma_draws: curves.into_iter().map(|c| c.draws).collect(),
         template_srsf_draws: tmpl.srsf_draws,
@@ -1361,6 +1620,9 @@ pub fn bayesian_align_group(
     }
     Ok(assemble(&prob, runs.as_slice(), data, argvals, config))
 }
+
+#[path = "bayesian_group_hmc.rs"]
+mod hmc;
 
 #[cfg(test)]
 #[path = "bayesian_group_tests.rs"]

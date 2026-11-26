@@ -28,7 +28,19 @@ unchanged; no new crate dependency.
   off for fdasrsf behaviour. Validated against fdasrsf 2.7.5 `time_warping_bayes`
   (posterior-mean warps within 0.06), scipy B-spline design matrix, hand-computed split-R̂,
   and distributional checks (recovery, coverage, noise → wider bands, R̂ ≈ 1, determinism).
-  Infinite-dimensional HMC (`time_warping_bayes_infHMC`) is not included yet.
+- `BayesianSampler::InfHmc` (`BayesianGroupConfig::sampler`; default `Pcn` stays
+  bit-identical, pinned by a hash test): infinite-dimensional, prior-preconditioned HMC for
+  each curve's warp coefficients (fdasrsf 2.7.5 / fdasrvf 2.6.0 `time_warping_bayes_infHMC`,
+  Beskos et al. 2011 splitting integrator, `1..=L` leapfrog steps, per-curve dual-averaging
+  step sizes during burn-in) with the exact SRSF-likelihood gradient (validated by finite
+  differences), plus an exact conjugate Gibbs draw of the template. Config fields
+  `hmc_step_size`, `hmc_max_leapfrog`, `hmc_adapt`, `hmc_target_accept`, and
+  `injective_warps` (truncate warps to `‖v‖ < π`; always on for infHMC). New diagnostics on
+  `BayesianGroupResult`: `ess_sigma2`, `ess_log_likelihood`, `ess_warps` (Geyer ESS summed
+  over chains), `warp_bimodality` (Sarle coefficient) and `multimodal_curves`;
+  `BayesianGroupChain::warp_step_sizes`. On a two-curve problem at equal iterations infHMC
+  reaches ESS/draw ≈ 0.3–0.5 (pCN 0.004–0.03) and R̂ ≈ 1.000 (pCN ≈ 2.5–4); its posterior
+  moments match a 10⁶-iteration pCN run and exact 2-D quadrature within MC error.
 
 **Conformal prediction for partially observed curves (GH #51 ALN-CONFPART).** Additive and
 non-breaking: new `conformal::partial` module only; no existing code path changed; no new crate
