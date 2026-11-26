@@ -51,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the issue's data, +0.99 with `γ⁻¹`). Samples now use `γ⁻¹`; the returned
   `warps` are unchanged (alignment convention). Sampled curves change for both
   functions (intentional).
+- `alignment::elastic_align_pair_multires` (GH #81): the gradient-refinement
+  stage took fixed-size finite-difference coordinate steps with no descent
+  check, so it *increased* the elastic distance of the coarse-DP warp (issue,
+  m = 400: 0.354 → 0.639 with defaults, ≈ 2.7 with 40 steps of 0.1), and it
+  ignored `lambda`. Refinement now minimises the penalised objective
+  `‖q₁ − SRSF(f₂∘γ)‖² + λ Σ (Δγ/Δt − 1)² Δt` with per-coordinate backtracking,
+  accepting only strict decreases, so it never worsens the coarse warp
+  (same example: 0.354 → 0.179). Results with `n_refine_steps > 0` change
+  (intentional).
 
 ## [0.48.0] - 2026-11-26
 
