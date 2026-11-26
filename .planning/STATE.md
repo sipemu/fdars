@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T22:44:14.254Z"
+last_updated: "2026-11-26T22:59:40.032Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 3ade8a991a40e953759c5720f32f91310b9faa08
+state_head: 8cd24b456c3231d5b7b52db030627afc092a8472
 progress:
   total_phases: 6
   completed_phases: 6
@@ -214,6 +214,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-nrt | Fix CI: portable bit-identity pins + rustdoc errors | 2026-11-26 | 6147fdf4 | [261126-nrt-fix-ci-portable-bit-identity-pins-rustdo](./quick/261126-nrt-fix-ci-portable-bit-identity-pins-rustdo/) |
 | 261126-t4g | ALN localised group differences: SCB band, ITP regions, elastic_local_difference_test (#76) | 2026-11-26 | 222ac2e2 | [261126-t4g-aln-localised-group-differences-scb-band](./quick/261126-t4g-aln-localised-group-differences-scb-band/) |
 | 261126-vzq | Fix alignment bugs #77 transfer warp order, #78 landmark_register zero warps, #79 TSRVF ladders | 2026-11-26 | 3ade8a99 | [261126-vzq-fix-alignment-bugs-77-transfer-warp-orde](./quick/261126-vzq-fix-alignment-bugs-77-transfer-warp-orde/) |
+| 261126-vzj | GH #82 wcr/wnet beta_t via DWT adjoint | 2026-11-26 | 8cd24b45 | [261126-vzj-wcr-wnet-symmetric-boundary-beta-t-adjoi](./quick/261126-vzj-wcr-wnet-symmetric-boundary-beta-t-adjoi/) |
 
 ## Deferred Items
 
