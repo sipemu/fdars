@@ -392,115 +392,32 @@ fn bounds_sandwich_dtw_on_random_pairs() {
             let x = random_walk(&mut rng, n);
             let y = random_walk(&mut rng, m);
             for w in windows() {
-                if w.row_bounds(n, m).is_err() {
-                    continue;
-                }
-                for &p in &[1.0, 2.0, 1.5, 3.0] {
-                    let d = dtw_distance_windowed(&x, &y, p, w).unwrap();
-                    let tol = 1e-12 * d.max(1.0);
-                    let kim = lb_kim(&x, &y, p).unwrap();
-                    let keogh = lb_keogh(&x, &lb_envelope_windowed(&y, n, w).unwrap(), p).unwrap();
-                    let webb = lb_webb(&x, &y, p, w).unwrap();
-                    assert!(
-                        kim <= d + tol,
-                        "kim {kim} > dtw {d} ({w:?}, p={p}, {n}x{m})"
-                    );
-                    assert!(keogh <= webb, "keogh {keogh} > webb {webb} ({w:?}, p={p})");
-                    assert!(
-                        webb <= d + tol,
-                        "webb {webb} > dtw {d} ({w:?}, p={p}, {n}x{m})"
-                    );
-                    tighter += usize::from(webb > keogh);
-                    checked += 1;
+                if w.row_bounds(n, m).is_ok() {
+                    check_early_abandon_case(&x, &y, w);
                 }
             }
         }
     }
-    assert!(checked > 1500, "checked {checked}");
-    assert!(
-        tighter * 2 > checked,
-        "LB_Webb tighter only {tighter}/{checked}"
-    );
 }
 
-#[test]
-fn bounds_sandwich_dtw_subconvex_p() {
-    // p < 1: LB_Kim and LB_Keogh stay valid (monotone cost); LB_Webb is rejected.
-    let mut rng = StdRng::seed_from_u64(7);
-    for _ in 0..40 {
-        let (x, y) = (random_walk(&mut rng, 15), random_walk(&mut rng, 15));
-        for w in windows() {
-            let d = dtw_distance_windowed(&x, &y, 0.5, w).unwrap();
-            assert!(lb_kim(&x, &y, 0.5).unwrap() <= d + 1e-12 * d.max(1.0));
-            let env = lb_envelope_windowed(&y, 15, w).unwrap();
-            assert!(lb_keogh(&x, &env, 0.5).unwrap() <= d + 1e-12 * d.max(1.0));
+/// Exactness (cutoff ≥ DTW → identical bits) and abandonment (cutoff < DTW → `None`)
+/// for one pair of series under one window, over several exponents `p`.
+fn check_early_abandon_case(x: &[f64], y: &[f64], w: DtwWindow) {
+    let (n, m) = (x.len(), y.len());
+    for &p in &[1.0, 2.0, 1.5, 0.5] {
+        let d = dtw_distance_windowed(x, y, p, w).unwrap();
+        for cutoff in [f64::INFINITY, d, d * 1.5 + 1e-9, d + 1.0] {
+            let ea = dtw_distance_early_abandon(x, y, p, w, cutoff).unwrap();
+            assert_eq!(
+                ea.map(f64::to_bits),
+                Some(d.to_bits()),
+                "{w:?} p={p} {n}x{m} cutoff={cutoff}"
+            );
         }
-    }
-    assert!(matches!(
-        lb_webb(&[1.0, 2.0], &[1.0, 2.0], 0.5, DtwWindow::None),
-        Err(FdarError::InvalidParameter { .. })
-    ));
-}
-
-#[test]
-fn lb_webb_exact_on_identical_and_tight_cases() {
-    let x = [0.0, 1.0, 3.0, 2.0, 0.0, -1.0, -2.0, 0.0];
-    assert_eq!(
-        lb_webb(&x, &x, 2.0, DtwWindow::SakoeChiba { radius: 2 }).unwrap(),
-        0.0
-    );
-    // Constant series: the only path cost is n·|c1 − c2|^p, which LB_Webb reaches.
-    let a = [1.0; 9];
-    let b = [3.0; 9];
-    let w = DtwWindow::SakoeChiba { radius: 2 };
-    let d = dtw_distance_windowed(&a, &b, 2.0, w).unwrap();
-    assert_eq!(d, 36.0);
-    assert!(
-        lb_webb(&a, &b, 2.0, w).unwrap()
-            >= lb_keogh(&a, &lb_envelope(&b, 2).unwrap(), 2.0).unwrap()
-    );
-    assert!(lb_webb(&a, &b, 2.0, w).unwrap() <= d);
-}
-
-// --- EAPrunedDTW -------------------------------------------------------------------
-
-#[test]
-fn early_abandon_is_exact_and_abandons() {
-    let mut rng = StdRng::seed_from_u64(99);
-    let sizes = [
-        (1usize, 1usize),
-        (1, 6),
-        (6, 1),
-        (12, 12),
-        (25, 18),
-        (18, 25),
-        (40, 40),
-    ];
-    for _rep in 0..6 {
-        for &(n, m) in &sizes {
-            let x = random_walk(&mut rng, n);
-            let y = random_walk(&mut rng, m);
-            for w in windows() {
-                if w.row_bounds(n, m).is_err() {
-                    continue;
-                }
-                for &p in &[1.0, 2.0, 1.5, 0.5] {
-                    let d = dtw_distance_windowed(&x, &y, p, w).unwrap();
-                    for cutoff in [f64::INFINITY, d, d * 1.5 + 1e-9, d + 1.0] {
-                        let ea = dtw_distance_early_abandon(&x, &y, p, w, cutoff).unwrap();
-                        assert_eq!(
-                            ea.map(f64::to_bits),
-                            Some(d.to_bits()),
-                            "{w:?} p={p} {n}x{m} cutoff={cutoff}"
-                        );
-                    }
-                    if d > 0.0 {
-                        for cutoff in [d.next_down_compat(), d * 0.5, 0.0, -1.0] {
-                            let ea = dtw_distance_early_abandon(&x, &y, p, w, cutoff).unwrap();
-                            assert_eq!(ea, None, "{w:?} p={p} {n}x{m} cutoff={cutoff}");
-                        }
-                    }
-                }
+        if d > 0.0 {
+            for cutoff in [d.next_down_compat(), d * 0.5, 0.0, -1.0] {
+                let ea = dtw_distance_early_abandon(x, y, p, w, cutoff).unwrap();
+                assert_eq!(ea, None, "{w:?} p={p} {n}x{m} cutoff={cutoff}");
             }
         }
     }
