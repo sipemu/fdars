@@ -27,6 +27,9 @@
 //!   rotation, scale, reparametrisation and starting point ([`CurveShapeConfig`]), with
 //!   TSRVF, depth, outliers, box plot and bootstrap CI downstream ([`curve_shape_depth`],
 //!   [`curve_shape_boxplot`], …)
+//! - [`sparse_elastic_align_pair`] / [`sparse_elastic_mean`] — elastic alignment and
+//!   spline-SRV elastic means of curves observed at sparse, irregular, differing points
+//!   (polygon SRV, R `elasdics` `align_curves` / `compute_elastic_mean`)
 
 mod affine;
 mod bayesian;
@@ -63,6 +66,7 @@ mod shape;
 mod shape_ci;
 mod shift;
 mod shift_iterative;
+mod sparse;
 mod srsf;
 mod srsf_smoothing;
 mod transfer;
@@ -179,6 +183,11 @@ pub use shift::{
 pub use shift_iterative::{
     iterative_shift_registration, shift_curves, IterativeShiftConfig, IterativeShiftResult,
     ShiftExtrapolation, ShiftTemplate, ShiftedCurves,
+};
+pub use sparse::{
+    sparse_curves_from_irreg, sparse_elastic_align_pair, sparse_elastic_mean, SparseAlignConfig,
+    SparseAlignmentResult, SparseCurve, SparseElasticMeanConfig, SparseElasticMeanResult,
+    SparseMeanType,
 };
 pub use srsf::{
     compose_warps, invert_warp, reparameterize_curve, srsf_inverse, srsf_transform,

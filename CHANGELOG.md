@@ -13,6 +13,32 @@ Changed below).
 
 ## [Unreleased]
 
+**Sparse / irregular elastic alignment and means (GH #53 ALN-SPARSE).** Additive and
+non-breaking: new `alignment::sparse` module only; no existing code path touched; no new crate
+dependency.
+
+### Added
+
+- `alignment::sparse_elastic_align_pair(&SparseCurve, &SparseCurve, &SparseAlignConfig)` →
+  `SparseAlignmentResult` — elastic (SRV) alignment of two curves in R^d (d >= 1) observed at
+  their own, differing point sets (R elasdics 1.1.3 `align_curves`, Steyer, Stöcker & Greven,
+  Biometrics 2023): curves as polygons with piecewise-constant SRV, warp optimised at the
+  observation points by coordinate-wise analytic maximisation; open and closed curves
+  (periodic extension + starting-point pre-alignment).
+- `alignment::sparse_elastic_mean(&[SparseCurve], &SparseElasticMeanConfig)` →
+  `SparseElasticMeanResult` — elastic mean of sparse open curves with a linear
+  (`SparseMeanType::Smooth`) or constant (`SparseMeanType::Polygon`) SRV spline on given knots
+  (elasdics `compute_elastic_mean`), alternating a least-squares spline fit of the warped SRVs
+  with per-curve alignment (parallel under `parallel`); `srv_eval` / `mean_curve` evaluators.
+- `SparseCurve` (points `d × m` + optional parametrisation, arc length by default) and
+  `sparse_curves_from_irreg(&IrregFdata)` for 1-D irregular functional data.
+- Validated against elasdics 1.1.3 goldens (open/closed `align_curves` examples to 1e-12,
+  polygon mean coefficients to 1e-9, smooth mean within optimiser tolerance) and invariants
+  (collinear-point and reparametrisation invariance, mean of one curve on different grids,
+  dense-grid limit vs `karcher_mean`). Deviations (documented): closed-curve distance taken
+  before wrapping the warp (elasdics reports an overestimate after wrapping); exact spline
+  integrals in the smooth mean; closed elastic means not provided.
+
 **Bayesian group alignment (GH #52 ALN-BAYESGRP).** Additive and non-breaking: new
 `alignment::bayesian_group` module only; `bayesian_align_pair` and every existing code path
 unchanged; no new crate dependency.

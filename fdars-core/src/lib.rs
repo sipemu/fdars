@@ -298,8 +298,9 @@ pub use alignment::{
     pairwise_correlation_score, pca_nd, peak_persistence, phase_boxplot, phase_distance_pair,
     phase_self_distance_matrix, project_closed_srvf, reparameterize_curve, robust_karcher_mean,
     shape_confidence_interval, shape_distance, shape_mean, shape_self_distance_matrix,
-    shift_curves, sobolev_least_squares_score, srsf_inverse, srsf_inverse_nd, srsf_presmooth,
-    srsf_transform, srsf_transform_nd, srsf_transform_smoothed, srvf_to_curve, transfer_alignment,
+    shift_curves, sobolev_least_squares_score, sparse_curves_from_irreg, sparse_elastic_align_pair,
+    sparse_elastic_mean, srsf_inverse, srsf_inverse_nd, srsf_presmooth, srsf_transform,
+    srsf_transform_nd, srsf_transform_smoothed, srvf_to_curve, transfer_alignment,
     tsrvf_from_alignment, tsrvf_from_alignment_with_method, tsrvf_inverse, tsrvf_transform,
     tsrvf_transform_with_method, warp_complexity, warp_inverse_error, warp_smoothness,
     warp_statistics, AffineDomain, AffineMetric, AffineRegistrationConfig,
@@ -322,9 +323,10 @@ pub use alignment::{
     PartialMatchConfig, PartialMatchResult, PcaNdResult, PersistenceDiagramResult, PhaseBoxplot,
     RobustKarcherConfig, RobustKarcherResult, ShapeCiConfig, ShapeCiResult, ShapeDistanceResult,
     ShapeMeanResult, ShapeQuotient, ShiftExtrapolation, ShiftRegistrationResult, ShiftTemplate,
-    ShiftedCurves, SrsfSmoothing, TransferAlignConfig, TransferAlignResult, TransportMethod,
-    TsrvfResult, WarpObjectivePenalty, WarpOptimConfig, WarpOptimMethod, WarpPenaltyType,
-    WarpStatistics,
+    ShiftedCurves, SparseAlignConfig, SparseAlignmentResult, SparseCurve, SparseElasticMeanConfig,
+    SparseElasticMeanResult, SparseMeanType, SrsfSmoothing, TransferAlignConfig,
+    TransferAlignResult, TransportMethod, TsrvfResult, WarpObjectivePenalty, WarpOptimConfig,
+    WarpOptimMethod, WarpPenaltyType, WarpStatistics,
 };
 
 // Re-export commonly used items
