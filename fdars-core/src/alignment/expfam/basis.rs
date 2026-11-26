@@ -75,6 +75,106 @@ impl CubicBs {
     }
 }
 
+/// Periodic cubic B-spline basis with intercept on `[a, b]` with the given
+/// interior knots — R `pbs::pbs(x, knots, Boundary.knots = c(a, b), intercept =
+/// TRUE)` (`interior + 1` functions, the `degree` basis functions that straddle
+/// the period wrapped onto the last columns).
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct PeriodicBs {
+    knots: Vec<f64>,
+    nbasis: usize,
+}
+
+impl PeriodicBs {
+    /// # Panics
+    ///
+    /// If fewer than 3 interior knots are given (pbs needs `≥ degree`).
+    pub(super) fn new(a: f64, b: f64, interior: &[f64]) -> Self {
+        let mut base = vec![a];
+        base.extend_from_slice(interior);
+        base.push(b);
+        let nk = base.len();
+        assert!(nk > ORDER, "pbs needs >= 3 interior knots");
+        let deg = ORDER - 1;
+        // pbs `getPeriodBsplineKnots`.
+        let mut knots: Vec<f64> = (1..=deg)
+            .rev()
+            .map(|i| base[0] - base[nk - 1] + base[nk - 1 - i])
+            .collect();
+        knots.extend_from_slice(&base);
+        knots.extend((1..=deg).map(|i| base[nk - 1] + base[i] - base[0]));
+        Self {
+            nbasis: nk - 1,
+            knots,
+        }
+    }
+
+    pub(super) fn nbasis(&self) -> usize {
+        self.nbasis
+    }
+
+    fn wrap(&self, full: &[f64]) -> Vec<f64> {
+        let deg = ORDER - 1;
+        let nf = full.len();
+        let mut out: Vec<f64> = full[deg..nf - deg].to_vec();
+        out.extend((0..deg).map(|k| full[k] + full[nf - deg + k]));
+        out
+    }
+
+    pub(super) fn eval(&self, x: f64) -> Vec<f64> {
+        self.wrap(&clamped_bspline_eval(x, &self.knots, ORDER, 0))
+    }
+
+    pub(super) fn deriv(&self, x: f64) -> Vec<f64> {
+        self.wrap(&clamped_bspline_eval(x, &self.knots, ORDER, 1))
+    }
+}
+
+/// Template / FPC basis of registr: `bs` (default) or `pbs` (`periodic = TRUE`).
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum TemplateBasis {
+    Bs(CubicBs),
+    Pbs(PeriodicBs),
+}
+
+impl TemplateBasis {
+    pub(super) fn new(a: f64, b: f64, interior: &[f64], periodic: bool) -> Self {
+        if periodic {
+            Self::Pbs(PeriodicBs::new(a, b, interior))
+        } else {
+            Self::Bs(CubicBs::new(a, b, interior))
+        }
+    }
+
+    pub(super) fn nbasis(&self) -> usize {
+        match self {
+            Self::Bs(b) => b.nbasis(),
+            Self::Pbs(b) => b.nbasis(),
+        }
+    }
+
+    pub(super) fn eval(&self, x: f64) -> Vec<f64> {
+        match self {
+            Self::Bs(b) => b.eval(x),
+            Self::Pbs(b) => b.eval(x),
+        }
+    }
+
+    pub(super) fn deriv(&self, x: f64) -> Vec<f64> {
+        match self {
+            Self::Bs(b) => b.deriv(x),
+            Self::Pbs(b) => b.deriv(x),
+        }
+    }
+}
+
+/// registr's template-basis knots for `kt` basis functions: `kt − 4` (bs) or
+/// `kt − 1` (pbs, `quantile(t, seq(0, 1, length = Kt + 1))[-ends]`) quantiles of
+/// the ascending-sorted pooled times.
+pub(super) fn template_knots(sorted: &[f64], kt: usize, periodic: bool) -> Vec<f64> {
+    quantile_knots(sorted, if periodic { kt - 1 } else { kt - 4 })
+}
+
 #[inline]
 pub(super) fn dot(a: &[f64], b: &[f64]) -> f64 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
@@ -92,7 +192,7 @@ pub(super) fn sigmoid(x: f64) -> f64 {
 
 /// Canonical-family working quantities `(mu, dmu/deta)` of the template GLM
 /// (identity / logit / log / log links — registr uses `Gamma(link = "log")`).
-fn glm_mean(family: ExpFamily, eta: f64) -> (f64, f64) {
+pub(super) fn glm_mean(family: ExpFamily, eta: f64) -> (f64, f64) {
     match family {
         ExpFamily::Gaussian => (eta, 1.0),
         ExpFamily::Binomial => {
@@ -107,7 +207,7 @@ fn glm_mean(family: ExpFamily, eta: f64) -> (f64, f64) {
 }
 
 /// Variance function `V(μ)` (dispersion dropped).
-fn glm_variance(family: ExpFamily, mu: f64) -> f64 {
+pub(super) fn glm_variance(family: ExpFamily, mu: f64) -> f64 {
     match family {
         ExpFamily::Gaussian => 1.0,
         ExpFamily::Binomial => mu * (1.0 - mu),
@@ -117,7 +217,7 @@ fn glm_variance(family: ExpFamily, mu: f64) -> f64 {
 }
 
 /// Deviance contribution of one observation.
-fn glm_deviance(family: ExpFamily, y: f64, mu: f64) -> f64 {
+pub(super) fn glm_deviance(family: ExpFamily, y: f64, mu: f64) -> f64 {
     let xlogx = |a: f64, b: f64| if a > 0.0 { a * (a / b).ln() } else { 0.0 };
     match family {
         ExpFamily::Gaussian => (y - mu).powi(2),
@@ -128,7 +228,7 @@ fn glm_deviance(family: ExpFamily, y: f64, mu: f64) -> f64 {
 }
 
 /// R `glm`'s `mustart` → initial linear predictor.
-fn glm_eta_start(family: ExpFamily, y: f64) -> f64 {
+pub(super) fn glm_eta_start(family: ExpFamily, y: f64) -> f64 {
     match family {
         ExpFamily::Gaussian => y,
         ExpFamily::Binomial => {

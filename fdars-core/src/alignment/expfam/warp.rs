@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use crate::distributions::ln_gamma;
 use crate::metric::soft_dtw::{lbfgs_dot, lbfgs_hessian_scale, two_loop_lbfgs};
 
-use super::basis::{dot, sigmoid, CubicBs};
+use super::basis::{dot, sigmoid, TemplateBasis};
 use super::{CurveIncompleteness, ExpFamily};
 
 /// Lower clamp of the mean on the `*-varEM` scale (registr `loss_h`).
@@ -104,7 +104,7 @@ pub(super) struct CurveProblem<'a> {
     pub y: &'a [f64],
     /// Inverse-warp basis `Θ_h` at the observed times (`n_i` rows of `Kh`).
     pub theta_h: &'a [Vec<f64>],
-    pub template_basis: &'a CubicBs,
+    pub template_basis: &'a TemplateBasis,
     pub template_coefs: &'a [f64],
     pub loss: ObsLoss,
     pub incompleteness: Option<CurveIncompleteness>,
@@ -342,6 +342,8 @@ pub(super) struct Minimum {
     pub x: Vec<f64>,
     pub f: f64,
     pub converged: bool,
+    /// Number of iterations performed.
+    pub iters: usize,
 }
 
 /// L-BFGS curvature history (Nocedal & Wright, at most `M_HIST` pairs).
@@ -409,13 +411,14 @@ where
     let (mut fx, mut g) = f(&x);
     let mut hist = History::default();
     let (mut q, mut d) = (Vec::new(), Vec::new());
-    for _ in 0..max_iter {
+    for iters in 0..max_iter {
         if g.iter().all(|v| v.abs() <= 1e-12) || !fx.is_finite() {
             let converged = fx.is_finite();
             return Minimum {
                 x,
                 f: fx,
                 converged,
+                iters,
             };
         }
         hist.direction(&g, &mut q, &mut d);
@@ -425,6 +428,7 @@ where
                     x,
                     f: fx,
                     converged: true,
+                    iters,
                 };
             }
             hist.clear();
@@ -440,6 +444,7 @@ where
                 x,
                 f: fx,
                 converged: true,
+                iters: iters + 1,
             };
         }
     }
@@ -447,6 +452,7 @@ where
         x,
         f: fx,
         converged: false,
+        iters: max_iter,
     }
 }
 

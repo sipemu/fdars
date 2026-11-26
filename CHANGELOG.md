@@ -33,10 +33,29 @@ crate dependency.
   `bfpca` (Jaakkola–Jordan variational bound for binary data) on irregular data; reproduces R to
   ~1e-7 given the same initial FPC coefficients (`psi_init`, `xi_init`).
 - `alignment::evaluate_inverse_warp`, `RegisterFpcaConfig`, `RegisterFpcaResult`.
+- `alignment::gfpca_two_step` and `RegisterFpcaConfig::fpca_type = FpcaType::TwoStep` — registr
+  `gfpca_twoStep` (Gertheiss, Goldsmith & Staicu 2017), family-specific GFPCA for gaussian,
+  binomial, gamma and poisson data, implemented natively (no mgcv / gamm4): P-spline GLM mean with
+  GCV/UBRE, cross products smoothed by a tensor-product P-spline (`te(bs = "ps")`, mgcv's `np`
+  reparameterisation) with GCV, latent transform, `nearPD`, eigen-decomposition on the rounded
+  time grid (`GfpcaConfig::index_significant_digits`), and a P-spline + random-FPC-score GLMM
+  (REML for gaussian, two-stage Laplace as lme4 `glmer` otherwise). Matches R to ≈ 1e-6
+  (covariance, eigenvalues), 1e-7 (gaussian mean/scores) and ≲ 5e-4 (Laplace fits); usable in
+  `register_fpca` end-to-end (re-registration to per-curve latent spline fits).
+- `GfpcaConfig::npc_criterion` (`NpcCriterion { var_explained, min_component_share }`) — registr
+  `npc_criterion` / `determine_npc` (both elements for the two-step GFPCA; the first, with
+  registr's `Kt = 20`, for the variational EM).
+- `GfpcaConfig::periodic` — periodic B-spline (`pbs::pbs`) template / FPC basis (registr
+  `periodic = TRUE`).
+- `RegisterFpcaConfig::warping = WarpingType::PiecewiseLinear2` and `prior_sd` — registr's
+  two-knot piecewise-linear inverse warps on the scaled domain with optional normal priors
+  (binary data).
+- `GfpcaResult` gains `fpca_type`, `evalues_sum`, `variance_components`, `yhat`.
 - Deviations (documented on the module): exact monotone reparameterisation + L-BFGS with analytic
   gradients for all families instead of `constrOptim` (losses ≤ R's on every curve where R's
-  optimum is feasible); Rust RNG for the EM start; two-step GFPCA (`gfpca_twoStep`),
-  `npc_criterion`, periodic and parametric warps not ported.
+  optimum is feasible); Rust RNG for the EM start; native GCV/UBRE, REML and Laplace optimisers
+  instead of mgcv / lme4; the > 10⁷-row subsampling of the template GLM is not ported (memory
+  guard, not needed).
 
 **General (a,b) elastic metrics for planar curves (GH #59 ALN-ABMETRIC).** Additive and
 non-breaking: new `CurveShapeConfig::metric` field (default `CurveShapeMetric::Srvf`, which keeps

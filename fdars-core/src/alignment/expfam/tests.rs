@@ -5,7 +5,7 @@
 //! (see `golden.rs`), on data from the portable LCG [`sim`] (generated
 //! identically in R).
 
-use super::basis::{glm_fit, quantile_knots, CubicBs};
+use super::basis::{glm_fit, quantile_knots, CubicBs, TemplateBasis};
 use super::golden::*;
 use super::warp::{digamma, CurveProblem, ObsLoss, TemplateScale, WarpParam};
 use super::*;
@@ -42,7 +42,13 @@ fn plogis(x: f64) -> f64 {
 
 /// Port of `sim()` in golden_registr.R. Returns the data and the true
 /// registered times per curve.
-fn sim(seed: u64, n: usize, m: usize, family: u8, incompl: u8) -> (IrregFdata, Vec<Vec<f64>>) {
+pub(super) fn sim(
+    seed: u64,
+    n: usize,
+    m: usize,
+    family: u8,
+    incompl: u8,
+) -> (IrregFdata, Vec<Vec<f64>>) {
     use std::f64::consts::PI;
     let mut r = Lcg(seed as f64);
     let grid: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
@@ -91,11 +97,11 @@ fn sim(seed: u64, n: usize, m: usize, family: u8, incompl: u8) -> (IrregFdata, V
     (IrregFdata::from_lists(&ts, &ys), truth)
 }
 
-fn data_sum(d: &IrregFdata) -> f64 {
+pub(super) fn data_sum(d: &IrregFdata) -> f64 {
     d.values.iter().sum()
 }
 
-fn cfg(family: ExpFamily, npc: usize) -> RegisterFpcaConfig {
+pub(super) fn cfg(family: ExpFamily, npc: usize) -> RegisterFpcaConfig {
     RegisterFpcaConfig {
         family,
         fpca: GfpcaConfig {
@@ -106,11 +112,11 @@ fn cfg(family: ExpFamily, npc: usize) -> RegisterFpcaConfig {
     }
 }
 
-fn split(flat: &[f64], k: usize) -> Vec<Vec<f64>> {
+pub(super) fn split(flat: &[f64], k: usize) -> Vec<Vec<f64>> {
     flat.chunks(k).map(<[f64]>::to_vec).collect()
 }
 
-fn max_abs_diff(a: &[f64], b: &[f64]) -> f64 {
+pub(super) fn max_abs_diff(a: &[f64], b: &[f64]) -> f64 {
     assert_eq!(a.len(), b.len());
     a.iter()
         .zip(b)
@@ -142,7 +148,7 @@ fn initial_losses_at(
                 .collect();
             let lo = h.iter().copied().fold(setup.t_min, f64::min);
             let hi = h.iter().copied().fold(setup.t_max, f64::max);
-            let basis = CubicBs::new(lo, hi, &knots);
+            let basis = TemplateBasis::Bs(CubicBs::new(lo, hi, &knots));
             let prob = CurveProblem {
                 y: &cd.y[i],
                 theta_h: &setup.warp[i].theta,
@@ -180,7 +186,7 @@ fn glm_coefs_of(data: &IrregFdata, family: ExpFamily) -> Vec<f64> {
 }
 
 /// Registered copy of `data` from R's coefficients (Kh = 4: no inner knots).
-fn registered_with(data: &IrregFdata, betas: &[Vec<f64>]) -> IrregFdata {
+pub(super) fn registered_with(data: &IrregFdata, betas: &[Vec<f64>]) -> IrregFdata {
     let (mut ts, mut ys) = (Vec::new(), Vec::new());
     for (i, b) in betas.iter().enumerate() {
         let (t, y) = data.get_obs(i);
@@ -191,7 +197,7 @@ fn registered_with(data: &IrregFdata, betas: &[Vec<f64>]) -> IrregFdata {
 }
 
 /// `|cos|` of the principal angle between two vectors.
-fn abs_cos(a: &[f64], b: &[f64]) -> f64 {
+pub(super) fn abs_cos(a: &[f64], b: &[f64]) -> f64 {
     let d: f64 = a.iter().zip(b).map(|(x, y)| x * y).sum();
     let na: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
     let nb: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
@@ -200,7 +206,7 @@ fn abs_cos(a: &[f64], b: &[f64]) -> f64 {
 
 /// Smallest cosine of the principal angles between two column spaces with
 /// orthonormal columns (`m × k`, column-major).
-fn subspace_min_cos(a: &[f64], b: &[f64], m: usize, k: usize) -> f64 {
+pub(super) fn subspace_min_cos(a: &[f64], b: &[f64], m: usize, k: usize) -> f64 {
     let am = nalgebra::DMatrix::from_column_slice(m, k, a);
     let bm = nalgebra::DMatrix::from_column_slice(m, k, b);
     let s = (am.transpose() * bm).svd(false, false).singular_values;
@@ -573,7 +579,7 @@ fn gradients_match_finite_differences() {
             c.incompleteness = inc;
             c.lambda_inc = 0.3;
             let setup = build_setup(&cd, &c).unwrap();
-            let basis = CubicBs::new(setup.t_min, setup.t_max, &[0.3, 0.5, 0.7]);
+            let basis = TemplateBasis::Bs(CubicBs::new(setup.t_min, setup.t_max, &[0.3, 0.5, 0.7]));
             // Positive template values on the mean scale; moderate on the link scale.
             let coefs: Vec<f64> = (0..7)
                 .map(|k| 1.0 + 0.4 * ((k as f64) * 1.3).sin())
@@ -666,7 +672,7 @@ fn parameterisation_is_monotone_and_invertible() {
 /// Root-mean-square distance of the (globally re-centred) registered times from
 /// the truth; the model identifies warps only up to a common warp, so both are
 /// compared after removing their cross-sectional mean at each grid point.
-fn centred_rmse(est: &[Vec<f64>], truth: &[Vec<f64>]) -> f64 {
+pub(super) fn centred_rmse(est: &[Vec<f64>], truth: &[Vec<f64>]) -> f64 {
     let (n, m) = (est.len(), est[0].len());
     let mut ss = 0.0;
     for j in 0..m {

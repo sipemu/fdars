@@ -329,9 +329,9 @@ pub use alignment::{
     WarpOptimMethod, WarpPenaltyType, WarpStatistics,
 };
 pub use alignment::{
-    evaluate_inverse_warp, gfpca_variational, register_expfam, register_fpca,
-    register_fpca_regular, CurveIncompleteness, ExpFamRegistration, ExpFamily, GfpcaConfig,
-    GfpcaResult, RegisterFpcaConfig, RegisterFpcaResult,
+    evaluate_inverse_warp, gfpca_two_step, gfpca_variational, register_expfam, register_fpca,
+    register_fpca_regular, CurveIncompleteness, ExpFamRegistration, ExpFamily, FpcaType,
+    GfpcaConfig, GfpcaResult, NpcCriterion, RegisterFpcaConfig, RegisterFpcaResult, WarpingType,
 };
 
 // Re-export commonly used items

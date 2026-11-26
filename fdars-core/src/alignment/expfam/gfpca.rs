@@ -10,11 +10,113 @@ use crate::error::FdarError;
 use crate::irreg_fdata::IrregFdata;
 use crate::matrix::FdMatrix;
 
-use super::basis::{glm_fit, quantile_knots, sigmoid, CubicBs};
+use super::basis::{glm_fit, sigmoid, template_knots, TemplateBasis};
 use super::ExpFamily;
 
 /// Number of points of the output grid (registr: `length.out = 100`).
 const N_GRID: usize = 100;
+
+/// Basis size used by the variational EM when the number of components is
+/// chosen by [`GfpcaConfig::npc_criterion`] (registr hard-codes `Kt = 20`).
+pub(super) const KT_NPC_CRITERION: usize = 20;
+
+/// GFPCA algorithm of [`super::register_fpca`] (registr `fpca_type`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum FpcaType {
+    /// Variational EM ([`gfpca_variational`], registr `"variationalEM"`; default).
+    #[default]
+    VariationalEm,
+    /// Two-step GFPCA ([`super::gfpca_two_step`], registr `"two-step"`,
+    /// Gertheiss, Goldsmith & Staicu 2017): family-specific for all four families.
+    TwoStep,
+}
+
+/// Choice of the number of FPCs by the share of explained variance (registr
+/// `npc_criterion`).
+///
+/// With `var_explained = c₁` and `min_component_share = Some(c₂)`, the number of
+/// components is `min(npc₁, npc₂)` where `npc₁` is the smallest `k` whose
+/// cumulative share reaches `c₁` and `npc₂` the number of leading components
+/// that each explain at least `c₂` (registr `determine_npc`). The variational EM
+/// uses only `c₁` (cumulative share strictly above `c₁`) and, as registr, fixes
+/// the spline basis to 20 functions.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct NpcCriterion {
+    /// Cumulative share of the (approximated) total variance to explain, in `[0, 1]`.
+    pub var_explained: f64,
+    /// Optional minimum share of every retained component, in `[0, 1]`
+    /// (two-step GFPCA only; registr's second `npc_criterion` element).
+    pub min_component_share: Option<f64>,
+}
+
+impl NpcCriterion {
+    /// Criterion with cumulative share `var_explained` and no per-component bound.
+    #[must_use]
+    pub fn new(var_explained: f64) -> Self {
+        Self {
+            var_explained,
+            min_component_share: None,
+        }
+    }
+
+    /// Criterion with both elements (registr `npc_criterion = c(c1, c2)`).
+    #[must_use]
+    pub fn with_min_share(var_explained: f64, min_component_share: f64) -> Self {
+        Self {
+            var_explained,
+            min_component_share: Some(min_component_share),
+        }
+    }
+
+    fn validate(&self) -> Result<(), FdarError> {
+        let ok = |v: f64| (0.0..=1.0).contains(&v);
+        if ok(self.var_explained) && self.min_component_share.map_or(true, ok) {
+            Ok(())
+        } else {
+            Err(FdarError::InvalidParameter {
+                parameter: "npc_criterion",
+                message: format!("elements must lie in [0, 1], got {self:?}"),
+            })
+        }
+    }
+
+    /// registr `determine_npc` on decreasing positive eigenvalues (at least 1).
+    pub(super) fn choose(&self, evalues: &[f64]) -> usize {
+        let total: f64 = evalues.iter().sum();
+        let share: Vec<f64> = evalues.iter().map(|v| v / total).collect();
+        let mut cum = 0.0;
+        let mut npc1 = share.len();
+        for (k, s) in share.iter().enumerate() {
+            cum += s;
+            if cum >= self.var_explained {
+                npc1 = k + 1;
+                break;
+            }
+        }
+        let npc2 = self.min_component_share.map_or(share.len(), |c2| {
+            share.iter().position(|&s| s < c2).unwrap_or(share.len())
+        });
+        npc1.min(npc2).max(1)
+    }
+
+    /// registr `fpca_gauss` / `bfpca`: first `k` whose cumulative share
+    /// exceeds `var_explained` (strictly).
+    pub(super) fn choose_variational(&self, evalues: &[f64]) -> usize {
+        let total: f64 = evalues.iter().sum();
+        let mut cum = 0.0;
+        for (k, v) in evalues.iter().enumerate() {
+            cum += v;
+            if cum / total > self.var_explained {
+                return k + 1;
+            }
+        }
+        evalues.len()
+    }
+}
 
 /// Configuration of [`gfpca_variational`] (and the FPCA step of
 /// [`super::register_fpca`]).
@@ -46,6 +148,19 @@ pub struct GfpcaConfig {
     /// Constant initial variational parameter ξ for binary data, overriding the
     /// random `0.5·N(0, 1)` initialisation.
     pub xi_init: Option<f64>,
+    /// Choose the number of components by explained variance instead of `npc`
+    /// (registr `npc_criterion`; default `None`). For the variational EM this
+    /// sets the basis size to 20 (as registr) and `psi_init`, if given, must be
+    /// `20 × 20` (the chosen-`npc` run starts from its first `npc` columns).
+    pub npc_criterion: Option<NpcCriterion>,
+    /// Periodic B-spline basis (registr `periodic = TRUE`, `pbs::pbs`, `kt − 1`
+    /// interior knots) for the mean / FPCs and, in [`super::register_fpca`], the
+    /// registration template (default `false`).
+    pub periodic: bool,
+    /// Two-step GFPCA only: round the time points to this many significant
+    /// digits to form the common output grid (registr
+    /// `fpca_index_significantDigits`, default `Some(4)`; `None` disables).
+    pub index_significant_digits: Option<u32>,
 }
 
 impl Default for GfpcaConfig {
@@ -58,6 +173,9 @@ impl Default for GfpcaConfig {
             seed: 1988,
             psi_init: None,
             xi_init: None,
+            npc_criterion: None,
+            periodic: false,
+            index_significant_digits: Some(4),
         }
     }
 }
@@ -77,7 +195,7 @@ impl GfpcaConfig {
         if self.kt < 4 {
             return bad("kt", format!("must be >= 4, got {}", self.kt));
         }
-        if self.npc == 0 || self.npc > self.kt {
+        if self.npc_criterion.is_none() && (self.npc == 0 || self.npc > self.kt) {
             return bad(
                 "npc",
                 format!("must be in 1..=kt ({}), got {}", self.kt, self.npc),
@@ -92,6 +210,12 @@ impl GfpcaConfig {
                 format!("must be finite and >= 0, got {}", self.error_thresh),
             );
         }
+        if matches!(self.index_significant_digits, Some(d) if d < 2) {
+            return bad("index_significant_digits", "must be >= 2".into());
+        }
+        if let Some(c) = &self.npc_criterion {
+            c.validate()?;
+        }
         self.validate_init()
     }
 
@@ -99,14 +223,19 @@ impl GfpcaConfig {
         let bad = |parameter: &'static str, message: String| {
             Err(FdarError::InvalidParameter { parameter, message })
         };
+        let want = if self.npc_criterion.is_some() {
+            (KT_NPC_CRITERION, KT_NPC_CRITERION)
+        } else {
+            (self.kt, self.npc)
+        };
         if let Some(p) = &self.psi_init {
-            if p.shape() != (self.kt, self.npc) || p.as_slice().iter().any(|v| !v.is_finite()) {
+            if p.shape() != want || p.as_slice().iter().any(|v| !v.is_finite()) {
                 return bad(
                     "psi_init",
                     format!(
                         "must be finite kt x npc = {} x {}, got {:?}",
-                        self.kt,
-                        self.npc,
+                        want.0,
+                        want.1,
                         p.shape()
                     ),
                 );
@@ -124,9 +253,12 @@ impl GfpcaConfig {
 #[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GfpcaResult {
-    /// Family of the variational EM actually used: [`ExpFamily::Binomial`]
-    /// (`bfpca`) or [`ExpFamily::Gaussian`] (`fpca_gauss`, also used for gamma /
-    /// poisson data as in registr's `fpca_type = "variationalEM"`).
+    /// Algorithm that produced this result.
+    pub fpca_type: FpcaType,
+    /// Family of the model actually fitted. Variational EM:
+    /// [`ExpFamily::Binomial`] (`bfpca`) or [`ExpFamily::Gaussian`] (`fpca_gauss`,
+    /// also used for gamma / poisson data as in registr's `fpca_type =
+    /// "variationalEM"`); two-step: the data family.
     pub em_family: ExpFamily,
     /// Interior knots of the cubic B-spline basis (`kt − 4` quantiles of the
     /// pooled time points).
@@ -137,14 +269,17 @@ pub struct GfpcaResult {
     pub alpha_coefs: Vec<f64>,
     /// Spline coefficients of the (non-orthogonal) FPC basis (`kt × npc`).
     pub psi_coefs: FdMatrix,
-    /// Output grid: 100 equally spaced points on `domain`.
+    /// Output grid: 100 equally spaced points on `domain` (two-step: the sorted
+    /// unique rounded time points).
     pub t_vec: Vec<f64>,
     /// Mean function on `t_vec` (latent scale; registr `mu`).
     pub mean: Vec<f64>,
-    /// Orthonormal eigenvectors on `t_vec` (`100 × npc`, left singular vectors
-    /// of the evaluated FPC basis; sign is arbitrary).
+    /// Orthonormal eigenvectors on `t_vec` (`t_vec.len() × npc`; variational EM:
+    /// left singular vectors of the evaluated FPC basis, two-step: eigenvectors
+    /// of the latent covariance; sign is arbitrary).
     pub efunctions: FdMatrix,
-    /// Squared singular values (registr `evalues`).
+    /// Squared singular values (two-step: covariance eigenvalues; registr
+    /// `evalues`).
     pub evalues: Vec<f64>,
     /// Orthogonalised scores (`n × npc`).
     pub scores: FdMatrix,
@@ -154,10 +289,24 @@ pub struct GfpcaResult {
     pub fitted: Vec<Vec<f64>>,
     /// Residual variance (gaussian EM only).
     pub sigma2: Option<f64>,
-    /// Number of EM updates performed.
+    /// Number of EM updates performed (two-step: iterations of the GLMM
+    /// variance-parameter optimiser).
     pub n_iter: usize,
-    /// Whether the EM stopped by the `error_thresh` criterion.
+    /// Whether the EM stopped by the `error_thresh` criterion (two-step: whether
+    /// the GLMM optimiser converged).
     pub converged: bool,
+    /// Sum of all (positive) eigenvalues when `npc` was chosen by
+    /// [`GfpcaConfig::npc_criterion`] (variational EM) or always (two-step)
+    /// (registr `evalues_sum`).
+    pub evalues_sum: Option<f64>,
+    /// Two-step only: GLMM random-effect standard deviations, one per FPC score
+    /// (relative to the residual standard deviation for gaussian data, as lme4's
+    /// `theta`), followed by the one of the penalised mean smooth (in fdars'
+    /// parameterisation of the P-spline penalty).
+    pub variance_components: Option<Vec<f64>>,
+    /// Two-step only: fitted latent curves `α(t) + Σₖ sᵢₖ φₖ(t)` on `t_vec`
+    /// (`n × t_vec.len()`, registr `Yhat`).
+    pub yhat: Option<FdMatrix>,
 }
 
 /// Per-curve design quantities.
@@ -450,7 +599,7 @@ fn to_fd(m: &DMatrix<f64>) -> FdMatrix {
 /// Assemble the result from the converged EM state.
 fn assemble(
     st: EmState,
-    basis: &CubicBs,
+    basis: &TemplateBasis,
     knots: Vec<f64>,
     domain: [f64; 2],
     subjects: &[Subject],
@@ -481,6 +630,7 @@ fn assemble(
         fitted.push((&sub.theta * &coef).iter().copied().collect());
     }
     GfpcaResult {
+        fpca_type: FpcaType::VariationalEm,
         em_family: if binary {
             ExpFamily::Binomial
         } else {
@@ -500,6 +650,9 @@ fn assemble(
         sigma2: (!binary).then_some(st.sigma2),
         n_iter,
         converged,
+        evalues_sum: None,
+        variance_components: None,
+        yhat: None,
     }
 }
 
@@ -509,11 +662,44 @@ pub(super) fn gfpca_core(
     family: ExpFamily,
     cfg: &GfpcaConfig,
 ) -> Result<GfpcaResult, FdarError> {
+    let Some(crit) = cfg.npc_criterion else {
+        return gfpca_fixed(data, family, cfg);
+    };
+    // registr `fpca_gauss` / `bfpca` with `npc_varExplained`: Kt = 20, a run with
+    // npc = 20 chooses npc, then the EM is rerun with the chosen npc.
+    let mut full = cfg.clone();
+    full.kt = KT_NPC_CRITERION;
+    full.npc = KT_NPC_CRITERION;
+    full.npc_criterion = None;
+    let choice = gfpca_fixed(data, family, &full)?;
+    let npc = crit.choose_variational(&choice.evalues);
+    let mut sub = full.clone();
+    sub.npc = npc;
+    sub.psi_init = cfg.psi_init.as_ref().map(|p| {
+        FdMatrix::from_column_major(
+            p.as_slice()[..KT_NPC_CRITERION * npc].to_vec(),
+            KT_NPC_CRITERION,
+            npc,
+        )
+        .expect("dimensions match by construction")
+    });
+    let mut res = gfpca_fixed(data, family, &sub)?;
+    res.evalues = choice.evalues[..npc].to_vec();
+    res.evalues_sum = Some(choice.evalues.iter().sum());
+    Ok(res)
+}
+
+/// Variational EM with a fixed number of components.
+fn gfpca_fixed(
+    data: &CurveData,
+    family: ExpFamily,
+    cfg: &GfpcaConfig,
+) -> Result<GfpcaResult, FdarError> {
     let binary = family == ExpFamily::Binomial;
     let pooled = data.pooled_sorted_t();
     let domain = [pooled[0], pooled[pooled.len() - 1]];
-    let knots = quantile_knots(&pooled, cfg.kt - 4);
-    let basis = CubicBs::new(domain[0], domain[1], &knots);
+    let knots = template_knots(&pooled, cfg.kt, cfg.periodic);
+    let basis = TemplateBasis::new(domain[0], domain[1], &knots, cfg.periodic);
     let subjects: Vec<Subject> = data
         .t
         .iter()
@@ -602,6 +788,14 @@ pub(super) fn check_family_values(data: &CurveData, family: ExpFamily) -> Result
 /// The mean, the orthonormal eigenvectors (`efunctions`, from the SVD of the
 /// evaluated FPC basis on a 100-point grid) and the orthogonalised scores follow
 /// registr's conventions exactly.
+///
+/// With [`GfpcaConfig::npc_criterion`] the number of components is the first
+/// whose cumulative share of the squared singular values of a 20-component,
+/// 20-basis-function fit exceeds `var_explained`, and the EM is rerun with that
+/// many components (registr `npc_varExplained`; `kt` is set to 20 and
+/// `evalues` / `evalues_sum` come from the 20-component fit, as in R). With
+/// [`GfpcaConfig::periodic`] the basis is the periodic cubic B-spline of
+/// `pbs::pbs` with `kt − 1` interior knots.
 ///
 /// # Errors
 ///

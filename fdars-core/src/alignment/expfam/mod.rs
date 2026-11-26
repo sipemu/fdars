@@ -20,8 +20,10 @@
 //! 1. **registration** (registr `registr`): every curve's `βᵢ` maximises its
 //!    likelihood given its current template (first pass: the population mean
 //!    from a spline GLM, [`register_expfam`]);
-//! 2. **GFPCA** (registr `bfpca` / `fpca_gauss`, [`gfpca_variational`]) of the
-//!    registered data `(t̂ᵢⱼ, Yᵢⱼ)`,
+//! 2. **GFPCA** of the registered data `(t̂ᵢⱼ, Yᵢⱼ)`: variational EM (registr
+//!    `bfpca` / `fpca_gauss`, [`gfpca_variational`], default) or the
+//!    family-specific two-step GFPCA (registr `gfpca_twoStep`,
+//!    [`gfpca_two_step`], [`FpcaType::TwoStep`]),
 //!
 //! until the mean squared change of `t̂ / t_max` is `≤ 1e-4` or
 //! `max_iterations` is reached, followed by a final GFPCA.
@@ -56,20 +58,59 @@
 //!   `1e-8`; `fastglm` is used when installed).
 //! * The gamma log-likelihood uses `ln Γ` instead of `log(gamma(·))` (identical
 //!   where R is finite) and `ln Γ(y + 1)` for `log(y!)`.
-//! * Not ported: `fpca_type = "two-step"` (gamm4-based `gfpca_twoStep`),
-//!   `npc_criterion`, `periodic = TRUE`, `warping = "piecewise_linear2"` and
-//!   priors, and the > 10⁷-row subsampling of the template GLM.
+//! * **Two-step GFPCA without mgcv / gamm4.** The P-spline mean and the
+//!   tensor-product covariance smooth select their smoothing parameters by
+//!   minimising the same GCV / UBRE criteria as mgcv's default `"GCV.Cp"` (grid
+//!   search plus golden-section / L-BFGS refinement instead of mgcv's Newton
+//!   iteration); the mixed model is fitted by penalised IRLS (Newton steps for
+//!   the gamma log link) and L-BFGS on lme4's REML / Laplace criteria with
+//!   finite-difference gradients (lme4: bobyqa / Nelder–Mead). Agreement with R
+//!   is to the optimisers' tolerances (covariance ≈ 1e-6, mean and scores ≈ 1e-7
+//!   gaussian, ≲ 5e-4 for the Laplace fits). The smooth's variance component is
+//!   reported in fdars' penalty scaling, and the variance parameters of the
+//!   previous iteration warm-start the next fit, as registr does.
+//!   registr's latent-scale transformation of the covariance is reproduced as
+//!   is (gamma / poisson: `diag(η) C diag(η)` with `η` the log mean).
+//!   `index_significant_digits` rounding uses the number of integer digits of
+//!   the largest `|t|` (registr's `nchar()` rule without R's scientific
+//!   notation for ≥ 10⁵).
+//! * **Two-step registration templates** are the spline fits of the latent
+//!   two-step predictions on the grid points clamped to `[t_min, t_max]` (R's
+//!   `bs` stretches its boundary to rounded grid points just outside), and the
+//!   final `yhat` is not truncated at each curve's warped end (registr's
+//!   cosmetic `Yhat` filter).
+//! * **`periodic`** uses the periodic basis consistently for the two-step
+//!   knots as well (registr passes `periodic` only to registration and the
+//!   variational EM, so a two-step fit keeps `Kt − 4` knots there).
+//! * **Piecewise-linear warps** are evaluated at the scaled observation times
+//!   (registr: an equally spaced grid of the same length, identical for
+//!   equally spaced complete curves) and optimised by L-BFGS plus a Nelder–Mead
+//!   polish over an exact parameterisation of the constraint triangles; the
+//!   initial registration also starts from the best point of a coarse grid of
+//!   knot configurations (the loss is multi-modal for binary data), so losses
+//!   are equal to or lower than R's `constrOptim` / Nelder–Mead.
+//! * Not ported: the > 10⁷-row subsampling of the template GLM (registr subsamples
+//!   curves only above 10⁷ observations, a memory guard irrelevant in fdars).
 
 mod basis;
 mod gfpca;
+mod glmm;
+mod mgcv;
+mod pl2;
+mod twostep;
 mod warp;
 
 #[cfg(test)]
 mod golden;
 #[cfg(test)]
+mod golden_twostep;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_twostep;
 
-pub use gfpca::{gfpca_variational, GfpcaConfig, GfpcaResult};
+pub use gfpca::{gfpca_variational, FpcaType, GfpcaConfig, GfpcaResult, NpcCriterion};
+pub use twostep::gfpca_two_step;
 
 use crate::error::FdarError;
 use crate::irreg_fdata::IrregFdata;
@@ -78,8 +119,10 @@ use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
 
-use basis::{dot, glm_fit, quantile_knots, CubicBs};
-use gfpca::{check_family_values, curve_data, gfpca_core, CurveData};
+use basis::{dot, glm_fit, quantile_knots, template_knots, CubicBs, TemplateBasis};
+use gfpca::{check_family_values, curve_data, gfpca_core, CurveData, KT_NPC_CRITERION};
+use pl2::{register_curve_pl2, Pl2Problem, PL2_START};
+use twostep::two_step_core;
 use warp::{register_curve, CurveFit, CurveProblem, ObsLoss, TemplateScale, WarpBounds, WarpOptim};
 
 /// Convergence threshold of the outer loop (registr `convergence_threshold`).
@@ -116,6 +159,19 @@ pub enum CurveIncompleteness {
     Full,
 }
 
+/// Inverse-warp family (registr `warping`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum WarpingType {
+    /// Monotone cubic B-spline inverse warps with `kh` coefficients (default).
+    #[default]
+    Nonparametric,
+    /// Two-knot piecewise-linear inverse warps on the per-curve scaled domain
+    /// `[0, 1]` (registr `"piecewise_linear2"`), see [`register_expfam`].
+    PiecewiseLinear2,
+}
+
 /// Configuration of [`register_fpca`] and [`register_expfam`].
 ///
 /// Construct with `RegisterFpcaConfig::default()` and assign fields (the struct
@@ -147,6 +203,16 @@ pub struct RegisterFpcaConfig {
     /// Initial gamma scale parameter of every registration step (default 1.5,
     /// as registr).
     pub gamma_scale_init: f64,
+    /// GFPCA algorithm of [`register_fpca`] (default
+    /// [`FpcaType::VariationalEm`]).
+    pub fpca_type: FpcaType,
+    /// Inverse-warp family (default [`WarpingType::Nonparametric`]).
+    pub warping: WarpingType,
+    /// Standard deviation of registr's normal priors on the piecewise-linear
+    /// knots (`priors = TRUE, prior_sd`; means 0.25, 0.25, 0.75, 0.75 for
+    /// `x₁, y₁, x₂, y₂`). Only with [`WarpingType::PiecewiseLinear2`] and binary
+    /// data, as registr (default `None`).
+    pub prior_sd: Option<f64>,
 }
 
 impl Default for RegisterFpcaConfig {
@@ -161,6 +227,9 @@ impl Default for RegisterFpcaConfig {
             warp_max_iter: 500,
             warp_tol: 1e-12,
             gamma_scale_init: 1.5,
+            fpca_type: FpcaType::VariationalEm,
+            warping: WarpingType::Nonparametric,
+            prior_sd: None,
         }
     }
 }
@@ -197,7 +266,36 @@ impl RegisterFpcaConfig {
                 format!("must be finite and > 0, got {}", self.gamma_scale_init),
             );
         }
+        self.validate_warping()?;
         self.fpca.validate()
+    }
+
+    fn validate_warping(&self) -> Result<(), FdarError> {
+        let bad = |parameter: &'static str, message: &str| {
+            Err(FdarError::InvalidParameter {
+                parameter,
+                message: message.into(),
+            })
+        };
+        let pl2 = self.warping == WarpingType::PiecewiseLinear2;
+        if pl2 && self.incompleteness.is_some() {
+            return bad(
+                "incompleteness",
+                "incomplete curves need warping = Nonparametric (as registr)",
+            );
+        }
+        if let Some(sd) = self.prior_sd {
+            if !(pl2 && self.family == ExpFamily::Binomial) {
+                return bad(
+                    "prior_sd",
+                    "priors need warping = PiecewiseLinear2 and family = Binomial (as registr)",
+                );
+            }
+            if !(sd.is_finite() && sd > 0.0) {
+                return bad("prior_sd", "must be finite and > 0");
+            }
+        }
+        Ok(())
     }
 }
 
@@ -209,9 +307,11 @@ pub struct ExpFamRegistration {
     /// Registered times `t̂ᵢⱼ = hᵢ⁻¹(t*ᵢⱼ)` per curve (non-decreasing).
     pub t_hat: Vec<Vec<f64>>,
     /// Inverse-warp spline coefficients `βᵢ` (length `kh` per curve; registr
-    /// `hinv_beta`).
+    /// `hinv_beta`); for [`WarpingType::PiecewiseLinear2`] the knot coordinates
+    /// `(x₁, y₁, x₂, y₂)`.
     pub hinv_beta: Vec<Vec<f64>>,
-    /// Interior knots of each curve's inverse-warp basis (registr `hinv_innerKnots`).
+    /// Interior knots of each curve's inverse-warp basis (registr
+    /// `hinv_innerKnots`; empty for piecewise-linear warps).
     pub hinv_inner_knots: Vec<Vec<f64>>,
     /// Per-curve minimised (penalised) negative log-likelihood.
     pub curve_loss: Vec<f64>,
@@ -333,7 +433,7 @@ impl Setup<'_> {
         scale: TemplateScale,
         start: Option<&[Vec<f64>]>,
     ) -> ExpFamRegistration {
-        let basis = CubicBs::new(self.t_min, self.t_max, knots);
+        let basis = TemplateBasis::new(self.t_min, self.t_max, knots, self.cfg.fpca.periodic);
         let loss = ObsLoss {
             family: self.cfg.family,
             scale,
@@ -350,18 +450,7 @@ impl Setup<'_> {
                     Template::Shared(c) => c.to_vec(),
                     Template::PerCurve(m, _) => m.row(i),
                 };
-                let prob = CurveProblem {
-                    y: &self.data.y[i],
-                    theta_h: &self.warp[i].theta,
-                    template_basis: &basis,
-                    template_coefs: &coefs,
-                    loss,
-                    incompleteness: self.cfg.incompleteness,
-                    lambda_inc: self.cfg.lambda_inc,
-                    bounds: self.bounds(i),
-                };
-                let beta0 = start.map_or(&self.warp[i].greville, |s| &s[i]);
-                register_curve(&prob, beta0, opt)
+                self.fit_curve(i, &basis, &coefs, loss, start, opt)
             })
             .collect();
         let template_coefs = match template {
@@ -369,6 +458,42 @@ impl Setup<'_> {
             Template::PerCurve(_, alpha) => alpha.to_vec(),
         };
         self.collect(fits, knots.to_vec(), template_coefs)
+    }
+
+    /// Register curve `i` against the template `coefs` in `basis`.
+    fn fit_curve(
+        &self,
+        i: usize,
+        basis: &TemplateBasis,
+        coefs: &[f64],
+        loss: ObsLoss,
+        start: Option<&[Vec<f64>]>,
+        opt: WarpOptim,
+    ) -> CurveFit {
+        if self.cfg.warping == WarpingType::PiecewiseLinear2 {
+            let prob = Pl2Problem {
+                s: &self.data.t[i],
+                y: &self.data.y[i],
+                template_basis: basis,
+                template_coefs: coefs,
+                loss,
+                prior_sd: self.cfg.prior_sd,
+            };
+            let beta0 = start.map_or(&PL2_START[..], |s| &s[i]);
+            return register_curve_pl2(&prob, beta0, opt, start.is_none());
+        }
+        let prob = CurveProblem {
+            y: &self.data.y[i],
+            theta_h: &self.warp[i].theta,
+            template_basis: basis,
+            template_coefs: coefs,
+            loss,
+            incompleteness: self.cfg.incompleteness,
+            lambda_inc: self.cfg.lambda_inc,
+            bounds: self.bounds(i),
+        };
+        let beta0 = start.map_or(&self.warp[i].greville, |s| &s[i]);
+        register_curve(&prob, beta0, opt)
     }
 
     fn collect(
@@ -384,7 +509,11 @@ impl Setup<'_> {
             curve_loss,
             gamma_scales: gamma.then(|| fits.iter().map(|f| f.scale.unwrap_or(f64::NAN)).collect()),
             converged: fits.iter().map(|f| f.converged).collect(),
-            hinv_inner_knots: self.warp.iter().map(|w| w.inner_knots.clone()).collect(),
+            hinv_inner_knots: if self.cfg.warping == WarpingType::PiecewiseLinear2 {
+                vec![Vec::new(); self.warp.len()]
+            } else {
+                self.warp.iter().map(|w| w.inner_knots.clone()).collect()
+            },
             t_hat: fits.iter().map(|f| f.t_hat.clone()).collect(),
             hinv_beta: fits.into_iter().map(|f| f.beta).collect(),
             template_knots,
@@ -396,20 +525,36 @@ impl Setup<'_> {
     fn initial(&self, template: Option<&CurveData>) -> Result<ExpFamRegistration, FdarError> {
         let src = template.unwrap_or(self.data);
         let kt = self.cfg.fpca.kt;
-        let knots = quantile_knots(&src.pooled_sorted_t(), kt - 4);
-        let basis = CubicBs::new(self.t_min, self.t_max, &knots);
+        let periodic = self.cfg.fpca.periodic;
+        let knots = template_knots(&src.pooled_sorted_t(), kt, periodic);
+        let basis = TemplateBasis::new(self.t_min, self.t_max, &knots, periodic);
         let rows: Vec<Vec<f64>> = src.t.iter().flatten().map(|&x| basis.eval(x)).collect();
         let ys: Vec<f64> = src.y.iter().flatten().copied().collect();
         let coefs = glm_fit(&rows, &ys, self.cfg.family)?;
         Ok(self.pass(&knots, &Template::Shared(&coefs), TemplateScale::Link, None))
     }
 
-    fn fpca(&self, reg: &ExpFamRegistration) -> Result<GfpcaResult, FdarError> {
+    /// GFPCA of the registered data (`prev`: previous GFPCA, whose mixed-model
+    /// variance parameters warm-start the two-step fit as registr does).
+    fn fpca(
+        &self,
+        reg: &ExpFamRegistration,
+        prev: Option<&GfpcaResult>,
+    ) -> Result<GfpcaResult, FdarError> {
         let registered = CurveData {
             t: reg.t_hat.clone(),
             y: self.data.y.clone(),
         };
-        gfpca_core(&registered, self.cfg.family, &self.cfg.fpca)
+        match self.cfg.fpca_type {
+            FpcaType::TwoStep => two_step_core(
+                &registered,
+                self.cfg.family,
+                &self.cfg.fpca,
+                Some([self.t_min, self.t_max]),
+                prev.and_then(|p| p.variance_components.as_deref()),
+            ),
+            _ => gfpca_core(&registered, self.cfg.family, &self.cfg.fpca),
+        }
     }
 
     fn delta(&self, new: &ExpFamRegistration, old: &ExpFamRegistration) -> f64 {
@@ -439,6 +584,46 @@ fn validate_template(template: &CurveData, data: &CurveData) -> Result<(), FdarE
         });
     }
     Ok(())
+}
+
+/// Curves on their per-curve scaled domain `[0, 1]` (registr `index_scaled`,
+/// used by piecewise-linear warping).
+fn scaled_curves(data: &CurveData) -> CurveData {
+    CurveData {
+        t: data
+            .t
+            .iter()
+            .map(|t| {
+                let (lo, hi) = (t[0], t[t.len() - 1]);
+                t.iter().map(|&v| (v - lo) / (hi - lo)).collect()
+            })
+            .collect(),
+        y: data.y.clone(),
+    }
+}
+
+/// Validated curve data, on the scaled domain for piecewise-linear warping.
+fn prepared(
+    data: &IrregFdata,
+    what: &'static str,
+    cfg: &RegisterFpcaConfig,
+) -> Result<CurveData, FdarError> {
+    let cd = curve_data(data, what)?;
+    Ok(if cfg.warping == WarpingType::PiecewiseLinear2 {
+        scaled_curves(&cd)
+    } else {
+        cd
+    })
+}
+
+/// Effective configuration of [`register_fpca`]: registr sets `Kt = 20` for the
+/// variational EM when `npc_criterion` is given.
+fn effective_config(cfg: &RegisterFpcaConfig) -> RegisterFpcaConfig {
+    let mut c = cfg.clone();
+    if c.fpca_type == FpcaType::VariationalEm && c.fpca.npc_criterion.is_some() {
+        c.fpca.kt = KT_NPC_CRITERION;
+    }
+    c
 }
 
 fn build_setup<'a>(
@@ -471,7 +656,7 @@ fn template_data(
 ) -> Result<Option<CurveData>, FdarError> {
     template
         .map(|tpl| {
-            let td = curve_data(tpl, "template")?;
+            let td = prepared(tpl, "template", cfg)?;
             check_family_values(&td, cfg.family)?;
             validate_template(&td, data)?;
             Ok(td)
@@ -488,6 +673,14 @@ fn template_data(
 /// cubic B-splines (interior knots at pooled-time quantiles); every curve's
 /// monotone inverse warp is then estimated by maximising its likelihood. See the
 /// [module documentation](self) for the model and the deviations from R.
+///
+/// With `config.fpca.periodic` the template is a periodic cubic B-spline (registr
+/// `periodic = TRUE`, `pbs`). With [`WarpingType::PiecewiseLinear2`] every
+/// curve is first mapped to its scaled domain `[0, 1]` (registr `index_scaled`)
+/// and warped by the polygon through `(0, 0)`, `(x₁, y₁)`, `(x₂, y₂)`, `(1, 1)`
+/// (`0.1 ≤ x₁`, `x₂ − x₁ ≥ 0.1`, `x₂ ≤ 0.9`, same for `y`; start
+/// `(0.25, 0.3, 0.75, 0.8)`), optionally with registr's normal priors
+/// ([`RegisterFpcaConfig::prior_sd`]); `t_hat` is then on the scaled domain.
 ///
 /// # Errors
 ///
@@ -525,14 +718,14 @@ pub fn register_expfam(
     template: Option<&IrregFdata>,
     config: &RegisterFpcaConfig,
 ) -> Result<ExpFamRegistration, FdarError> {
-    let cd = curve_data(data, "data")?;
+    let cd = prepared(data, "data", config)?;
     let setup = build_setup(&cd, config)?;
     let td = template_data(template, &cd, config)?;
     setup.initial(td.as_ref())
 }
 
 /// Joint registration and generalized FPCA of exponential-family functional
-/// data (R registr 2.2.1 `register_fpca` with `fpca_type = "variationalEM"`).
+/// data (R registr 2.2.1 `register_fpca`).
 ///
 /// Starts with [`register_expfam`] (registration to the population mean of the
 /// data or of `template`), then alternates [`gfpca_variational`] of the
@@ -542,6 +735,15 @@ pub fn register_expfam(
 /// `t̂ / t_max` is `≤ 1e-4`; a final GFPCA of the registered data is returned.
 /// Gamma and poisson data use the gaussian GFPCA and a template on the mean
 /// scale (registr's `*-varEM` loss), as R does for `fpca_type = "variationalEM"`.
+///
+/// With [`FpcaType::TwoStep`] the GFPCA step is [`gfpca_two_step`]
+/// (family-specific for all four families; warm-started from the previous
+/// mixed-model variance parameters, as registr) and every curve is
+/// re-registered to the spline fit of its latent two-step prediction on the
+/// link scale (registr `registr_oneCurve` with a two-step FPCA object). With
+/// [`GfpcaConfig::npc_criterion`] the number of components is chosen in every
+/// GFPCA step; for the variational EM registr then uses `Kt = 20` throughout
+/// (registration templates included), which fdars reproduces.
 ///
 /// See the [module documentation](self) for the model, incomplete curves and
 /// the deviations from R.
@@ -581,21 +783,25 @@ pub fn register_fpca(
     template: Option<&IrregFdata>,
     config: &RegisterFpcaConfig,
 ) -> Result<RegisterFpcaResult, FdarError> {
-    let cd = curve_data(data, "data")?;
+    let config = &effective_config(config);
+    let cd = prepared(data, "data", config)?;
     let setup = build_setup(&cd, config)?;
     let td = template_data(template, &cd, config)?;
-    let scale = match config.family {
-        ExpFamily::Gaussian | ExpFamily::Binomial => TemplateScale::Link,
-        ExpFamily::Gamma | ExpFamily::Poisson => TemplateScale::Mean,
+    let scale = match (config.fpca_type, config.family) {
+        (FpcaType::TwoStep, _) | (_, ExpFamily::Gaussian | ExpFamily::Binomial) => {
+            TemplateScale::Link
+        }
+        _ => TemplateScale::Mean,
     };
     let mut reg = setup.initial(td.as_ref())?;
     let mut registration_loss = vec![reg.loss];
     let mut delta_index = Vec::new();
+    let mut prev: Option<GfpcaResult> = None;
     while delta_index.is_empty()
         || (delta_index.len() < config.max_iterations
             && delta_index.last().is_some_and(|&d| d > OUTER_THRESHOLD))
     {
-        let fpca = setup.fpca(&reg)?;
+        let fpca = setup.fpca(&reg, prev.as_ref())?;
         let next = setup.pass(
             &fpca.knots,
             &Template::PerCurve(&fpca.subject_coefs, &fpca.alpha_coefs),
@@ -605,9 +811,10 @@ pub fn register_fpca(
         delta_index.push(setup.delta(&next, &reg));
         registration_loss.push(next.loss);
         reg = next;
+        prev = Some(fpca);
     }
     let converged = delta_index.last().is_some_and(|&d| d <= OUTER_THRESHOLD);
-    let fpca = setup.fpca(&reg)?;
+    let fpca = setup.fpca(&reg, prev.as_ref())?;
     Ok(RegisterFpcaResult {
         registration: reg,
         fpca,
