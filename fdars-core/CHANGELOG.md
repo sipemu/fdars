@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (these types now also derive serde under the `serde` feature).
 
 ### Fixed
+- `alignment::transfer_alignment` composed the bridge and within-target warps in the
+  wrong order (`γ_b∘γ_i`); the total warp is now `γ_i∘γ_b`, which is what maps
+  `f_i` onto the source mean (`f_i∘γ_i ≈ μ_T`, `μ_T∘γ_b ≈ μ_S`). The orders only
+  coincide for commuting warps, so results change for multi-feature curves
+  (`gammas`, `aligned_data`, `distances`; intentional) (GH #77).
 - `inference::itp_two_pop` permutation null relabelled only group B (group A kept
   its observed rows), inflating permutation statistics and destroying power; both
   groups are now relabelled as in `fdatest` (`coeff[sample(n), ]`). The B-spline

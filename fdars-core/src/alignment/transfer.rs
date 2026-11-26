@@ -58,7 +58,9 @@ pub struct TransferAlignResult {
 /// Computes Karcher means for both populations, finds the bridging warp that
 /// aligns the target mean to the source mean, then composes this bridge with
 /// each target curve's within-population warp to produce curves aligned in
-/// the source coordinate frame.
+/// the source coordinate frame. With `f_i∘γ_i ≈ μ_T` (within-target) and
+/// `μ_T∘γ_b ≈ μ_S` (bridge), the returned warp is `γ_i∘γ_b`, i.e.
+/// `gammas[i](t) = γ_i(γ_b(t))`.
 ///
 /// # Arguments
 /// * `source_data` - Source population (n_source x m).
@@ -144,8 +146,9 @@ pub fn transfer_alignment(
             // Within-population warp for curve i (from target Karcher computation)
             let within_gamma = target_karcher.gammas.row(i);
 
-            // Compose: bridge_gamma(within_gamma(t))
-            let gamma_total = compose_warps(&bridge_result.gamma, &within_gamma, argvals);
+            // f_i∘γ_i ≈ μ_T and μ_T∘γ_b ≈ μ_S, so f_i∘(γ_i∘γ_b) ≈ μ_S:
+            // total warp is within_gamma(bridge_gamma(t)).
+            let gamma_total = compose_warps(&within_gamma, &bridge_result.gamma, argvals);
 
             // Apply to original target curve
             let aligned_i = reparameterize_curve(&target_data.row(i), argvals, &gamma_total);
@@ -295,6 +298,53 @@ mod tests {
         assert_eq!(result.distances.len(), 10);
         assert_eq!(result.source_mean.len(), 20);
         assert_eq!(result.bridging_gamma.len(), 20);
+    }
+
+    /// GH #77: with a non-commuting (two-peak) example the total warp must be
+    /// `γ_i ∘ γ_b` (within-target first, then bridge): `f_i∘γ_i ≈ μ_T` and
+    /// `μ_T∘γ_b ≈ μ_S` imply `f_i∘(γ_i∘γ_b) ≈ μ_S`. The source is the noiseless
+    /// two-peak template, so each aligned target curve must reproduce it.
+    #[test]
+    fn transfer_two_peak_non_commuting_warps_recover_source_shape() {
+        let m = 101;
+        let t = uniform_grid(m);
+        let mu2 =
+            |s: f64| (-(s - 0.3).powi(2) / 0.004).exp() + 0.6 * (-(s - 0.7).powi(2) / 0.004).exp();
+        let warp = |a: f64, s: f64| s + a * s * (1.0 - s);
+        let template: Vec<f64> = t.iter().map(|&s| mu2(s)).collect();
+
+        let mut source = FdMatrix::zeros(2, m);
+        let mut target = FdMatrix::zeros(2, m);
+        for j in 0..m {
+            source[(0, j)] = template[j];
+            source[(1, j)] = template[j];
+            target[(0, j)] = mu2(warp(0.5, t[j]));
+            target[(1, j)] = mu2(warp(-0.5, t[j]));
+        }
+
+        let result =
+            transfer_alignment(&source, &target, &t, &TransferAlignConfig::default()).unwrap();
+
+        for i in 0..2 {
+            // Returned warp and aligned curve are consistent.
+            let gamma_i = result.gammas.row(i);
+            let reparam = reparameterize_curve(&target.row(i), &t, &gamma_i);
+            for j in 0..m {
+                assert!(
+                    (reparam[j] - result.aligned_data[(i, j)]).abs() < 1e-12,
+                    "aligned_data[{i}] must equal target_i ∘ gammas_i"
+                );
+            }
+            // Aligned curve recovers the source template (wrong composition
+            // order gives sup-errors ≈ 0.14–0.18 here; correct order ≈ 0.05–0.07).
+            let sup_err = (0..m)
+                .map(|j| (result.aligned_data[(i, j)] - template[j]).abs())
+                .fold(0.0_f64, f64::max);
+            assert!(
+                sup_err < 0.1,
+                "curve {i}: aligned target should match the source template, sup error {sup_err:.4}"
+            );
+        }
     }
 
     #[test]
