@@ -734,12 +734,14 @@ mod tests {
         let start = std::time::Instant::now();
         let set = discover_shapelets(&data, &labels, &cfg).unwrap();
         let elapsed = start.elapsed();
-        // Wall-clock budget only on uninstrumented builds: under `cargo llvm-cov`
-        // (which sets `cfg(coverage)`) the instrumented suite runs ~3k tests in
-        // parallel and this timing is meaningless (observed 12 s in CI).
+        // Coarse tractability guard against a combinatorial blow-up, not a
+        // performance benchmark: ~0.6 s locally, but shared CI runners running
+        // ~3.4k tests concurrently hit 10.0 s without rayon, so the budget is 60 s.
+        // Skipped under `cargo llvm-cov` (`cfg(coverage)`), where instrumented
+        // timing is meaningless.
         if !cfg!(coverage) {
             assert!(
-                elapsed.as_secs() < 10,
+                elapsed.as_secs() < 60,
                 "contracted discovery too slow: {elapsed:?}"
             );
         }
