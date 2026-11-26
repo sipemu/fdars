@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T01:20:27.678Z"
+last_updated: "2026-11-26T01:41:55.575Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: b94c249da5d44a7a5e6d337e9d132f843255bd98
+state_head: ffd80f88fd6be4fa4461904bcb05d6382286b7dc
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-2z5: ALN-AFFINE (GH #50) shift/dilation/affine warp registration (fdacluster 0.4.2 golden) + selectable linear warp class in align_cluster_fd (default Elastic, bit-identical)
+Last activity: 2026-11-26 - Completed quick task 261126-3av: ALN-HYGIENE (GH #56) closed-curve hoist + parallel rotation search (2.2-4.9x), OutlierThreshold option wiring alpha, opt-in SRSF pre-smoothing (fdasrvf golden), parallel elastic-FPCA loops; defaults bit-identical
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -184,6 +184,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-1n9 | ALN-CURVE (GH #48) R^d curve shape analysis: Procrustes rotation, scale, closed SRVF + seed search, Karcher mean/cov/PCA | 2026-11-26 | d446e4c5 | [261126-1n9-aln-curve-48-r-d-curve-shape-analysis-pr](./quick/261126-1n9-aln-curve-48-r-d-curve-shape-analysis-pr/) |
 | 261126-2ez | ALN-DPACC (GH #49) configurable DP neighbourhood (nbhd_dim), dp_scl cost refinement, DP2 piecewise-linear cost, exact candidate pruning | 2026-11-26 | d81d1671 | [261126-2ez-aln-dpacc-49-configurable-dp-neighbourho](./quick/261126-2ez-aln-dpacc-49-configurable-dp-neighbourho/) |
 | 261126-2z5 | ALN-AFFINE (#50) shift/dilation/affine warp registration + warp class in align_cluster_fd | 2026-11-26 | b94c249d | [261126-2z5-aln-affine-50-shift-dilation-affine-warp](./quick/261126-2z5-aln-affine-50-shift-dilation-affine-warp/) |
+| 261126-3av | ALN-HYGIENE (GH #56): closed-curve SRSF/weight hoist + parallel rotation candidates, OutlierThreshold (Tukey default / quantile alpha), opt-in SRSF pre-smoothing (fdasrvf smooth.data / f_to_srvf(smooth=TRUE)), parallel elastic-FPCA loops; all defaults bit-identical | 2026-11-26 | ffd80f88 | [261126-3av-aln-hygiene-56-closed-curve-hoist-outlie](./quick/261126-3av-aln-hygiene-56-closed-curve-hoist-outlie/) |
 
 ## Deferred Items
 
