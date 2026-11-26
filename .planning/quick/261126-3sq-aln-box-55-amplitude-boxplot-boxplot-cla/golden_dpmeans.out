@@ -1,0 +1,9 @@
+5 41 1.0 K 3 labels [np.int64(0), np.int64(1), np.int64(2), np.int64(0), np.int64(1), np.int64(2), np.int64(0), np.int64(1), np.int64(2), np.int64(0), np.int64(1), np.int64(2), np.int64(0), np.int64(1), np.int64(2)] qun 3.4398330583568635
+5 41 1000000.0 K 1 labels [np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0)] qun 1000000000027.2097
+5 41 0.0 K 15 labels [np.int64(0), np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11), np.int64(12), np.int64(13), np.int64(14)] qun 0.0
+4 31 0.0 K 12 labels [np.int64(0), np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11)] qun 0.0
+4 31 0.05 K 12 labels [np.int64(0), np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5), np.int64(6), np.int64(7), np.int64(8), np.int64(9), np.int64(10), np.int64(11)] qun 0.030000000000000006
+4 31 0.2 K 6 labels [np.int64(0), np.int64(1), np.int64(2), np.int64(0), np.int64(3), np.int64(2), np.int64(0), np.int64(4), np.int64(2), np.int64(0), np.int64(5), np.int64(2)] qun 0.28280866145784034
+4 31 1.0 K 3 labels [np.int64(0), np.int64(1), np.int64(2), np.int64(0), np.int64(1), np.int64(2), np.int64(0), np.int64(1), np.int64(2), np.int64(0), np.int64(1), np.int64(2)] qun 3.356412004689473
+4 31 5.0 K 1 labels [np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0)] qun 46.928463707816746
+4 31 100.0 K 1 labels [np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0), np.int64(0)] qun 10027.092295792547
