@@ -5,6 +5,7 @@
 use super::geometry::{self, Grid};
 use super::*;
 use crate::alignment::{DpEdgeCost, WarpObjectivePenalty, WarpOptimMethod};
+use crate::test_helpers::ValuePin;
 use std::f64::consts::PI;
 
 fn sample(m: usize, f: impl Fn(f64) -> Vec<f64>) -> FdMatrix {
@@ -53,25 +54,17 @@ fn gam0_inv(s: f64) -> f64 {
     (1.25 - (1.5625 - s).sqrt()) / 0.5
 }
 
-fn fnv(h: &mut u64, xs: &[f64]) {
-    for x in xs {
-        for b in x.to_bits().to_le_bytes() {
-            *h ^= u64::from(b);
-            *h = h.wrapping_mul(0x0100_0000_01b3);
-        }
-    }
+fn push_alignment(out: &mut Vec<Vec<f64>>, a: &CurveShapeAlignment) {
+    out.push(a.gamma.clone());
+    out.push(a.beta2_aligned.as_slice().to_vec());
+    out.push(a.q2_aligned.as_slice().to_vec());
+    out.push(a.rotation.as_slice().to_vec());
+    out.push(vec![a.distance, a.seed as f64]);
 }
 
-fn hash_alignment(h: &mut u64, a: &CurveShapeAlignment) {
-    fnv(h, &a.gamma);
-    fnv(h, a.beta2_aligned.as_slice());
-    fnv(h, a.q2_aligned.as_slice());
-    fnv(h, a.rotation.as_slice());
-    fnv(h, &[a.distance, a.seed as f64]);
-}
-
-fn default_path_hash(cfgs: &[CurveShapeConfig]) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+/// Every output field of the default-path probe (pairs, a closed pair, a Karcher mean).
+fn default_path_outputs(cfgs: &[CurveShapeConfig]) -> Vec<Vec<f64>> {
+    let mut out = Vec::new();
     let m = 41;
     let pairs = [
         (sample(m, c_open), sample(m, c_open2)),
@@ -82,7 +75,7 @@ fn default_path_hash(cfgs: &[CurveShapeConfig]) -> u64 {
             if cfg.metric != CurveShapeMetric::Srvf && b1.nrows() != 2 {
                 continue;
             }
-            hash_alignment(&mut h, &curve_shape_align_pair(b1, b2, cfg).unwrap());
+            push_alignment(&mut out, &curve_shape_align_pair(b1, b2, cfg).unwrap());
         }
     }
     let mut closed = CurveShapeConfig::default();
@@ -91,7 +84,10 @@ fn default_path_hash(cfgs: &[CurveShapeConfig]) -> u64 {
     let b2 = sample(m, |t| {
         c_closed((t + 0.1 * (2.0 * PI * t).sin() / (2.0 * PI)) % 1.0)
     });
-    hash_alignment(&mut h, &curve_shape_align_pair(&b1, &b2, &closed).unwrap());
+    push_alignment(
+        &mut out,
+        &curve_shape_align_pair(&b1, &b2, &closed).unwrap(),
+    );
     let set = curves_to_set(&[
         sample(m, c_open),
         sample(m, c_open2),
@@ -99,9 +95,17 @@ fn default_path_hash(cfgs: &[CurveShapeConfig]) -> u64 {
     ])
     .unwrap();
     let km = curve_shape_karcher_mean(&set, &CurveShapeConfig::default(), 5, 1e-4).unwrap();
-    fnv(&mut h, km.mean.as_slice());
-    fnv(&mut h, &km.distances);
-    h
+    out.push(km.mean.as_slice().to_vec());
+    out.push(km.distances.clone());
+    out
+}
+
+/// Exact output bits (same-process comparisons only: libm results differ across CPUs).
+fn output_bits(fields: &[Vec<f64>]) -> Vec<Vec<u64>> {
+    fields
+        .iter()
+        .map(|f| f.iter().map(|x| x.to_bits()).collect())
+        .collect()
 }
 
 fn hash_cfgs() -> Vec<CurveShapeConfig> {
@@ -116,16 +120,151 @@ fn hash_cfgs() -> Vec<CurveShapeConfig> {
     out
 }
 
-/// FNV-1a hash of default-path curve-shape outputs recorded before the warp
-/// optimiser option was added: the default stays bit-identical.
+/// Default-path curve-shape outputs are unchanged from before the warp optimiser option.
+///
+/// Originally an FNV-1a hash of the output bits (`0xd3bc_07b4_c482_b258`); that hash
+/// depends on the platform libm's last-ulp transcendental results and failed on CI
+/// runners. The summaries below were recorded on 925ef514, which reproduced that hash
+/// bit-for-bit on the recording machine, and are compared at rtol 1e-10.
 #[test]
 fn default_warp_optim_bit_identical_to_pre_change() {
-    let h = default_path_hash(&hash_cfgs());
-    eprintln!("curve-shape default hash {h:#x}");
-    assert_eq!(h, DEFAULT_PATH_HASH);
+    let mut pin = ValuePin::new();
+    for f in default_path_outputs(&hash_cfgs()) {
+        pin.push(&f);
+    }
+    pin.assert_close(DEFAULT_PATH_PIN, 1e-10, "curve-shape default path");
 }
 
-const DEFAULT_PATH_HASH: u64 = 0xd3bc_07b4_c482_b258;
+const DEFAULT_PATH_PIN: &[f64] = &[
+    19.137500000000003,
+    19.137500000000003,
+    12.41486830357143,
+    13.245121951219513,
+    -0.4137735164022369,
+    9.910697368231794,
+    1.6240306173209045,
+    0.8023132435891951,
+    26.8597311185642,
+    54.47060977630928,
+    41.5161081931503,
+    13.517820833508798,
+    1.999830786095852,
+    2.0258466847588874,
+    1.9999999999999993,
+    1.253146228642787,
+    0.108271497677494,
+    0.108271497677494,
+    0.011722717209327589,
+    0.054135748838747,
+    22.150000000000002,
+    22.150000000000002,
+    15.428918402777779,
+    14.779471544715449,
+    0.11547758809500756,
+    14.257401161263823,
+    2.270038683519835,
+    -0.03269098775753729,
+    16.29611366052412,
+    63.09763424232555,
+    41.302601588341794,
+    7.817188153231527,
+    2.9992799779582953,
+    3.08868037901372,
+    3.0000000000000013,
+    1.6770363224078348,
+    0.05505235265174344,
+    0.05505235265174344,
+    0.0030307615324919233,
+    0.02752617632587172,
+    19.137500000000003,
+    19.137500000000003,
+    12.41486830357143,
+    13.245121951219513,
+    -0.7540420614237049,
+    18.060804709461596,
+    5.3933670347219484,
+    1.4620992115779194,
+    36.25118415373871,
+    73.51615313090983,
+    75.6236627975583,
+    18.244300742611763,
+    1.9998307860958522,
+    2.0258466847588914,
+    1.9999999999999998,
+    1.2531462286427875,
+    0.1618402747546557,
+    0.1618402747546557,
+    0.02619227453266245,
+    0.08092013737732785,
+    22.112500000000004,
+    22.112500000000004,
+    15.421574652777778,
+    14.776117886178863,
+    0.12439153170185194,
+    23.90728436309597,
+    6.4023507500699335,
+    -0.06849168624589452,
+    20.915337390170713,
+    81.57190585874726,
+    68.94051057439505,
+    10.113160377633449,
+    2.9991988700525702,
+    3.093975077479817,
+    3.0000000000000018,
+    1.6777426874639136,
+    0.07229121150761608,
+    0.07229121150761608,
+    0.005226019261238884,
+    0.03614560575380804,
+    19.225,
+    19.225,
+    12.482682291666666,
+    13.284451219512198,
+    -0.5987053505356037,
+    10.18495691876134,
+    1.6695010342316154,
+    0.6221513204628372,
+    -7.245207176175254,
+    53.114786632806776,
+    41.66483603489018,
+    -5.288260191783812,
+    1.9992594636693835,
+    2.0536800197893768,
+    2.0,
+    1.2563397343083638,
+    0.17671617618995888,
+    0.17671617618995888,
+    0.031228606927200593,
+    0.08835808809497944,
+    20.525000000000002,
+    20.525000000000002,
+    14.123397817460319,
+    14.134654471544716,
+    0.06942562213497179,
+    7.69847452997021,
+    0.9151697261163131,
+    -0.8690229546006499,
+    2.1544428233668684,
+    52.243940853557156,
+    41.227948459699284,
+    7.874394232131946,
+    1.9999625437002573,
+    2.0122027968020872,
+    1.9999999999999996,
+    1.248446558174932,
+    0.07556393707590262,
+    0.07556393707590262,
+    0.00570990858641097,
+    0.03778196853795131,
+    -0.2570484562536639,
+    10.465110602472866,
+    1.8283682021227905,
+    1.030380018001125,
+    0.15919112948383018,
+    0.15919112948383018,
+    0.009414571159702777,
+    0.11043666810474123,
+];
 
 // ─── Residual-floor diagnosis (GH #65) ──────────────────────────────────────
 
@@ -327,7 +466,11 @@ fn explicit_default_warp_optim_and_generic_dp_match_classic() {
         c.warp_optim = WarpOptimConfig::default();
         c.warp_optim.dp_prune = false; // pruning is exact: still bit-identical
     }
-    assert_eq!(default_path_hash(&cfgs), DEFAULT_PATH_HASH);
+    // same process, same libm: the explicit options must reproduce every output bit
+    assert_eq!(
+        output_bits(&default_path_outputs(&cfgs)),
+        output_bits(&default_path_outputs(&hash_cfgs()))
+    );
     let m = 41;
     let grid = Grid::new(m);
     let q1 = curve_srvf(&sample(m, c_3d), true).unwrap();

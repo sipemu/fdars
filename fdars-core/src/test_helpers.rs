@@ -166,6 +166,105 @@ pub fn bits_fingerprint(xs: &[f64]) -> u64 {
     h
 }
 
+/// Portable reference pin: per-field value summaries compared with a tight
+/// relative tolerance.
+///
+/// Literal bit-hash pins ([`bits_fingerprint`]) are only valid on one machine
+/// when the computation calls transcendental functions (`exp`, `sin`, `atan2`,
+/// …): glibc's libm picks a CPU-specific kernel (FMA / SSE2 / …) at load time,
+/// and the kernels differ in the last ulp. Cross-machine regression pins
+/// therefore record, for every output field, `[Σx, Σ|x|, Σx², Σ wᵢx]` with
+/// position weights `wᵢ = (i + 1)/n`, and compare them at `rtol` (1e-10 in the
+/// pins) relative to the field's own magnitude (`Σ|x|`, or `Σx²` for the
+/// squared sum). Any change above rounding level in any field fails; exact
+/// integers (indices, iteration counts) stay exact.
+#[derive(Debug, Default, Clone)]
+pub struct ValuePin(pub Vec<f64>);
+
+impl ValuePin {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Append the four summaries of one output field.
+    pub fn push(&mut self, xs: &[f64]) {
+        let n = xs.len().max(1) as f64;
+        let (mut s, mut a, mut q, mut w) = (0.0, 0.0, 0.0, 0.0);
+        for (i, &x) in xs.iter().enumerate() {
+            s += x;
+            a += x.abs();
+            q += x * x;
+            w += (i + 1) as f64 / n * x;
+        }
+        self.0.extend([s, a, q, w]);
+    }
+
+    /// Compare against a stored reference (as printed by a previous run).
+    ///
+    /// # Panics
+    /// If the lengths differ or any summary deviates by more than `rtol` times
+    /// its field's magnitude; the message prints the current values as a Rust
+    /// literal so an *intentional* behaviour change can be re-pinned.
+    pub fn assert_close(&self, expected: &[f64], rtol: f64, label: &str) {
+        self.assert_close_by(expected, |_| rtol, label);
+    }
+
+    /// [`Self::assert_close`] with a per-field relative tolerance `rtol(field)`.
+    pub fn assert_close_by(&self, expected: &[f64], rtol: impl Fn(usize) -> f64, label: &str) {
+        let got = &self.0;
+        let literal = format!("{got:?}");
+        assert_eq!(
+            got.len(),
+            expected.len(),
+            "{label}: pin length changed; current values {literal}"
+        );
+        for (k, (g, e)) in got.chunks(4).zip(expected.chunks(4)).enumerate() {
+            let scale = [e[1], e[1], e[2], e[1]];
+            for c in 0..4 {
+                let tol = rtol(k) * scale[c].abs();
+                assert!(
+                    (g[c] - e[c]).abs() <= tol,
+                    "{label}: field {k} summary {c}: {} vs pinned {} (tol {tol:e}); \
+                     current values {literal}",
+                    g[c],
+                    e[c]
+                );
+            }
+        }
+    }
+}
+
+/// Fingerprint of this platform's libm: FNV-1a over the bits of `exp`, `ln`, `sin`,
+/// `cos`, `tan`, `atan`, `atan2`, `asin`, `acos`, `powf` and `hypot` on a fixed set of
+/// arguments.
+///
+/// glibc selects CPU-specific kernels for these functions that differ in the last
+/// ulp. Chaotic computations (e.g. HMC trajectories, where one ulp flips an
+/// accept/reject decision) cannot be pinned portably even with a tolerance, so such
+/// pins are enforced only where this canary equals the recording machine's.
+pub fn libm_canary() -> u64 {
+    let u = lcg_values(20_000, 0x5eed_ca11);
+    let mut out = Vec::with_capacity(u.len() * 11);
+    for w in u.chunks(2) {
+        let (a, b) = (w[0], w[1]);
+        let x = 8.0 * a; // [-8, 8)
+        out.extend([
+            x.exp(),
+            (x.abs() + 1e-3).ln(),
+            (50.0 * a).sin(),
+            (50.0 * b).cos(),
+            (1.5 * a).tan(),
+            (4.0 * a).atan(),
+            a.atan2(b),
+            a.asin(),
+            b.acos(),
+            (a.abs() + 0.5).powf(3.0 * b),
+            a.hypot(b),
+        ]);
+    }
+    bits_fingerprint(&out)
+}
+
 /// Deterministic pseudo-random values in \[-1, 1) from a 64-bit LCG.
 ///
 /// Platform-independent (integer arithmetic + one exact division), so pins

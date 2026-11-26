@@ -397,11 +397,49 @@ fn karcher_closed_elastic_one_half_matches_srvf() {
     let s = curve_shape_karcher_mean(&set, &closed_cfg(CurveShapeMetric::Srvf), 4, 1e-6).unwrap();
     let e = curve_shape_karcher_mean(&set, &closed_cfg(elastic(1.0, 0.5)), 4, 1e-6).unwrap();
     assert_eq!(s.n_iter, e.n_iter);
-    assert_eq!(s.seeds, e.seeds);
+    // The seed search may break an *exact* tie differently: the ellipse is centrally
+    // symmetric, so starting it (m − 1)/2 samples later is the same curve rotated by π
+    // and both seeds are optimal; which one wins is decided by last-ulp libm rounding
+    // (CI saw seeds [20, 0, 39] vs [0, 0, 39]). A seed mismatch is accepted only when it
+    // is such a proven symmetry; the means and distances must agree regardless.
+    // the tie check is discriminating: a half-turn restart is exact only for the ellipse
+    assert!(start_shift_rigid_residual(&curves[0], (m - 1) / 2) < 1e-12);
+    assert!(start_shift_rigid_residual(&curves[2], (m - 1) / 2) > 1e-2);
+    for (k, (&a, &b)) in s.seeds.iter().zip(&e.seeds).enumerate() {
+        if a != b {
+            let res = start_shift_rigid_residual(&curves[k], a.abs_diff(b));
+            assert!(
+                res < 1e-12,
+                "curve {k}: seeds {a} vs {b} are not a symmetry tie (residual {res:e})"
+            );
+        }
+    }
     assert!(max_abs_diff(&s.mean, &e.mean) < 1e-8);
     for (x, y) in s.distances.iter().zip(&e.distances) {
         assert!((x - y).abs() < 1e-8);
     }
+}
+
+/// Max deviation between a closed planar curve and its copy started `shift` samples
+/// later after the optimal rotation (2-D Kabsch). Zero iff the two seeds are an exact tie.
+fn start_shift_rigid_residual(beta: &FdMatrix, shift: usize) -> f64 {
+    let p = beta.ncols() - 1; // distinct points (the last repeats the first)
+    let rolled = |j: usize| ((j + shift) % p, j);
+    let (mut num, mut den) = (0.0, 0.0);
+    for j in 0..p {
+        let (r, o) = rolled(j);
+        num += beta[(1, r)] * beta[(0, o)] - beta[(0, r)] * beta[(1, o)];
+        den += beta[(0, r)] * beta[(0, o)] + beta[(1, r)] * beta[(1, o)];
+    }
+    let (sn, cs) = (-num).atan2(den).sin_cos();
+    (0..p)
+        .map(|j| {
+            let (r, o) = rolled(j);
+            let x = cs * beta[(0, r)] - sn * beta[(1, r)];
+            let y = sn * beta[(0, r)] + cs * beta[(1, r)];
+            (x - beta[(0, o)]).hypot(y - beta[(1, o)])
+        })
+        .fold(0.0, f64::max)
 }
 
 #[test]

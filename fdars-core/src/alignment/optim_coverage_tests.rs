@@ -15,23 +15,13 @@ use crate::alignment::{
     karcher_median, robust_karcher_mean, CurveShapeConfig, RobustKarcherConfig,
 };
 use crate::matrix::{FdCurveSet, FdMatrix};
+use crate::test_helpers::ValuePin;
 
 // ─── Probe data ─────────────────────────────────────────────────────────────
 
 fn grid(m: usize) -> Vec<f64> {
     (0..m).map(|i| i as f64 / (m - 1) as f64).collect()
 }
-
-fn fnv(h: &mut u64, xs: &[f64]) {
-    for x in xs {
-        for b in x.to_bits().to_le_bytes() {
-            *h ^= u64::from(b);
-            *h = h.wrapping_mul(0x0100_0000_01b3);
-        }
-    }
-}
-
-const FNV0: u64 = 0xcbf2_9ce4_8422_2325;
 
 /// `n` bumpy curves with shifted features (full-rank, non-degenerate).
 fn probe_data(n: usize, m: usize) -> (FdMatrix, Vec<f64>) {
@@ -103,118 +93,348 @@ fn rbfgs_cfg() -> WarpOptimConfig {
 
 // ─── Bit-identity with the pre-#67 code ─────────────────────────────────────
 
-/// Hashes of every pre-existing entry point this change touches, each run on
-/// the probe data with `lambda ∈ {0, 0.05}`.
-fn pre_change_hashes() -> Vec<u64> {
-    let mut out = Vec::new();
+/// Value summaries of every pre-existing entry point this change touches, each
+/// run on the probe data with `lambda ∈ {0, 0.05}`.
+fn pre_change_pin() -> ValuePin {
+    let mut out = ValuePin::new();
     let (d, t) = probe_data(5, 50);
     for lam in [0.0, 0.05] {
         // N-d pair + Karcher.
-        let mut h = FNV0;
         let c1 = curve_2d(&t, 0.0);
         let c2 = curve_2d(&t, 0.06);
         let r = elastic_align_pair_nd(&c1, &c2, &t, lam);
-        fnv(&mut h, &r.gamma);
+        out.push(&r.gamma);
         for f in &r.f_aligned {
-            fnv(&mut h, f);
+            out.push(f);
         }
-        fnv(&mut h, &[r.distance]);
+        out.push(&[r.distance]);
         let set: Vec<FdCurveSet> = (0..4).map(|i| curve_2d(&t, 0.03 * i as f64)).collect();
         let k = karcher_mean_nd(&set, &t, 4, 1e-4, lam).unwrap();
         for f in &k.mean {
-            fnv(&mut h, f);
+            out.push(f);
         }
-        fnv(&mut h, k.gammas.as_slice());
-        fnv(&mut h, &[k.n_iter as f64]);
-        out.push(h);
+        out.push(k.gammas.as_slice());
+        out.push(&[k.n_iter as f64]);
 
         // Landmark-constrained.
-        let mut h = FNV0;
         let f1 = d.row(0);
         let f2 = d.row(3);
         let r = elastic_align_pair_constrained(&f1, &f2, &t, &[(0.3, 0.45), (0.62, 0.7)], lam);
-        fnv(&mut h, &r.gamma);
-        fnv(&mut h, &r.f_aligned);
-        fnv(&mut h, &[r.distance]);
-        out.push(h);
+        out.push(&r.gamma);
+        out.push(&r.f_aligned);
+        out.push(&[r.distance]);
 
         // Robust Karcher (median + trimmed) and align_to_target.
-        let mut h = FNV0;
         let mut rc = RobustKarcherConfig::default();
         rc.lambda = lam;
         rc.max_iter = 4;
         let med = karcher_median(&d, &t, &rc).unwrap();
-        fnv(&mut h, &med.mean);
-        fnv(&mut h, med.gammas.as_slice());
-        fnv(&mut h, &med.weights);
+        out.push(&med.mean);
+        out.push(med.gammas.as_slice());
+        out.push(&med.weights);
         let tr = robust_karcher_mean(&d, &t, &rc).unwrap();
-        fnv(&mut h, &tr.mean);
-        fnv(&mut h, tr.gammas.as_slice());
-        fnv(&mut h, &tr.weights);
+        out.push(&tr.mean);
+        out.push(tr.gammas.as_slice());
+        out.push(&tr.weights);
         let at = align_to_target(&d, &d.row(2), &t, lam);
-        fnv(&mut h, at.gammas.as_slice());
-        fnv(&mut h, at.aligned_data.as_slice());
-        fnv(&mut h, &at.distances);
-        out.push(h);
+        out.push(at.gammas.as_slice());
+        out.push(at.aligned_data.as_slice());
+        out.push(&at.distances);
 
         // Closed Karcher.
-        let mut h = FNV0;
         let (pd, pt) = periodic_data(4, 40);
         let kc = karcher_mean_closed(&pd, &pt, 3, 1e-4, lam).unwrap();
-        fnv(&mut h, &kc.mean);
-        fnv(&mut h, kc.gammas.as_slice());
-        fnv(
-            &mut h,
-            &kc.rotations.iter().map(|&r| r as f64).collect::<Vec<_>>(),
-        );
-        out.push(h);
+        out.push(&kc.mean);
+        out.push(kc.gammas.as_slice());
+        out.push(&kc.rotations.iter().map(|&r| r as f64).collect::<Vec<_>>());
 
         // RBFGS defaults: 1-D pair (L2Gam / L2Psi), Karcher, curve shape.
-        let mut h = FNV0;
         for pen in [WarpObjectivePenalty::L2Gam, WarpObjectivePenalty::L2Psi] {
             let mut c = rbfgs_cfg();
             c.lambda = lam;
             c.penalty = pen;
             let r = elastic_align_pair_with_config(&d.row(0), &d.row(4), &t, &c).unwrap();
-            fnv(&mut h, &r.gamma);
-            fnv(&mut h, &[r.distance]);
+            out.push(&r.gamma);
+            out.push(&[r.distance]);
         }
         let mut c = rbfgs_cfg();
         c.lambda = lam;
         let km = karcher_mean_with_config(&d, &t, 3, 1e-4, &c).unwrap();
-        fnv(&mut h, &km.mean);
-        fnv(&mut h, km.gammas.as_slice());
+        out.push(&km.mean);
+        out.push(km.gammas.as_slice());
         let (b1, b2) = curve_shape_pair(41);
         let mut sc = CurveShapeConfig::default();
         sc.warp_optim.method = WarpOptimMethod::Rbfgs;
         sc.lambda = lam;
         let a = curve_shape_align_pair(&b1, &b2, &sc).unwrap();
-        fnv(&mut h, &a.gamma);
-        fnv(&mut h, &[a.distance]);
-        out.push(h);
+        out.push(&a.gamma);
+        out.push(&[a.distance]);
     }
     out
 }
 
-/// FNV-1a hashes recorded on commit 79430c46 (before any #67 edit).
-const PRE_CHANGE_HASHES: [u64; 10] = [
-    0xb2b5_d73c_5a93_19c0,
-    0xf8b9_1642_c731_a0ab,
-    0xc1d1_4356_972e_cae3,
-    0xbf25_c0f7_fb19_2fe0,
-    0x3be9_b941_56dc_f5e4,
-    0x814d_ba49_eb12_23eb,
-    0xa72d_3c1e_4f55_5a58,
-    0xbb54_6d66_da38_a3d1,
-    0xe4ab_f1f3_4a31_e5a6,
-    0x931e_3f4f_2294_5007,
+/// Recorded on 925ef514, which reproduced the FNV-1a hashes pinned on commit
+/// 79430c46 (before any #67 edit) bit-for-bit on the recording machine. Literal
+/// bit hashes are not portable (glibc picks CPU-specific transcendental kernels),
+/// so the pin compares per-field summaries (see [`ValuePin`]): rtol 1e-10 for the
+/// DP-based entry points (cross-libm spread measured ≤ 3e-15) and 1e-6 for the
+/// iterative RBFGS block (spread 2.3e-8: the quasi-Newton iterations amplify ulps).
+const PRE_CHANGE_PIN: &[f64] = &[
+    27.489795918367353,
+    27.489795918367353,
+    19.56436967401149,
+    18.31768707482993,
+    32.365415342687676,
+    32.365415342687676,
+    25.45402907475976,
+    20.32976221567855,
+    13.168178527769342,
+    30.888218425701403,
+    24.53381005961397,
+    0.43246801402899604,
+    0.2766693547112525,
+    0.2766693547112525,
+    0.07654593183634084,
+    0.2766693547112525,
+    29.906955102735992,
+    29.906955102735992,
+    22.569695508373833,
+    19.22971647981434,
+    15.932999925175672,
+    30.353352335940546,
+    24.103107826060846,
+    2.778797585630669,
+    99.91516060868686,
+    99.91516060868686,
+    67.33075700355155,
+    67.20243965816812,
+    3.0,
+    3.0,
+    9.0,
+    3.0,
+    31.22448979591837,
+    31.22448979591837,
+    23.02702643739712,
+    19.72326530612245,
+    12.421051491713921,
+    12.661129344813613,
+    6.522978383467528,
+    5.361597836450479,
+    0.6256137564251558,
+    0.6256137564251558,
+    0.3913925722283942,
+    0.6256137564251558,
+    15.080312843979488,
+    15.105837622387195,
+    8.626015845673708,
+    7.666025853979142,
+    127.3571428571429,
+    127.3571428571429,
+    86.38921943899032,
+    84.61296598639456,
+    1.0,
+    1.0,
+    0.24079455182032022,
+    0.6491187266464542,
+    17.35419307857485,
+    17.35419307857485,
+    10.266026243946493,
+    8.817587902796461,
+    131.80612244897958,
+    131.80612244897958,
+    90.01494962416447,
+    86.31197278911563,
+    4.0,
+    4.0,
+    4.0,
+    2.2,
+    123.43877551020408,
+    123.43877551020408,
+    85.1708927497141,
+    84.00972789115646,
+    72.40235154664815,
+    76.43235958176871,
+    43.08965706893538,
+    37.62755873844764,
+    0.9310660569166602,
+    0.9310660569166602,
+    0.22797723028549458,
+    0.49466285294781587,
+    -0.46899783773287146,
+    27.478835673703024,
+    24.261646066165707,
+    -6.535798559883411,
+    81.53846153846148,
+    81.53846153846148,
+    55.73942972981434,
+    54.763541666666676,
+    101.0,
+    101.0,
+    3413.0,
+    74.5,
+    33.52183296345136,
+    33.52183296345136,
+    25.95411639806977,
+    20.837577841881888,
+    0.29101999151273444,
+    0.29101999151273444,
+    0.08469263546007202,
+    0.29101999151273444,
+    33.52183296345136,
+    33.52183296345136,
+    25.95411639806977,
+    20.837577841881888,
+    0.29101999151273444,
+    0.29101999151273444,
+    0.08469263546007202,
+    0.29101999151273444,
+    16.234342572444223,
+    16.234342572444223,
+    9.291357928482316,
+    8.26776439194728,
+    129.96870850958584,
+    129.96870850958584,
+    88.69973726442358,
+    85.71146844342282,
+    18.843951003772247,
+    18.843951003772247,
+    12.178416173375165,
+    13.110091658436694,
+    0.0036628600011428415,
+    0.0036628600011428415,
+    1.3416543387972136e-5,
+    0.0036628600011428415,
+    27.01020408163265,
+    27.01020408163265,
+    18.960229699265515,
+    18.03136054421769,
+    31.723544312978206,
+    31.723544312978206,
+    24.69365094000097,
+    20.005027608061614,
+    13.250655705610384,
+    29.712607732763164,
+    23.20585722544176,
+    0.8872652933809813,
+    0.3520265104040943,
+    0.3520265104040943,
+    0.1239226640272839,
+    0.3520265104040943,
+    29.925695648157156,
+    29.925695648157156,
+    22.59639223773465,
+    19.24258472483456,
+    15.888552176847956,
+    30.307639666702695,
+    24.04221979805762,
+    2.7604450201328787,
+    99.99636868579032,
+    99.99636868579032,
+    67.42343085228177,
+    67.26054786328966,
+    2.0,
+    2.0,
+    4.0,
+    2.0,
+    29.23469387755102,
+    29.23469387755102,
+    21.045269662772785,
+    18.9212925170068,
+    12.254734080836688,
+    12.66399493276102,
+    6.157341257837252,
+    6.0633990246291996,
+    0.9513258253877529,
+    0.9513258253877529,
+    0.9050208260496894,
+    0.9513258253877529,
+    14.283760778576562,
+    14.332729843684822,
+    8.050370189694865,
+    7.416984956048529,
+    125.31632653061227,
+    125.31632653061227,
+    85.2537476117755,
+    84.25834013605443,
+    1.0000000000000002,
+    1.0000000000000002,
+    0.24142436677401713,
+    0.6427731095005516,
+    14.689535657487347,
+    14.763364589263407,
+    8.221263946175704,
+    7.446618543829106,
+    127.17346938775513,
+    127.17346938775513,
+    86.93361760642057,
+    85.09936054421766,
+    4.0,
+    4.0,
+    4.0,
+    2.2,
+    125.18367346938778,
+    125.18367346938778,
+    85.29791009698337,
+    84.27285714285715,
+    73.59490565008993,
+    77.88071603131802,
+    43.886220449332015,
+    37.929955150690986,
+    1.3914539255959664,
+    1.3914539255959664,
+    0.5220574473130472,
+    0.7147917656562337,
+    0.8181108825833762,
+    27.86391223062135,
+    24.31150174344449,
+    -5.978038158824779,
+    82.24358974358968,
+    82.24358974358968,
+    56.432054412823646,
+    55.10905448717951,
+    100.0,
+    100.0,
+    3346.0,
+    73.75,
+    31.60553984638908,
+    31.60553984638908,
+    24.232431081150942,
+    20.224969327782404,
+    0.6654366285983673,
+    0.6654366285983673,
+    0.4428059066803614,
+    0.6654366285983673,
+    32.279690781768,
+    32.279690781768,
+    24.78670910670148,
+    20.41929905064804,
+    0.4393779131612662,
+    0.4393779131612662,
+    0.19305295057394917,
+    0.4393779131612662,
+    14.687074115655422,
+    14.687074115655422,
+    8.145240573707921,
+    7.71575003516631,
+    124.98332209549571,
+    124.98332209549571,
+    84.7373680068079,
+    84.00217942909222,
+    19.580487170173914,
+    19.580487170173914,
+    12.940274479786975,
+    13.527538589851478,
+    0.10235852352528196,
+    0.10235852352528196,
+    0.010477267338275701,
+    0.10235852352528196,
 ];
 
 #[test]
 fn touched_entry_points_bit_identical_to_pre_change() {
-    let h = pre_change_hashes();
-    eprintln!("pre-change hashes: {h:#x?}");
-    assert_eq!(h, PRE_CHANGE_HASHES);
+    // 31 fields per λ; fields 23..31 are the "RBFGS defaults" block
+    let rtol = |field: usize| if field % 31 >= 23 { 1e-6 } else { 1e-10 };
+    pre_change_pin().assert_close_by(PRE_CHANGE_PIN, rtol, "#67 touched entry points");
 }
 
 // ─── Shared helpers ─────────────────────────────────────────────────────────

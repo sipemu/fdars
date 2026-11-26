@@ -2,6 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use super::*;
+use crate::test_helpers::ValuePin;
 
 fn grid(m: usize) -> Vec<f64> {
     (0..m).map(|j| j as f64 / (m - 1) as f64).collect()
@@ -1054,17 +1055,13 @@ fn non_periodic_default_ignores_initial_shift_column() {
     assert!(base.shift.iter().all(|&s| s == 0.0));
 }
 
-fn fnv(v: &[f64], h: &mut u64) {
-    for x in v {
-        for b in x.to_bits().to_le_bytes() {
-            *h ^= u64::from(b);
-            *h = h.wrapping_mul(0x0100_0000_01b3);
-        }
-    }
-}
-
-/// Default (non-periodic) results are bit-identical to the pre-#72 code: FNV-1a hash
-/// of the full output pinned on commit 9c856e31 before `periodic` was added.
+/// Default (non-periodic) results are unchanged from the pre-#72 code.
+///
+/// Originally an FNV-1a hash of the output bits pinned on commit 9c856e31; that hash
+/// depends on the platform libm's last-ulp `exp` results (glibc selects a CPU-specific
+/// kernel) and failed on CI runners. The reference summaries below were recorded on
+/// 925ef514, which reproduced the 9c856e31 hash bit-for-bit on the recording machine,
+/// and are compared at rtol 1e-10 (see [`ValuePin`]).
 #[test]
 fn default_results_bit_identical_to_pre_periodic_pin() {
     let m = 41;
@@ -1079,7 +1076,7 @@ fn default_results_bit_identical_to_pre_periodic_pin() {
                 + 0.3 * a * (-(t[j] - 0.2).powi(2) / 0.01).exp();
         }
     }
-    let mut h = 0xcbf2_9ce4_8422_2325_u64;
+    let mut pin = ValuePin::new();
     for crit in [
         ContinuousRegistrationCriterion::LeastSquares,
         ContinuousRegistrationCriterion::MinEigenvalue,
@@ -1089,11 +1086,54 @@ fn default_results_bit_identical_to_pre_periodic_pin() {
         cfg.lambda = 1e-3;
         cfg.max_template_iter = 3;
         let r = continuous_registration(&data, &t, None, &cfg).unwrap();
-        fnv(r.registered_data.as_slice(), &mut h);
-        fnv(r.warps.as_slice(), &mut h);
-        fnv(r.w_coefficients.as_slice(), &mut h);
-        fnv(&r.criterion, &mut h);
-        fnv(&r.target, &mut h);
+        pin.push(r.registered_data.as_slice());
+        pin.push(r.warps.as_slice());
+        pin.push(r.w_coefficients.as_slice());
+        pin.push(&r.criterion);
+        pin.push(&r.target);
     }
-    assert_eq!(h, 0x4be7_1312_9bd8_42fb);
+    pin.assert_close(PRE_PERIODIC_PIN, 1e-10, "continuous registration default");
 }
+
+const PRE_PERIODIC_PIN: &[f64] = &[
+    364.24588120546883,
+    364.24588120546883,
+    235.91560643621625,
+    164.12917424080433,
+    614.0408937395684,
+    614.0408937395684,
+    415.0531392898845,
+    412.2600522349258,
+    1.6346921455864498,
+    24.066030787971076,
+    6.830318840845282,
+    0.8801398047802601,
+    0.12429088154900178,
+    0.12429088154900178,
+    0.0007771572408811497,
+    0.06394401397632757,
+    12.144669590402154,
+    12.144669590402154,
+    7.708831245023279,
+    5.617447497900823,
+    366.0599895261668,
+    366.0599895261668,
+    238.03940225363394,
+    165.00719770519848,
+    613.9668734457233,
+    613.9668734457233,
+    414.6834031309565,
+    412.0838886450891,
+    0.8025690662530468,
+    22.77631730552719,
+    6.405363193479252,
+    0.4852514673330762,
+    0.021584653302037918,
+    0.021584653302037918,
+    2.5541075635703238e-5,
+    0.01090807810309888,
+    12.208365754573414,
+    12.208365754573414,
+    7.760969478359123,
+    5.648777403140646,
+];

@@ -10,6 +10,7 @@ use crate::alignment::{
 };
 use crate::elastic_fpca::{horiz_fpca, joint_fpca, vert_fpca};
 use crate::matrix::FdMatrix;
+use crate::test_helpers::ValuePin;
 
 fn grid(m: usize) -> Vec<f64> {
     (0..m).map(|i| i as f64 / (m - 1) as f64).collect()
@@ -101,32 +102,75 @@ fn outlier_probe() -> (FdMatrix, Vec<f64>) {
     (d, t)
 }
 
-fn hash_outlier(r: &crate::alignment::ElasticOutlierResult) -> u64 {
-    let mut h = FNV0;
+fn pin_outlier(r: &crate::alignment::ElasticOutlierResult, pin: &mut ValuePin) {
     let idx: Vec<f64> = r.outlier_indices.iter().map(|&i| i as f64).collect();
-    fnv(&mut h, &idx);
-    fnv(&mut h, &r.distances);
-    fnv(&mut h, &[r.threshold]);
-    fnv(&mut h, &r.amplitude_distances);
-    fnv(&mut h, &r.phase_distances);
-    h
+    pin.push(&idx);
+    pin.push(&r.distances);
+    pin.push(&[r.threshold]);
+    pin.push(&r.amplitude_distances);
+    pin.push(&r.phase_distances);
 }
 
+/// Default outlier detection is unchanged from the pre-change code.
+///
+/// Originally FNV-1a hashes of the output bits (`0x0495_1ccf_b5c3_d8d6`,
+/// `0xf090_a3df_024f_7ab5`); those depend on the platform libm's last-ulp results.
+/// The summaries were recorded on 925ef514, which reproduced both hashes
+/// bit-for-bit on the recording machine, and are compared at rtol 1e-10.
 #[test]
 fn outlier_default_is_bit_identical_to_pre_change() {
     let (d, t) = outlier_probe();
-    let expected: [(bool, u64); 2] = [
-        (true, 0x0495_1ccf_b5c3_d8d6),
-        (false, 0xf090_a3df_024f_7ab5),
-    ];
-    for (use_median, hv) in expected {
+    let mut pin = ValuePin::new();
+    for use_median in [true, false] {
         let mut cfg = ElasticOutlierConfig::default();
         cfg.use_median = use_median;
-        let r = elastic_outlier_detection(&d, &t, &cfg).unwrap();
-        let h = hash_outlier(&r);
-        assert_eq!(h, hv, "outlier use_median={use_median}: got {h:#x}");
+        pin_outlier(&elastic_outlier_detection(&d, &t, &cfg).unwrap(), &mut pin);
     }
+    pin.assert_close(OUTLIER_DEFAULT_PIN, 1e-10, "outlier default");
 }
+
+const OUTLIER_DEFAULT_PIN: &[f64] = &[
+    8.0,
+    8.0,
+    64.0,
+    8.0,
+    8.588913909011078,
+    8.588913909011078,
+    33.09673254321138,
+    7.212218055547657,
+    0.8014637004883916,
+    0.8014637004883916,
+    0.6423440632005462,
+    0.8014637004883916,
+    8.588913909011078,
+    8.588913909011078,
+    33.09673254321138,
+    7.212218055547657,
+    3.0958057265775176,
+    3.0958057265775176,
+    1.202142219946005,
+    1.8089472478491437,
+    8.0,
+    8.0,
+    64.0,
+    8.0,
+    10.17074926107544,
+    10.17074926107544,
+    31.158179222046012,
+    7.660351630365705,
+    0.8683804812825557,
+    0.8683804812825557,
+    0.7540846602725232,
+    0.8683804812825557,
+    10.17074926107544,
+    10.17074926107544,
+    31.158179222046012,
+    7.660351630365705,
+    3.134783242105874,
+    3.134783242105874,
+    1.1527073438975408,
+    1.8626966170321457,
+];
 
 // ─── 4. Elastic FPCA: parallel loops are bit-identical ──────────────────────
 

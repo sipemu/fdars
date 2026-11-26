@@ -16,6 +16,7 @@ use crate::alignment::{
     karcher_mean_with_config, WarpPenaltyType,
 };
 use crate::matrix::FdMatrix;
+use crate::test_helpers::ValuePin;
 
 fn grid(m: usize) -> Vec<f64> {
     (0..m).map(|i| i as f64 / (m - 1) as f64).collect()
@@ -492,11 +493,16 @@ fn rbfgs_is_deterministic() {
     assert_eq!(a, b);
 }
 
-/// FNV-1a hashes of 1-D RBFGS warps recorded before the R^d generalisation of
-/// the RBFGS problem (ALN-CAV #65): the 1-D path must stay bit-identical.
+/// 1-D RBFGS warps are unchanged from before the R^d generalisation of the RBFGS
+/// problem (ALN-CAV #65).
+///
+/// Originally an FNV-1a hash of the warp bits (`0x7317_e324_5b93_1fc6`), which depends
+/// on the platform libm's last-ulp results. The summaries were recorded on 925ef514,
+/// which reproduced that hash bit-for-bit on the recording machine, and are compared
+/// at rtol 1e-10.
 #[test]
 fn rbfgs_1d_bit_identical_to_pre_multichannel() {
-    let mut h = FNV0;
+    let mut pin = ValuePin::new();
     for (t, q1, q2) in [case_a(41), case_b(61), case_a(101)] {
         for (lam, pen) in [
             (0.0, WarpObjectivePenalty::L2Gam),
@@ -506,14 +512,50 @@ fn rbfgs_1d_bit_identical_to_pre_multichannel() {
             let mut cfg = rbfgs_cfg();
             cfg.lambda = lam;
             cfg.penalty = pen;
-            fnv(&mut h, &optimal_warp(&q1, &q2, &t, &cfg, None));
+            pin.push(&optimal_warp(&q1, &q2, &t, &cfg, None));
         }
     }
-    eprintln!("rbfgs 1-D hash {h:#x}");
-    assert_eq!(h, RBFGS_1D_HASH);
+    pin.assert_close(RBFGS_1D_PIN, 1e-10, "rbfgs 1-D");
 }
 
-const RBFGS_1D_HASH: u64 = 0x7317_e324_5b93_1fc6;
+const RBFGS_1D_PIN: &[f64] = &[
+    23.300064385137375,
+    23.300064385137375,
+    16.986219168800183,
+    15.489501589069741,
+    23.09975028010101,
+    23.09975028010101,
+    16.574667415785196,
+    15.2993823374753,
+    22.198213221702716,
+    22.198213221702716,
+    15.600051221094047,
+    14.857603891083526,
+    34.22242109751126,
+    34.22242109751126,
+    24.053530710100304,
+    22.335947252875286,
+    33.93205413445175,
+    33.93205413445175,
+    23.819953218523455,
+    22.2365802577621,
+    32.152210972101756,
+    32.152210972101756,
+    22.203946913632223,
+    21.50289622786761,
+    57.51716502786526,
+    57.51716502786526,
+    41.71764145787118,
+    37.68048079603304,
+    56.574814334715924,
+    56.574814334715924,
+    40.18189845534343,
+    36.978786645333905,
+    53.078577225212534,
+    53.078577225212534,
+    36.464710700825556,
+    35.2863338439983,
+];
 
 // ─── Closed (periodic) 1-D curves with a configurable optimiser (#65) ───────
 
