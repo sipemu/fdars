@@ -46,13 +46,18 @@ pub use crate::depth::{
 
 // Metric functions
 pub use crate::metric::{
-    dtw_barycenter_averaging, dtw_distance, dtw_nearest_neighbor, dtw_path, lp_cross, lp_self, sbd,
-    sbd_distance_matrix, soft_dtw_barycenter_with_config, soft_dtw_distance_generic, DbaConfig,
-    DbaInit, DtwPath, DtwWindow, LpDomain, SbdResult, SoftDtwBarycenterConfig,
+    dtw_barycenter_averaging, dtw_barycenter_averaging_multivariate, dtw_distance,
+    dtw_distance_multivariate, dtw_k_nearest_neighbors, dtw_nearest_neighbor, dtw_path,
+    dtw_path_multivariate, lp_cross, lp_self, sbd, sbd_distance_matrix,
+    soft_dtw_barycenter_with_config, soft_dtw_distance_generic, DbaConfig, DbaInit, DtwPath,
+    DtwWindow, LpDomain, SbdResult, SoftDtwBarycenterConfig,
 };
 
 // DTW k-means with DBA centroids
-pub use crate::dtw_kmeans::{dtw_kmeans, DtwKMeansConfig, DtwKMeansResult};
+pub use crate::dtw_kmeans::{
+    dtw_kmeans, dtw_kmeans_multivariate, DtwKMeansConfig, DtwKMeansMultivariateResult,
+    DtwKMeansResult,
+};
 
 // k-Shape clustering + SBD-backed k-medoids
 pub use crate::kshape::{kshape_fd, sbd_kmedoids, KShapeConfig, KShapeResult};

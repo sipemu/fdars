@@ -15,7 +15,10 @@
 //! - Basis coefficient semimetric
 //! - Kullback-Leibler divergence
 //! - The aeon elastic-distance family (DDTW, WDTW, WDDTW, ADTW, ERP, EDR, TWE, MSM,
-//!   LCSS), see [`elastic_family`]
+//!   LCSS, shape DTW), see [`elastic_family`]
+//! - Multivariate (multichannel, `d × m` per series) DTW, DBA, elastic distances
+//!   and DTW k-means (`*_multivariate`), following aeon / tslearn's dependent
+//!   multichannel semantics
 
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -39,6 +42,10 @@ pub mod sbd;
 pub mod soft_dtw;
 pub mod window;
 
+#[cfg(test)]
+mod multivariate_goldens;
+#[cfg(test)]
+mod multivariate_tests;
 #[cfg(test)]
 mod tests;
 
@@ -140,28 +147,82 @@ pub(super) fn cross_distance_matrix(
     dist
 }
 
+/// Distance matrix from a fallible pair function, computed in parallel.
+///
+/// `n2 = None` builds the symmetric `n1 × n1` self-distance matrix (zero
+/// diagonal, only `i < j` evaluated), otherwise the full `n1 × n2` matrix.
+pub(super) fn pairwise_result(
+    n1: usize,
+    n2: Option<usize>,
+    compute: impl Fn(usize, usize) -> Result<f64, crate::error::FdarError> + Sync,
+) -> Result<FdMatrix, crate::error::FdarError> {
+    let cols = n2.unwrap_or(n1);
+    let rows: Vec<Vec<f64>> = iter_maybe_parallel!(0..n1)
+        .map(|i| {
+            let start = if n2.is_none() { i + 1 } else { 0 };
+            (start..cols).map(|j| compute(i, j)).collect()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut dist = FdMatrix::zeros(n1, cols);
+    for (i, row) in rows.iter().enumerate() {
+        let start = if n2.is_none() { i + 1 } else { 0 };
+        for (off, &d) in row.iter().enumerate() {
+            let j = start + off;
+            dist[(i, j)] = d;
+            if n2.is_none() {
+                dist[(j, i)] = d;
+            }
+        }
+    }
+    Ok(dist)
+}
+
 // ---------------------------------------------------------------------------
 // Re-exports — preserves the external API
 // ---------------------------------------------------------------------------
 
 pub use basis_coef::{basis_coef_cross, basis_coef_self};
-pub use dba::{dtw_barycenter_averaging, DbaConfig, DbaInit, DbaResult};
+pub use dba::{
+    dtw_barycenter_averaging, dtw_barycenter_averaging_multivariate, DbaConfig, DbaInit,
+    DbaMultivariateResult, DbaResult,
+};
 pub use deriv::{deriv_cross, deriv_self};
-pub use dtw::{dtw_cross, dtw_distance, dtw_distance_windowed, dtw_path, dtw_self, DtwPath};
+pub use dtw::{
+    dtw_cross, dtw_distance, dtw_distance_multivariate, dtw_distance_windowed,
+    dtw_pairwise_distance_multivariate, dtw_path, dtw_path_multivariate, dtw_self, DtwPath,
+};
 pub use dtw_lb::{
-    dtw_distance_early_abandon, dtw_nearest_neighbor, lb_envelope, lb_envelope_windowed, lb_keogh,
-    lb_kim, lb_webb, DtwEnvelope, DtwNearestNeighbors, DtwSearchStats,
+    dtw_distance_early_abandon, dtw_k_nearest_neighbors, dtw_nearest_neighbor, lb_enhanced,
+    lb_envelope, lb_envelope_windowed, lb_improved, lb_keogh, lb_kim, lb_webb, DtwEnvelope,
+    DtwKNearestNeighbors, DtwNearestNeighbors, DtwSearchStats,
 };
 pub use elastic_family::{
-    adtw_alignment_path, adtw_cost_matrix, adtw_distance, adtw_pairwise_distance,
-    ddtw_alignment_path, ddtw_cost_matrix, ddtw_distance, ddtw_pairwise_distance,
-    edr_alignment_path, edr_cost_matrix, edr_distance, edr_pairwise_distance, erp_alignment_path,
-    erp_cost_matrix, erp_distance, erp_pairwise_distance, lcss_alignment_path, lcss_cost_matrix,
-    lcss_distance, lcss_pairwise_distance, msm_alignment_path, msm_cost_matrix, msm_distance,
-    msm_pairwise_distance, twe_alignment_path, twe_cost_matrix, twe_distance,
-    twe_pairwise_distance, wddtw_alignment_path, wddtw_cost_matrix, wddtw_distance,
-    wddtw_pairwise_distance, wdtw_alignment_path, wdtw_cost_matrix, wdtw_distance,
-    wdtw_pairwise_distance, ElasticDistancePath,
+    adtw_alignment_path, adtw_alignment_path_multivariate, adtw_cost_matrix,
+    adtw_cost_matrix_multivariate, adtw_distance, adtw_distance_multivariate,
+    adtw_pairwise_distance, adtw_pairwise_distance_multivariate, ddtw_alignment_path,
+    ddtw_alignment_path_multivariate, ddtw_cost_matrix, ddtw_cost_matrix_multivariate,
+    ddtw_distance, ddtw_distance_multivariate, ddtw_pairwise_distance,
+    ddtw_pairwise_distance_multivariate, edr_alignment_path, edr_alignment_path_multivariate,
+    edr_cost_matrix, edr_cost_matrix_multivariate, edr_distance, edr_distance_multivariate,
+    edr_pairwise_distance, edr_pairwise_distance_multivariate, erp_alignment_path,
+    erp_alignment_path_multivariate, erp_cost_matrix, erp_cost_matrix_multivariate, erp_distance,
+    erp_distance_multivariate, erp_pairwise_distance, erp_pairwise_distance_multivariate,
+    lcss_alignment_path, lcss_alignment_path_multivariate, lcss_cost_matrix,
+    lcss_cost_matrix_multivariate, lcss_distance, lcss_distance_multivariate,
+    lcss_pairwise_distance, lcss_pairwise_distance_multivariate, msm_alignment_path,
+    msm_alignment_path_multivariate, msm_cost_matrix, msm_cost_matrix_multivariate, msm_distance,
+    msm_distance_multivariate, msm_pairwise_distance, msm_pairwise_distance_multivariate,
+    shape_dtw_alignment_path, shape_dtw_alignment_path_multivariate, shape_dtw_cost_matrix,
+    shape_dtw_cost_matrix_multivariate, shape_dtw_distance, shape_dtw_distance_multivariate,
+    shape_dtw_pairwise_distance, shape_dtw_pairwise_distance_multivariate, twe_alignment_path,
+    twe_alignment_path_multivariate, twe_cost_matrix, twe_cost_matrix_multivariate, twe_distance,
+    twe_distance_multivariate, twe_pairwise_distance, twe_pairwise_distance_multivariate,
+    wddtw_alignment_path, wddtw_alignment_path_multivariate, wddtw_cost_matrix,
+    wddtw_cost_matrix_multivariate, wddtw_distance, wddtw_distance_multivariate,
+    wddtw_pairwise_distance, wddtw_pairwise_distance_multivariate, wdtw_alignment_path,
+    wdtw_alignment_path_multivariate, wdtw_cost_matrix, wdtw_cost_matrix_multivariate,
+    wdtw_distance, wdtw_distance_multivariate, wdtw_pairwise_distance,
+    wdtw_pairwise_distance_multivariate, ElasticDistancePath, ShapeDtwDescriptor,
 };
 pub use fourier::{fourier_cross, fourier_self};
 pub use gak::{

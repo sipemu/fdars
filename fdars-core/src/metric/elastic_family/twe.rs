@@ -4,24 +4,26 @@ use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 
 use super::{
-    check_param, elastic_family_fns, euc, last_cell, ElasticDistancePath, Lattice, Recipe,
+    check_param, elastic_family_fns, euc, last_cell, ElasticDistancePath, Lattice, Recipe, Ser,
     Traceback,
 };
 use crate::metric::window::DtwWindow;
 
 /// aeon `_twe_cost_matrix` on series padded with a leading `0` (aeon
 /// `_pad_arrs`), time stamps = sample indices.
-fn twe_lattice(x: &[f64], y: &[f64], bounds: &[(usize, usize)], nu: f64, lmbda: f64) -> Lattice {
+fn twe_lattice(x: Ser, y: Ser, bounds: &[(usize, usize)], nu: f64, lmbda: f64) -> Lattice {
+    let zero = vec![0.0; x.d];
     let mut lat = Lattice::new(x.len(), y.len(), f64::INFINITY);
     lat.set(0, 0, 0.0);
     let del_add = nu + lmbda;
     lat.fill(bounds, |a, b, diag, up, left| {
-        let xp = if a == 0 { 0.0 } else { x[a - 1] };
-        let yp = if b == 0 { 0.0 } else { y[b - 1] };
-        let del_x = up + euc(xp, x[a]) + del_add;
-        let del_y = left + euc(yp, y[b]) + del_add;
+        let xp = if a == 0 { &zero[..] } else { x.at(a - 1) };
+        let yp = if b == 0 { &zero[..] } else { y.at(b - 1) };
+        let (xa, yb) = (x.at(a), y.at(b));
+        let del_x = up + euc(xp, xa) + del_add;
+        let del_y = left + euc(yp, yb) + del_add;
         let k = a.abs_diff(b);
-        let matched = diag + euc(x[a], y[b]) + euc(xp, yp) + nu * ((k + k) as f64);
+        let matched = diag + euc(xa, yb) + euc(xp, yp) + nu * ((k + k) as f64);
         del_x.min(del_y).min(matched)
     });
     lat
@@ -30,14 +32,14 @@ fn twe_lattice(x: &[f64], y: &[f64], bounds: &[(usize, usize)], nu: f64, lmbda: 
 fn recipe(
     nu: f64,
     lmbda: f64,
-) -> Result<Recipe<impl Fn(&[f64], &[f64], &[(usize, usize)]) -> Lattice + Sync>, FdarError> {
+) -> Result<Recipe<impl Fn(Ser, Ser, &[(usize, usize)]) -> Lattice + Sync>, FdarError> {
     check_param("nu", nu, true)?;
     check_param("lmbda", lmbda, true)?;
     Ok(Recipe {
         name: "twe",
         derivative: false,
         padded_output: false,
-        lattice: move |x: &[f64], y: &[f64], b: &[(usize, usize)]| twe_lattice(x, y, b, nu, lmbda),
+        lattice: move |x: Ser, y: Ser, b: &[(usize, usize)]| twe_lattice(x, y, b, nu, lmbda),
         score: last_cell,
         path_score: last_cell,
         traceback: Traceback::MinReturn,
@@ -50,6 +52,10 @@ elastic_family_fns! {
     pairwise: twe_pairwise_distance,
     cost: twe_cost_matrix,
     path: twe_alignment_path,
+    distance_mv: twe_distance_multivariate,
+    pairwise_mv: twe_pairwise_distance_multivariate,
+    cost_mv: twe_cost_matrix_multivariate,
+    path_mv: twe_alignment_path_multivariate,
     params: (nu: f64, lmbda: f64),
     params_doc: "Edit distance with stiffness `nu` (aeon default `0.001`; a match of \
         `x_i` with `y_j` pays `2·nu·|i − j|`) and deletion penalty `lmbda` (aeon default \

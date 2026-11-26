@@ -4,7 +4,7 @@ use crate::error::FdarError;
 use crate::matrix::FdMatrix;
 
 use super::{
-    check_param, elastic_family_fns, euc, last_cell, ElasticDistancePath, Lattice, Recipe,
+    check_param, elastic_family_fns, euc, last_cell, ElasticDistancePath, Lattice, Recipe, Ser,
     Traceback,
 };
 use crate::metric::window::DtwWindow;
@@ -12,9 +12,10 @@ use crate::metric::window::DtwWindow;
 /// aeon `_erp_cost_matrix`. Note aeon's border: every entry of the padded
 /// first column holds the **total** gap cost `Σ_i |x_i − g|` (not a running
 /// sum), likewise the first row; this is reproduced exactly.
-fn erp_lattice(x: &[f64], y: &[f64], bounds: &[(usize, usize)], g: f64) -> Lattice {
-    let gx: Vec<f64> = x.iter().map(|&v| euc(v, g)).collect();
-    let gy: Vec<f64> = y.iter().map(|&v| euc(v, g)).collect();
+fn erp_lattice(x: Ser, y: Ser, bounds: &[(usize, usize)], g: f64) -> Lattice {
+    let g_arr = vec![g; x.d];
+    let gx: Vec<f64> = (0..x.len()).map(|i| euc(x.at(i), &g_arr)).collect();
+    let gy: Vec<f64> = (0..y.len()).map(|j| euc(y.at(j), &g_arr)).collect();
     let x_sum: f64 = gx.iter().fold(0.0, |s, &v| s + v);
     let y_sum: f64 = gy.iter().fold(0.0, |s, &v| s + v);
     let (n, m) = (x.len(), y.len());
@@ -27,20 +28,22 @@ fn erp_lattice(x: &[f64], y: &[f64], bounds: &[(usize, usize)], g: f64) -> Latti
     }
     lat.set(0, 0, 0.0);
     lat.fill(bounds, |a, b, diag, up, left| {
-        (diag + euc(x[a], y[b])).min(up + gx[a]).min(left + gy[b])
+        (diag + euc(x.at(a), y.at(b)))
+            .min(up + gx[a])
+            .min(left + gy[b])
     });
     lat
 }
 
 fn recipe(
     g: f64,
-) -> Result<Recipe<impl Fn(&[f64], &[f64], &[(usize, usize)]) -> Lattice + Sync>, FdarError> {
+) -> Result<Recipe<impl Fn(Ser, Ser, &[(usize, usize)]) -> Lattice + Sync>, FdarError> {
     check_param("g", g, false)?;
     Ok(Recipe {
         name: "erp",
         derivative: false,
         padded_output: false,
-        lattice: move |x: &[f64], y: &[f64], b: &[(usize, usize)]| erp_lattice(x, y, b, g),
+        lattice: move |x: Ser, y: Ser, b: &[(usize, usize)]| erp_lattice(x, y, b, g),
         score: last_cell,
         path_score: last_cell,
         traceback: Traceback::MinReturn,
@@ -53,6 +56,10 @@ elastic_family_fns! {
     pairwise: erp_pairwise_distance,
     cost: erp_cost_matrix,
     path: erp_alignment_path,
+    distance_mv: erp_distance_multivariate,
+    pairwise_mv: erp_pairwise_distance_multivariate,
+    cost_mv: erp_cost_matrix_multivariate,
+    path_mv: erp_alignment_path_multivariate,
     params: (g: f64),
     params_doc: "Matches cost `|x_i − y_j|`; a gap (skipping `x_i` or `y_j`) costs the \
         distance to the reference value `g` (aeon default `0.0`, finite). For univariate \

@@ -648,7 +648,10 @@ pub use clustering::{
 };
 
 // Re-export DTW k-means with DBA centroids (GH #45)
-pub use dtw_kmeans::{dtw_kmeans, DtwKMeansConfig, DtwKMeansInit, DtwKMeansResult};
+pub use dtw_kmeans::{
+    dtw_kmeans, dtw_kmeans_multivariate, DtwKMeansConfig, DtwKMeansInit,
+    DtwKMeansMultivariateResult, DtwKMeansResult,
+};
 
 // Re-export kernel-k-means clustering (GAK-backed, no centroid)
 pub use kernel_kmeans::{kernel_kmeans_fd, KernelKmeansConfig, KernelKmeansResult};
@@ -682,32 +685,51 @@ pub use clustering_advanced::{
 // Re-export distance metric types and functions
 pub use metric::{
     basis_coef_cross, basis_coef_self, deriv_cross, deriv_self, dtw_barycenter_averaging,
-    dtw_cross, dtw_distance, dtw_distance_windowed, dtw_path, dtw_self, fourier_cross,
-    fourier_self, gak, gak_gram_matrix, gak_gram_predict, gak_gram_train, gak_triangular,
-    hausdorff_3d, hausdorff_cross, hausdorff_self, hshift_cross, hshift_self, kl_cross, kl_self,
-    lp_cross, lp_self, pca_cross, pca_self, sbd, sbd_distance_matrix, sigma_gak,
+    dtw_barycenter_averaging_multivariate, dtw_cross, dtw_distance, dtw_distance_multivariate,
+    dtw_distance_windowed, dtw_pairwise_distance_multivariate, dtw_path, dtw_path_multivariate,
+    dtw_self, fourier_cross, fourier_self, gak, gak_gram_matrix, gak_gram_predict, gak_gram_train,
+    gak_triangular, hausdorff_3d, hausdorff_cross, hausdorff_self, hshift_cross, hshift_self,
+    kl_cross, kl_self, lp_cross, lp_self, pca_cross, pca_self, sbd, sbd_distance_matrix, sigma_gak,
     soft_dtw_alignment, soft_dtw_barycenter, soft_dtw_barycenter_with_config, soft_dtw_cross,
     soft_dtw_distance, soft_dtw_distance_generic, soft_dtw_distance_windowed, soft_dtw_div_cross,
-    soft_dtw_div_self, soft_dtw_divergence, soft_dtw_self, DbaConfig, DbaInit, DbaResult, DtwPath,
-    DtwWindow, GakConfig, GakGramTrain, LpDomain, SbdResult, SoftDtwAlignment,
-    SoftDtwBarycenterConfig, SoftDtwBarycenterResult,
+    soft_dtw_div_self, soft_dtw_divergence, soft_dtw_self, DbaConfig, DbaInit,
+    DbaMultivariateResult, DbaResult, DtwPath, DtwWindow, GakConfig, GakGramTrain, LpDomain,
+    SbdResult, SoftDtwAlignment, SoftDtwBarycenterConfig, SoftDtwBarycenterResult,
 };
 // Re-export DTW lower bounds, EAPrunedDTW and exact 1-NN search (GH #58)
 pub use metric::{
-    dtw_distance_early_abandon, dtw_nearest_neighbor, lb_envelope, lb_envelope_windowed, lb_keogh,
-    lb_kim, lb_webb, DtwEnvelope, DtwNearestNeighbors, DtwSearchStats,
+    dtw_distance_early_abandon, dtw_k_nearest_neighbors, dtw_nearest_neighbor, lb_enhanced,
+    lb_envelope, lb_envelope_windowed, lb_improved, lb_keogh, lb_kim, lb_webb, DtwEnvelope,
+    DtwKNearestNeighbors, DtwNearestNeighbors, DtwSearchStats,
 };
 // Re-export the aeon elastic-distance family (GH #57)
 pub use metric::{
-    adtw_alignment_path, adtw_cost_matrix, adtw_distance, adtw_pairwise_distance,
-    ddtw_alignment_path, ddtw_cost_matrix, ddtw_distance, ddtw_pairwise_distance,
-    edr_alignment_path, edr_cost_matrix, edr_distance, edr_pairwise_distance, erp_alignment_path,
-    erp_cost_matrix, erp_distance, erp_pairwise_distance, lcss_alignment_path, lcss_cost_matrix,
-    lcss_distance, lcss_pairwise_distance, msm_alignment_path, msm_cost_matrix, msm_distance,
-    msm_pairwise_distance, twe_alignment_path, twe_cost_matrix, twe_distance,
-    twe_pairwise_distance, wddtw_alignment_path, wddtw_cost_matrix, wddtw_distance,
-    wddtw_pairwise_distance, wdtw_alignment_path, wdtw_cost_matrix, wdtw_distance,
-    wdtw_pairwise_distance, ElasticDistancePath,
+    adtw_alignment_path, adtw_alignment_path_multivariate, adtw_cost_matrix,
+    adtw_cost_matrix_multivariate, adtw_distance, adtw_distance_multivariate,
+    adtw_pairwise_distance, adtw_pairwise_distance_multivariate, ddtw_alignment_path,
+    ddtw_alignment_path_multivariate, ddtw_cost_matrix, ddtw_cost_matrix_multivariate,
+    ddtw_distance, ddtw_distance_multivariate, ddtw_pairwise_distance,
+    ddtw_pairwise_distance_multivariate, edr_alignment_path, edr_alignment_path_multivariate,
+    edr_cost_matrix, edr_cost_matrix_multivariate, edr_distance, edr_distance_multivariate,
+    edr_pairwise_distance, edr_pairwise_distance_multivariate, erp_alignment_path,
+    erp_alignment_path_multivariate, erp_cost_matrix, erp_cost_matrix_multivariate, erp_distance,
+    erp_distance_multivariate, erp_pairwise_distance, erp_pairwise_distance_multivariate,
+    lcss_alignment_path, lcss_alignment_path_multivariate, lcss_cost_matrix,
+    lcss_cost_matrix_multivariate, lcss_distance, lcss_distance_multivariate,
+    lcss_pairwise_distance, lcss_pairwise_distance_multivariate, msm_alignment_path,
+    msm_alignment_path_multivariate, msm_cost_matrix, msm_cost_matrix_multivariate, msm_distance,
+    msm_distance_multivariate, msm_pairwise_distance, msm_pairwise_distance_multivariate,
+    shape_dtw_alignment_path, shape_dtw_alignment_path_multivariate, shape_dtw_cost_matrix,
+    shape_dtw_cost_matrix_multivariate, shape_dtw_distance, shape_dtw_distance_multivariate,
+    shape_dtw_pairwise_distance, shape_dtw_pairwise_distance_multivariate, twe_alignment_path,
+    twe_alignment_path_multivariate, twe_cost_matrix, twe_cost_matrix_multivariate, twe_distance,
+    twe_distance_multivariate, twe_pairwise_distance, twe_pairwise_distance_multivariate,
+    wddtw_alignment_path, wddtw_alignment_path_multivariate, wddtw_cost_matrix,
+    wddtw_cost_matrix_multivariate, wddtw_distance, wddtw_distance_multivariate,
+    wddtw_pairwise_distance, wddtw_pairwise_distance_multivariate, wdtw_alignment_path,
+    wdtw_alignment_path_multivariate, wdtw_cost_matrix, wdtw_cost_matrix_multivariate,
+    wdtw_distance, wdtw_distance_multivariate, wdtw_pairwise_distance,
+    wdtw_pairwise_distance_multivariate, ElasticDistancePath, ShapeDtwDescriptor,
 };
 
 // Re-export depth measure functions
