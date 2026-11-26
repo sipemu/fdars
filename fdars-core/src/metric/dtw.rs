@@ -132,14 +132,14 @@ pub struct DtwPath {
 /// Local cost `|a − b|^p`, with the same three-way dispatch as [`dtw_distance`]
 /// so per-cell costs are bit-identical.
 #[derive(Clone, Copy)]
-enum LocalCost {
+pub(super) enum LocalCost {
     Squared,
     Absolute,
     Power(f64),
 }
 
 impl LocalCost {
-    fn new(p: f64) -> Self {
+    pub(super) fn new(p: f64) -> Self {
         if (p - 2.0).abs() < 1e-14 {
             LocalCost::Squared
         } else if (p - 1.0).abs() < 1e-14 {
@@ -150,7 +150,7 @@ impl LocalCost {
     }
 
     #[inline]
-    fn eval(self, a: f64, b: f64) -> f64 {
+    pub(super) fn eval(self, a: f64, b: f64) -> f64 {
         match self {
             LocalCost::Squared => {
                 let d = a - b;
@@ -163,7 +163,7 @@ impl LocalCost {
 }
 
 /// Validate the shared inputs of the windowed DTW entry points.
-fn validate_dtw_inputs(x: &[f64], y: &[f64], p: f64) -> Result<(), FdarError> {
+pub(super) fn validate_dtw_inputs(x: &[f64], y: &[f64], p: f64) -> Result<(), FdarError> {
     if x.is_empty() || y.is_empty() {
         return Err(FdarError::InvalidDimension {
             parameter: "x/y",

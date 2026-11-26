@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**DTW lower bounds and exact 1-NN search (GH #58 ALN-LB).** Additive and non-breaking: new
+`metric::dtw_lb` module; existing DTW code paths and results unchanged; no new crate dependency.
+
+### Added
+
+- `metric::dtw_lb` — `lb_envelope(x, radius)` (tslearn `lb_envelope`, Lemire streaming min/max),
+  `lb_envelope_windowed(y, query_len, window)` (envelope under any `DtwWindow` / unequal lengths),
+  `lb_keogh(query, &envelope, p)`, `lb_kim(x, y, p)`, `lb_webb(x, y, p, window)` (Webb &
+  Petitjean 2021, generalised to every `DtwWindow`; `p ≥ 1`),
+  `dtw_distance_early_abandon(x, y, p, window, cutoff)` (EAPrunedDTW, Herrmann & Webb 2021;
+  bit-identical to `dtw_distance_windowed` when `≤ cutoff`, else `None`) and
+  `dtw_nearest_neighbor(queries, references, p, window)` (exact 1-NN: LB_Keogh-ordered cascade
+  LB_Keogh → LB_Kim → LB_Webb → EAPrunedDTW with cumulative LB_Keogh bound, parallel over
+  queries; equals brute force in index and distance bits) with `DtwEnvelope`,
+  `DtwNearestNeighbors`, `DtwSearchStats`. All bounds use the `dtw_distance_windowed`
+  convention `Σ|x_i − y_j|^p` with no root (tslearn/dtaidistance report the square root).
+  Golden-tested against tslearn 0.10.0, dtaidistance 2.5.1 and the authors' LB_Webb Java code.
+- Bench `dtw_lb_benchmarks` (1-NN vs brute force).
+
 **aeon elastic-distance family (GH #57 ALN-ELDIST).** Additive and non-breaking: new
 `metric::elastic_family` module plus two new `DtwWindow` variants (`#[non_exhaustive]` enum);
 existing variants, DTW / soft-DTW / DBA code paths and results unchanged; no new crate dependency.

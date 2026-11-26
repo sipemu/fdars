@@ -148,6 +148,10 @@ name = "kshape"   # Phase 63 KSH-05 — sbd_distance_matrix + kshape_fd pipeline
 harness = false
 
 [[bench]]
+name = "dtw_lb_benchmarks"   # GH #58 ALN-LB — exact DTW 1-NN (LB cascade + EAPrunedDTW) vs brute force
+harness = false
+
+[[bench]]
 name = "optimal_design"   # Phase 65 FOD-05 — design_criterion + optimal_design pipeline coverage
 harness = false
 

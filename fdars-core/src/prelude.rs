@@ -46,9 +46,9 @@ pub use crate::depth::{
 
 // Metric functions
 pub use crate::metric::{
-    dtw_barycenter_averaging, dtw_distance, dtw_path, lp_cross, lp_self, sbd, sbd_distance_matrix,
-    soft_dtw_barycenter_with_config, soft_dtw_distance_generic, DbaConfig, DbaInit, DtwPath,
-    DtwWindow, LpDomain, SbdResult, SoftDtwBarycenterConfig,
+    dtw_barycenter_averaging, dtw_distance, dtw_nearest_neighbor, dtw_path, lp_cross, lp_self, sbd,
+    sbd_distance_matrix, soft_dtw_barycenter_with_config, soft_dtw_distance_generic, DbaConfig,
+    DbaInit, DtwPath, DtwWindow, LpDomain, SbdResult, SoftDtwBarycenterConfig,
 };
 
 // DTW k-means with DBA centroids

@@ -4,6 +4,8 @@
 //! - Lp distances (L1, L2, L∞)
 //! - Hausdorff distance
 //! - Dynamic Time Warping (DTW), warping paths, and Sakoe-Chiba / Itakura windows
+//! - DTW lower bounds (LB_Kim, LB_Keogh, LB_Webb), early-abandoning pruned DTW
+//!   (EAPrunedDTW) and exact 1-NN search, see [`dtw_lb`]
 //! - DTW Barycenter Averaging (DBA, Petitjean et al. 2011)
 //! - Fourier-based semimetric
 //! - Horizontal shift semimetric
@@ -24,6 +26,7 @@ pub mod basis_coef;
 pub mod dba;
 pub mod deriv;
 pub mod dtw;
+pub mod dtw_lb;
 pub mod elastic_family;
 pub mod fourier;
 pub mod gak;
@@ -145,6 +148,10 @@ pub use basis_coef::{basis_coef_cross, basis_coef_self};
 pub use dba::{dtw_barycenter_averaging, DbaConfig, DbaInit, DbaResult};
 pub use deriv::{deriv_cross, deriv_self};
 pub use dtw::{dtw_cross, dtw_distance, dtw_distance_windowed, dtw_path, dtw_self, DtwPath};
+pub use dtw_lb::{
+    dtw_distance_early_abandon, dtw_nearest_neighbor, lb_envelope, lb_envelope_windowed, lb_keogh,
+    lb_kim, lb_webb, DtwEnvelope, DtwNearestNeighbors, DtwSearchStats,
+};
 pub use elastic_family::{
     adtw_alignment_path, adtw_cost_matrix, adtw_distance, adtw_pairwise_distance,
     ddtw_alignment_path, ddtw_cost_matrix, ddtw_distance, ddtw_pairwise_distance,

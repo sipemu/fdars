@@ -672,6 +672,11 @@ pub use metric::{
     DtwWindow, GakConfig, GakGramTrain, LpDomain, SbdResult, SoftDtwAlignment,
     SoftDtwBarycenterConfig, SoftDtwBarycenterResult,
 };
+// Re-export DTW lower bounds, EAPrunedDTW and exact 1-NN search (GH #58)
+pub use metric::{
+    dtw_distance_early_abandon, dtw_nearest_neighbor, lb_envelope, lb_envelope_windowed, lb_keogh,
+    lb_kim, lb_webb, DtwEnvelope, DtwNearestNeighbors, DtwSearchStats,
+};
 // Re-export the aeon elastic-distance family (GH #57)
 pub use metric::{
     adtw_alignment_path, adtw_cost_matrix, adtw_distance, adtw_pairwise_distance,
