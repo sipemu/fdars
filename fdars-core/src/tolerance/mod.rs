@@ -34,6 +34,7 @@ pub use conformal_anomaly::{
     ConformalAnomalyResult,
 };
 pub use degras::scb_mean_degras;
+pub(crate) use degras::scb_mean_degras_with_critical;
 pub use elastic::{
     elastic_tolerance_band, elastic_tolerance_band_with_config, phase_tolerance_band,
 };

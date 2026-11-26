@@ -111,6 +111,7 @@ pub mod metric;
 pub mod optimal_design;
 pub mod outliers;
 pub mod peer;
+pub mod regions;
 pub mod regression;
 pub mod scalar_on_function;
 pub mod seasonal;
@@ -339,14 +340,16 @@ pub use alignment::{
     robust_karcher_mean_with_config, WarpLambdaScale,
 };
 pub use alignment::{
-    elastic_phase_amplitude_test, AmplitudeMetric, PhaseAmplitudeTestConfig,
-    PhaseAmplitudeTestResult,
+    elastic_local_difference_test, elastic_phase_amplitude_test, AmplitudeMetric,
+    LocalDifferenceConfig, LocalDifferenceResult, LocalDifferenceTest, LocalTestMethod,
+    PhaseAmplitudeTestConfig, PhaseAmplitudeTestResult, PhaseRepresentation,
 };
 pub use alignment::{
     evaluate_inverse_warp, gfpca_two_step, gfpca_variational, register_expfam, register_fpca,
     register_fpca_regular, CurveIncompleteness, ExpFamRegistration, ExpFamily, FpcaType,
     GfpcaConfig, GfpcaResult, NpcCriterion, RegisterFpcaConfig, RegisterFpcaResult, WarpingType,
 };
+pub use regions::{difference_regions, DifferenceRegion};
 
 // Re-export commonly used items
 pub use helpers::{
@@ -402,9 +405,10 @@ pub use tolerance::{
 
 // Re-export functional inference types and two-sample tests
 pub use inference::{
-    f_perm_test, flm_f_test, flm_gof_test, itp_flm, itp_one_pop, itp_two_pop, mean_scb,
-    oneway_anova_vstat, permanova, scb_two_sample_test, t_perm_test, two_sample_mean_test,
-    ItpResult, PermanovaResult, TestResult, DEFAULT_N_PERM,
+    f_perm_test, flm_f_test, flm_gof_test, itp_flm, itp_one_pop, itp_pointwise_pvalues,
+    itp_two_pop, itp_two_pop_regions, mean_scb, oneway_anova_vstat, permanova, scb_two_sample_band,
+    scb_two_sample_test, t_perm_test, two_sample_mean_test, ItpDomainMapping, ItpRegionConfig,
+    ItpRegionsResult, ItpResult, PermanovaResult, ScbTwoSampleBand, TestResult, DEFAULT_N_PERM,
 };
 
 // Re-export functional time series serial-dependence types (FTS-02) and

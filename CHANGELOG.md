@@ -13,6 +13,39 @@ Changed below).
 
 ## [Unreleased]
 
+### Added
+- **Localised group differences (GH #76).** `alignment::elastic_local_difference_test`
+  aligns all curves label-free to one Karcher mean (`karcher_mean_with_config`,
+  `WarpOptimConfig`), then runs a local two-sample test on the aligned curves
+  (amplitude) and on the warps (phase: `γ(t) − t` or `ψ = √γ'`), returning grid
+  regions `[t_start, t_end]` with direction (A above/below B; A earlier/later via
+  `LocalDifferenceTest::timing`) and adjusted p-values (ITP, default) or the band
+  (SCB). Config `LocalDifferenceConfig`; result `LocalDifferenceResult`.
+- `inference::scb_two_sample_band` → `ScbTwoSampleBand` exposes the difference band
+  (`estimate`, `lower`, `upper`, `half_width`, `critical_value`) and its regions;
+  `scb_two_sample_test` is unchanged (bit-identical, shares the band core).
+- `inference::itp_pointwise_pvalues` (`ItpDomainMapping::{Dominant, Support}`) maps
+  B-spline ITP adjusted p-values to the grid (fdatest's nearest-component
+  convention on fdars's basis); `inference::itp_two_pop_regions`
+  (`ItpRegionConfig`, `ItpRegionsResult`) returns directed regions with
+  adjusted p < α. ITP closure validated against R `fdatest` 2.1.1 `ITP2bspline`
+  (`pval.matrix` and `corrected.pval` reproduced exactly).
+- New shared module `regions` (`DifferenceRegion`, `difference_regions`);
+  `significant_regions`, `significant_regions_from_se`, `SignificantRegion`,
+  `SignificanceDirection` moved there and re-exported unchanged from `explain`
+  (these types now also derive serde under the `serde` feature).
+
+### Fixed
+- `inference::itp_two_pop` permutation null relabelled only group B (group A kept
+  its observed rows), inflating permutation statistics and destroying power; both
+  groups are now relabelled as in `fdatest` (`coeff[sample(n), ]`). The B-spline
+  components whose basis function vanishes on the grid (two per extended-knot
+  basis; identically-zero coefficients) are now excluded from the interval-wise
+  closure and reported with adjusted p-value 1.0 — they carried no information
+  and diluted every interval containing them. `itp_two_pop` numeric results
+  change accordingly (intentional; Fourier ITP is affected only by the
+  permutation fix).
+
 ## [0.48.0] - 2026-11-26
 
 **Alignment & registration release.** Closes the alignment gap analysis backlog

@@ -38,10 +38,13 @@ mod scb;
 pub use anova::oneway_anova_vstat;
 pub use flm::{flm_f_test, flm_gof_test};
 pub use hotelling::two_sample_mean_test;
-pub use itp::{itp_flm, itp_one_pop, itp_two_pop, ItpResult};
+pub use itp::{
+    itp_flm, itp_one_pop, itp_pointwise_pvalues, itp_two_pop, itp_two_pop_regions,
+    ItpDomainMapping, ItpRegionConfig, ItpRegionsResult, ItpResult,
+};
 pub use permanova::{permanova, PermanovaResult};
 pub use permutation::{f_perm_test, t_perm_test, DEFAULT_N_PERM};
-pub use scb::{mean_scb, scb_two_sample_test};
+pub use scb::{mean_scb, scb_two_sample_band, scb_two_sample_test, ScbTwoSampleBand};
 
 /// Result of a functional two-sample hypothesis test.
 ///

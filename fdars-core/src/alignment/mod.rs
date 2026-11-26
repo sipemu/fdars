@@ -15,6 +15,8 @@
 //! - [`WarpOptimConfig`] + `*_with_config` — DP or Riemannian L-BFGS warp optimiser
 //!   with in-objective warp penalties (`l2gam`, `l2psi`, `roughness`, `geodesic`)
 //! - [`elastic_self_distance_matrix`] / [`elastic_cross_distance_matrix`] — Distance matrices
+//! - [`elastic_local_difference_test`] — align, then localise where two groups differ in
+//!   amplitude and in phase (regions on the grid, ITP or SCB).
 //! - [`elastic_phase_amplitude_test`] — permutation (PERMANOVA) tests of group differences in
 //!   amplitude and in phase after label-free joint alignment
 //! - [`reparameterize_curve`] / [`compose_warps`] — Warping utilities
@@ -61,6 +63,7 @@ mod geodesic;
 mod karcher;
 mod lambda_cv;
 mod landmark_shift;
+mod local_difference;
 mod multires;
 mod nd;
 mod optim;
@@ -164,6 +167,10 @@ pub use lambda_cv::{lambda_cv, LambdaCvConfig, LambdaCvResult};
 pub use landmark_shift::{
     landmark_shift_deltas, landmark_shift_deltas_multi, landmark_shift_registration,
     LandmarkLocation, LandmarkShiftConfig, LandmarkShiftResult,
+};
+pub use local_difference::{
+    elastic_local_difference_test, LocalDifferenceConfig, LocalDifferenceResult,
+    LocalDifferenceTest, LocalTestMethod, PhaseRepresentation, Timing,
 };
 pub use multires::{elastic_align_pair_multires, MultiresConfig};
 pub use nd::{

@@ -87,6 +87,21 @@ pub fn scb_mean_degras(
     confidence: f64,
     multiplier: MultiplierDistribution,
 ) -> Result<ToleranceBand, FdarError> {
+    scb_mean_degras_with_critical(data, argvals, bandwidth, nb, confidence, multiplier)
+        .map(|(band, _)| band)
+}
+
+/// [`scb_mean_degras`] that also returns the bootstrap critical value `c`
+/// (the `confidence`-quantile of the sup statistic), so that
+/// `half_width[j] = c · σ̂(t_j) / √n`.
+pub(crate) fn scb_mean_degras_with_critical(
+    data: &FdMatrix,
+    argvals: &[f64],
+    bandwidth: f64,
+    nb: usize,
+    confidence: f64,
+    multiplier: MultiplierDistribution,
+) -> Result<(ToleranceBand, f64), FdarError> {
     let (n, m) = data.shape();
     if n < 3 || m == 0 {
         return Err(FdarError::InvalidDimension {
@@ -145,5 +160,5 @@ pub fn scb_mean_degras(
     let c = percentile_sorted(&mut sup_stats, confidence);
     let half_width: Vec<f64> = sigma_hat.iter().map(|&s| c * s / sqrt_n).collect();
 
-    Ok(build_band(center, half_width))
+    Ok((build_band(center, half_width), c))
 }

@@ -18,6 +18,7 @@ use crate::basis::projection::{fdata_to_basis, ProjectionBasisType};
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
+use crate::regions::{difference_regions, DifferenceRegion};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -472,6 +473,20 @@ fn shuffle_itp(v: &mut [usize], rng: &mut StdRng) {
 /// Matches `fdatest::ITP2bspline` up to the `(n_ge + 1) / (n_perm + 1)`
 /// p-value correction (R uses `n_ge / B` without the +1).
 ///
+/// Components whose basis function vanishes on the whole grid (the two
+/// outermost functions of fdars's extended-knot B-spline basis) carry no
+/// information; they are excluded from the interval-wise closure and reported
+/// with raw and adjusted p-value `1.0` (GH #76).
+///
+/// **Power note.** The adjusted p-value of a component is the maximum over
+/// *all* intervals containing it, including long intervals that are mostly
+/// null, so the ITP needs effects that span several basis supports (or large
+/// samples). `fdatest` reports `n_ge / B`, which is `0` for a strong effect and
+/// makes every interval containing that component reject (`-2 log 0 = ∞`);
+/// with fdars's valid `(n_ge + 1)/(B + 1)` p-values this shortcut does not
+/// exist, so fdars's adjusted p-values are larger than `fdatest`'s on strong
+/// localised effects.
+///
 /// # Arguments
 ///
 /// * `data_a` — functional data matrix for group A, shape `(n_a, m)`.
@@ -549,7 +564,10 @@ pub fn itp_two_pop(
         shuffle_itp(&mut perm_idx, &mut rng);
         let row: Vec<f64> = (0..p)
             .map(|k| {
-                let m_a = (0..n_a).map(|r| pooled[(r, k)]).sum::<f64>() / n_a as f64;
+                // Both groups are relabelled (fdatest: `coeff[sample(n), ]`).
+                // Before GH #76 group A kept its observed rows here, which
+                // inflated the permutation statistics and cost almost all power.
+                let m_a = (0..n_a).map(|r| pooled[(perm_idx[r], k)]).sum::<f64>() / n_a as f64;
                 let m_b = (n_a..n).map(|i| pooled[(perm_idx[i], k)]).sum::<f64>() / n_b as f64;
                 (m_a - m_b).abs()
             })
@@ -565,10 +583,12 @@ pub fn itp_two_pop(
         })
         .collect();
 
-    // 7–9. Rank-transform → pval_matrix → closure adjustment
-    let l = rank_transform(&t_perm, p, n_perm);
-    let pval_matrix = build_pval_matrix(&raw_pvalues, &l, p, n_perm);
-    let adjusted_pvalues = pval_correct(&pval_matrix, p);
+    // 7–9. Rank-transform → pval_matrix → closure adjustment, over the
+    // components whose basis function does not vanish on the grid.
+    let active: Vec<usize> = (0..p)
+        .filter(|&k| (0..n).any(|i| pooled[(i, k)] != 0.0))
+        .collect();
+    let adjusted_pvalues = closure_on_active(&t_perm, &raw_pvalues, &active, p, n_perm);
 
     Ok(ItpResult {
         adjusted_pvalues,
@@ -577,6 +597,47 @@ pub fn itp_two_pop(
         n_basis: p,
         n_perm,
     })
+}
+
+/// Interval-wise closure restricted to the `active` components.
+///
+/// fdars's extended-knot B-spline basis contains two functions that vanish on
+/// the whole grid (their coefficients are identically zero). Such a component
+/// carries no information: its observed statistic ties every permutation
+/// (raw p = 1) while its tie-broken permutation ranks are pseudo-uniform, so
+/// keeping it in the Fisher combinations only dilutes every interval that
+/// contains it (including the circular wrap-around intervals). It is therefore
+/// excluded from the closure (as it does not exist in `fdatest`'s clamped
+/// basis) and reported with adjusted p-value `1.0`. With no vanishing
+/// component (e.g. Fourier) this is exactly the full closure.
+fn closure_on_active(
+    t_perm: &[Vec<f64>],
+    raw_pvalues: &[f64],
+    active: &[usize],
+    p: usize,
+    n_perm: usize,
+) -> Vec<f64> {
+    let q = active.len();
+    if q == p {
+        let l = rank_transform(t_perm, p, n_perm);
+        let pval_matrix = build_pval_matrix(raw_pvalues, &l, p, n_perm);
+        return pval_correct(&pval_matrix, p);
+    }
+    let mut adjusted = vec![1.0; p];
+    if q == 0 {
+        return adjusted;
+    }
+    let t_sub: Vec<Vec<f64>> = t_perm
+        .iter()
+        .map(|row| active.iter().map(|&k| row[k]).collect())
+        .collect();
+    let raw_sub: Vec<f64> = active.iter().map(|&k| raw_pvalues[k]).collect();
+    let l = rank_transform(&t_sub, q, n_perm);
+    let pval_matrix = build_pval_matrix(&raw_sub, &l, q, n_perm);
+    for (adj, &k) in pval_correct(&pval_matrix, q).into_iter().zip(active) {
+        adjusted[k] = adj;
+    }
+    adjusted
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -747,6 +808,255 @@ pub fn itp_flm(
 // ─────────────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mapping basis-component adjusted p-values to the evaluation grid (GH #76)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// How basis-component adjusted p-values are mapped to grid points by
+/// [`itp_pointwise_pvalues`].
+///
+/// `fdatest` reports the ITP per basis component (`corrected.pval`) and, in
+/// `plot.ITP2` for B-splines, shades for each component `k` with
+/// `corrected.pval[k] < α` a rectangle of width `h = (b − a)/(p − 1)` centred
+/// at the `k`-th of `p` evenly spaced positions on `[a, b]` — i.e. every
+/// domain point inherits the adjusted p-value of the *nearest* component
+/// position. fdars's B-spline basis ([`crate::basis::bspline::bspline_basis`])
+/// uses extended (not clamped) knots, so its component centres are not evenly
+/// spaced over `[a, b]` (and the two outermost functions vanish on the domain);
+/// [`ItpDomainMapping::Dominant`] applies the same nearest-component principle
+/// to the actual basis: the component with the largest basis value at `t`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub enum ItpDomainMapping {
+    /// `p(t) = adjusted_p[k*(t)]` with `k*(t) = argmax_k B_k(t)` (ties → lowest
+    /// `k`) — the `fdatest` nearest-component convention on fdars's basis.
+    #[default]
+    Dominant,
+    /// `p(t) = max { adjusted_p[k] : B_k(t) > 0 }` — conservative: `t` is
+    /// significant only if every basis function supported at `t` is.
+    Support,
+}
+
+/// Pointwise adjusted p-value function of a B-spline ITP on the grid.
+///
+/// Maps the per-component `result.adjusted_pvalues` of [`itp_two_pop`] /
+/// [`itp_one_pop`] (computed with [`ProjectionBasisType::Bspline`] on the same
+/// `argvals`) to one adjusted p-value per grid point using `mapping` (see
+/// [`ItpDomainMapping`] for the relation to `fdatest`). Because the ITP
+/// controls the interval-wise error rate, `{t : p(t) < α}` is the set of
+/// domain points where the null is rejected at level `α`.
+///
+/// # Errors
+///
+/// * [`FdarError::InvalidParameter`] for a Fourier ITP — Fourier components
+///   are frequencies, not domain locations, so no time localisation exists.
+/// * [`FdarError::InvalidDimension`] if `argvals` has fewer than 2 points or
+///   `result.adjusted_pvalues.len() != result.n_basis`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::basis::projection::ProjectionBasisType;
+/// use fdars_core::inference::{itp_pointwise_pvalues, itp_two_pop, ItpDomainMapping};
+/// use fdars_core::FdMatrix;
+///
+/// let m = 30;
+/// let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+/// let a = FdMatrix::from_column_major(
+///     (0..6 * m).map(|k| ((k * 7919) % 11) as f64 / 11.0).collect(), 6, m).unwrap();
+/// let b = FdMatrix::from_column_major(
+///     (0..6 * m).map(|k| ((k * 104_729) % 13) as f64 / 13.0).collect(), 6, m).unwrap();
+/// let itp = itp_two_pop(&a, &b, &t, ProjectionBasisType::Bspline, 8, 99, 1).unwrap();
+/// let pw = itp_pointwise_pvalues(&itp, &t, ItpDomainMapping::Dominant).unwrap();
+/// assert_eq!(pw.len(), m);
+/// assert!(pw.iter().all(|p| itp.adjusted_pvalues.contains(p)));
+/// ```
+pub fn itp_pointwise_pvalues(
+    result: &ItpResult,
+    argvals: &[f64],
+    mapping: ItpDomainMapping,
+) -> Result<Vec<f64>, FdarError> {
+    if result.basis_type != ProjectionBasisType::Bspline {
+        return Err(FdarError::InvalidParameter {
+            parameter: "result",
+            message: "only a B-spline ITP can be mapped to the domain (Fourier components \
+                      are frequencies)"
+                .to_string(),
+        });
+    }
+    let m = argvals.len();
+    if m < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "argvals",
+            expected: "at least 2 points".to_string(),
+            actual: format!("{m}"),
+        });
+    }
+    let p = result.n_basis;
+    if result.adjusted_pvalues.len() != p || p < 6 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "result",
+            expected: format!("n_basis >= 6 adjusted p-values (n_basis = {p})"),
+            actual: format!("{}", result.adjusted_pvalues.len()),
+        });
+    }
+    // Same basis as `fdata_to_basis(.., Bspline)`: order 4, nknots = p − 4.
+    let basis = crate::basis::bspline::bspline_basis(argvals, p - 4, 4);
+    let adj = &result.adjusted_pvalues;
+    Ok((0..m)
+        .map(|j| {
+            let value = |k: usize| basis[j + k * m];
+            match mapping {
+                ItpDomainMapping::Dominant => {
+                    let mut best = 0;
+                    for k in 1..p {
+                        if value(k) > value(best) {
+                            best = k;
+                        }
+                    }
+                    adj[best]
+                }
+                ItpDomainMapping::Support => (0..p)
+                    .filter(|&k| value(k) > 1e-12)
+                    .map(|k| adj[k])
+                    .fold(0.0_f64, f64::max),
+            }
+        })
+        .collect())
+}
+
+/// Configuration for [`itp_two_pop_regions`].
+///
+/// Construct with `ItpRegionConfig::default()` and assign fields.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct ItpRegionConfig {
+    /// Requested number of B-spline basis functions (default 15; ≥ 6 after
+    /// clamping, see [`ItpResult::n_basis`]).
+    pub nbasis: usize,
+    /// Number of permutations (default 999).
+    pub n_perm: usize,
+    /// RNG seed (default 42).
+    pub seed: u64,
+    /// Interval-wise significance level (default 0.05).
+    pub alpha: f64,
+    /// Component → grid mapping (default [`ItpDomainMapping::Dominant`]).
+    pub mapping: ItpDomainMapping,
+}
+
+impl Default for ItpRegionConfig {
+    fn default() -> Self {
+        Self {
+            nbasis: 15,
+            n_perm: 999,
+            seed: 42,
+            alpha: 0.05,
+            mapping: ItpDomainMapping::Dominant,
+        }
+    }
+}
+
+/// Result of [`itp_two_pop_regions`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub struct ItpRegionsResult {
+    /// The underlying per-component ITP.
+    pub itp: ItpResult,
+    /// Adjusted p-value at each grid point ([`itp_pointwise_pvalues`]).
+    pub pointwise_adjusted_pvalues: Vec<f64>,
+    /// Pointwise sample-mean difference `mean_a(t) − mean_b(t)`, used for the
+    /// region directions.
+    pub mean_difference: Vec<f64>,
+    /// Contiguous grid regions with `p(t) < alpha`, split where the sign of
+    /// `mean_difference` changes (`Positive` ⇔ A above B);
+    /// `min_adjusted_pvalue` is the smallest `p(t)` in the region.
+    pub regions: Vec<DifferenceRegion>,
+}
+
+/// Two-population B-spline ITP localised on the grid: where do the two mean
+/// functions differ?
+///
+/// Runs [`itp_two_pop`] with a B-spline basis, maps the closure-adjusted
+/// component p-values to the grid with [`itp_pointwise_pvalues`] and returns
+/// the contiguous regions where the adjusted p-value is below `alpha`, each
+/// with the direction of the mean difference. The interval-wise error rate is
+/// controlled at `alpha` (Pini & Vantini 2016).
+///
+/// # Errors
+///
+/// As [`itp_two_pop`]; additionally [`FdarError::InvalidParameter`] for
+/// `alpha` outside `(0, 1)`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::inference::{itp_two_pop_regions, ItpRegionConfig};
+/// use fdars_core::FdMatrix;
+///
+/// let m = 50;
+/// let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+/// let n = 25;
+/// let (mut a, mut b) = (FdMatrix::zeros(n, m), FdMatrix::zeros(n, m));
+/// for i in 0..n {
+///     for j in 0..m {
+///         let noise = |s: usize| 0.3 * (((i * 31 + j * 17 + s) % 13) as f64 / 6.0 - 1.0);
+///         // B is shifted up on [0.5, 1].
+///         let step = 1.0 / (1.0 + (-(t[j] - 0.5) / 0.03).exp());
+///         a[(i, j)] = noise(0);
+///         b[(i, j)] = step + noise(5);
+///     }
+/// }
+/// let mut cfg = ItpRegionConfig::default();
+/// cfg.n_perm = 499;
+/// let res = itp_two_pop_regions(&a, &b, &t, &cfg).unwrap();
+/// assert!(!res.regions.is_empty());
+/// assert!(res.regions.iter().all(|r| r.t_start > 0.3));
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn itp_two_pop_regions(
+    data_a: &FdMatrix,
+    data_b: &FdMatrix,
+    argvals: &[f64],
+    config: &ItpRegionConfig,
+) -> Result<ItpRegionsResult, FdarError> {
+    if !(config.alpha > 0.0 && config.alpha < 1.0) {
+        return Err(FdarError::InvalidParameter {
+            parameter: "alpha",
+            message: format!("must be in (0, 1), got {}", config.alpha),
+        });
+    }
+    let itp = itp_two_pop(
+        data_a,
+        data_b,
+        argvals,
+        ProjectionBasisType::Bspline,
+        config.nbasis,
+        config.n_perm,
+        config.seed,
+    )?;
+    let pointwise = itp_pointwise_pvalues(&itp, argvals, config.mapping)?;
+    let mean_difference = column_mean_difference(data_a, data_b);
+    let significant: Vec<bool> = pointwise.iter().map(|&p| p < config.alpha).collect();
+    let regions = difference_regions(argvals, &mean_difference, &significant, Some(&pointwise))?;
+    Ok(ItpRegionsResult {
+        itp,
+        pointwise_adjusted_pvalues: pointwise,
+        mean_difference,
+        regions,
+    })
+}
+
+/// `colMeans(a) − colMeans(b)` (same column count assumed, validated upstream).
+fn column_mean_difference(a: &FdMatrix, b: &FdMatrix) -> Vec<f64> {
+    let (n_a, n_b) = (a.nrows() as f64, b.nrows() as f64);
+    (0..a.ncols())
+        .map(|j| a.column(j).iter().sum::<f64>() / n_a - b.column(j).iter().sum::<f64>() / n_b)
+        .collect()
+}
 
 #[cfg(test)]
 mod tests {
@@ -1449,5 +1759,441 @@ mod tests {
             ),
             "n_perm == 0 should return InvalidParameter"
         );
+    }
+
+    // ─── fdatest 2.1.1 golden (GH #76) ──────────────────────────────────────
+
+    // Reference: R fdatest 2.1.1, ITP2bspline(d1, d2, mu = 0, order = 4,
+    // nknots = 5, B = 40, paired = FALSE) after set.seed(7), on the seeded data
+    // of `.planning/quick/261126-t4g-aln-localised-group-differences-scb-band/
+    // golden_itp2bspline.R`. The script replicates ITP2bspline's permutation
+    // loop with the same seed to export the permutation statistic matrix
+    // T_coeff (B x p, row-major) and checks that it reproduces ITP2bspline's
+    // `pval`. `pval`, `pval.matrix` and `corrected.pval` are ITP2bspline's own
+    // outputs.
+    const P_G: usize = 7;
+    const B_G: usize = 40;
+    const FDATEST_T_COEFF: [f64; 280] = [
+        0.007881063994480835,
+        0.475628258105942,
+        0.029199514929517223,
+        0.13095763499926305,
+        0.03464089998195963,
+        0.20138924595225965,
+        0.44854936670515483,
+        0.1851273293322671,
+        0.44933583725496123,
+        0.35880529451517984,
+        0.12093995839940597,
+        0.43685803482026553,
+        0.5378490294067939,
+        0.46130098771633554,
+        0.08950842092716685,
+        0.23969732338505512,
+        0.14579282102642366,
+        0.29326655845321176,
+        0.7114269667142417,
+        0.9689937672946379,
+        0.06013306400852285,
+        0.11720872484085824,
+        0.06816962434395768,
+        0.45378028507212664,
+        0.7961739395856707,
+        1.2277926641323194,
+        1.168648247672096,
+        0.1425367400484742,
+        0.08165278672200499,
+        0.263383628657741,
+        0.11420526215989324,
+        0.0762992030242702,
+        0.42342424924859867,
+        0.5027317679228018,
+        0.19214202711809295,
+        0.14547743258377022,
+        0.3427562266977598,
+        0.7367551202657958,
+        0.6874068448518079,
+        0.476708949862759,
+        0.08696488448975565,
+        0.3210571143010865,
+        0.1470804364745245,
+        0.19265374710560612,
+        0.3213345075426368,
+        0.24992940621839121,
+        0.06922545426266535,
+        0.10363181125269727,
+        0.08636818775750957,
+        0.2454266894344282,
+        0.3758730058426826,
+        0.627271573472181,
+        0.49852295153997367,
+        0.07413652192094777,
+        0.22254372792743754,
+        0.2692917036452958,
+        0.32670600474969513,
+        0.29613067361441153,
+        0.06237642485677619,
+        0.2857722156257585,
+        0.17214082301634948,
+        0.03655855507356465,
+        0.37607341055348287,
+        0.07734868255067977,
+        0.17462141125898445,
+        0.42340516539502926,
+        0.1887485345822186,
+        0.5849770772098024,
+        0.4992705271342489,
+        0.0207555651742915,
+        0.11647967144163492,
+        0.15826467974110348,
+        0.002539430635001727,
+        0.24634595164125903,
+        0.016126377353146593,
+        0.1608305300837516,
+        0.38958291032763603,
+        0.11906740227327617,
+        0.3748719971009128,
+        0.5686140282541647,
+        0.4873320721226696,
+        0.4423817774526546,
+        0.17308115915331068,
+        0.16486263093242884,
+        0.03398995041953706,
+        0.2571962311170063,
+        0.4262978024580095,
+        0.048218258457449065,
+        0.3120072670911791,
+        0.012623973487011608,
+        0.503155986906876,
+        0.031115631694991885,
+        0.030471049504536274,
+        0.23526863417740151,
+        0.027554343424959132,
+        0.25944038673505054,
+        0.6378770337610009,
+        0.021194650758259714,
+        0.34730590739375533,
+        0.09655284943024844,
+        0.0546114390433472,
+        0.21149604398241492,
+        0.16655914277602402,
+        0.09276068266132442,
+        0.10109280034593118,
+        0.2786573400220308,
+        0.016941045111027786,
+        0.34144211051806095,
+        0.7072678662444637,
+        1.2461528589226134,
+        1.1660885112160324,
+        0.2838879229409328,
+        0.26551719543085495,
+        0.24633240327578,
+        0.1605704553352092,
+        0.1458798104301758,
+        0.7978655086209677,
+        0.8076022751643271,
+        0.5419537727350497,
+        0.02488858518606976,
+        0.17582761916747847,
+        0.7923961994006683,
+        0.6307848331607383,
+        0.41623485180277364,
+        0.6259810568553883,
+        0.38049853282801993,
+        0.10155679244794551,
+        0.8015281755234052,
+        0.7074399332318679,
+        0.5508129684156813,
+        0.2501095346050035,
+        0.07305044358951418,
+        0.5626423204375817,
+        0.3119744033107274,
+        0.5700524316040323,
+        0.4198817862788291,
+        0.004283425218033571,
+        0.046277095224789955,
+        0.0690253894599312,
+        0.0683694407370588,
+        0.1006605829780769,
+        0.16385387234749615,
+        0.24423444346930623,
+        0.3244356620279831,
+        0.1742540970234645,
+        0.18865447815884373,
+        0.12399651071715814,
+        0.012987800220593175,
+        0.29168719358700573,
+        0.41511462344052474,
+        0.5269644901456594,
+        0.2768716743654054,
+        0.5909663386283054,
+        0.46212922081988717,
+        0.22180021695187813,
+        0.08687638376018103,
+        0.0632305238002624,
+        0.4435376261343204,
+        0.02890364368849596,
+        0.34529697259498016,
+        0.23105265151568802,
+        0.20751300717677112,
+        0.025090182119876903,
+        0.1845321560480515,
+        0.13428110984468752,
+        0.712572315548622,
+        0.6115819188123397,
+        0.38032623086087625,
+        0.1911293798721203,
+        0.2393826391404229,
+        0.17239489657237628,
+        0.24794189476036071,
+        0.15102256094728195,
+        0.11404165030490038,
+        0.09500439461297802,
+        0.22864545512347823,
+        0.560579793961606,
+        0.580730515212142,
+        0.20819161452688,
+        0.3468115304327275,
+        0.5111957315279929,
+        0.20812690933177422,
+        0.1255236280877168,
+        0.6212085222947782,
+        0.961966728058606,
+        1.1427931764469152,
+        1.1750685248982842,
+        0.6476945821444479,
+        0.1898944640914467,
+        0.13874757604603713,
+        0.15581285051031146,
+        0.18324533427846723,
+        0.15457799709110742,
+        0.3150000315382988,
+        0.32009125933687915,
+        0.04946178740066476,
+        0.09398176109252439,
+        0.02365965365769085,
+        0.2778914113262656,
+        0.5810365616342011,
+        0.9538772696212459,
+        0.7833488570891294,
+        0.36656382289885797,
+        0.1120888780875614,
+        0.10775757196060243,
+        0.16386620995514245,
+        0.40308617435462996,
+        0.8115573368811172,
+        0.5187721137538369,
+        0.21679169209349433,
+        0.16650089664385886,
+        0.09434167705299024,
+        0.46342695088187713,
+        0.6020331567619368,
+        0.20978577597813586,
+        0.07615873687990893,
+        0.6227554325092157,
+        0.14097122763147857,
+        0.10415108098537795,
+        0.09973434916246382,
+        0.2653364456183485,
+        0.02423339041808048,
+        0.08952661035598658,
+        0.08900966254778934,
+        0.1055530309929416,
+        0.3918396938269359,
+        0.37216664425964296,
+        0.24399761525545016,
+        0.4466546492883794,
+        0.08955881390837755,
+        0.21419569408407377,
+        0.006136731752165874,
+        0.18405188513122106,
+        0.5739197017877313,
+        0.3694304027478663,
+        0.3221343228917386,
+        0.6560239140888917,
+        0.059487987279487925,
+        0.14392955222678833,
+        0.6337886256271035,
+        0.22720118070991302,
+        0.18439213607659127,
+        0.04548903541580329,
+        0.26572060519728774,
+        0.2077977063785096,
+        0.04103032494395765,
+        0.28911095254583297,
+        0.766495005065398,
+        0.7317648498329973,
+        0.6038262514655843,
+        0.16303233127831723,
+        0.1512684184533296,
+        0.23848988284317948,
+        0.019484130992971083,
+        0.36859422551626575,
+        0.7690795724862095,
+        0.42114658771221625,
+        0.14344529723220223,
+        0.16906069673702365,
+        0.04546803451605727,
+        0.4269718554996321,
+        0.6103706865365062,
+        0.2408040451512443,
+        0.5120152683851364,
+        0.46216429863558883,
+        0.6372924973724445,
+        0.20953229840079446,
+        0.17974140734779187,
+        0.5344331028132208,
+        0.19839796398025344,
+        0.6614455355652022,
+        0.6295710840759438,
+        0.29959443821182097,
+        0.1808930968112289,
+        0.12445826155522932,
+        0.09355862921731806,
+        0.48677495780936464,
+        1.0639355239776804,
+        0.981389780910036,
+        0.3080081494557859,
+    ];
+    const FDATEST_PVAL: [f64; 7] = [0.75, 0.275, 0.025, 0.025, 0.0, 0.0, 0.075];
+    const FDATEST_PVAL_MATRIX: [f64; 49] = [
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.025, 0.0, 0.0, 0.0, 0.0, 0.0, 0.025, 0.1, 0.025, 0.0, 0.0, 0.0, 0.0,
+        0.225, 0.5, 0.05, 0.025, 0.0, 0.0, 0.0, 0.175, 0.75, 0.275, 0.025, 0.025, 0.0, 0.0, 0.075,
+    ];
+    const FDATEST_CORRECTED: [f64; 7] = [0.75, 0.5, 0.1, 0.025, 0.0, 0.0, 0.225];
+
+    /// Given fdatest's permutation statistics and raw p-values, the fdars
+    /// closure pipeline (rank transform → interval p-value matrix →
+    /// `pval_correct`) reproduces fdatest's `pval.matrix` and `corrected.pval`.
+    #[test]
+    fn closure_matches_fdatest_itp2bspline() {
+        let t_perm: Vec<Vec<f64>> = FDATEST_T_COEFF.chunks(P_G).map(<[f64]>::to_vec).collect();
+        assert_eq!(t_perm.len(), B_G);
+        let l = rank_transform(&t_perm, P_G, B_G);
+        let mat = build_pval_matrix(&FDATEST_PVAL, &l, P_G, B_G);
+        for r in 0..P_G {
+            for c in 0..P_G {
+                let expected = FDATEST_PVAL_MATRIX[r * P_G + c];
+                assert!(
+                    (mat[r][c] - expected).abs() < 1e-12,
+                    "pval.matrix[{r}][{c}]: fdars {} vs fdatest {expected}",
+                    mat[r][c]
+                );
+            }
+        }
+        let corrected = pval_correct(&mat, P_G);
+        for (k, (&a, &e)) in corrected.iter().zip(FDATEST_CORRECTED.iter()).enumerate() {
+            assert!((a - e).abs() < 1e-12, "corrected[{k}]: {a} vs {e}");
+        }
+    }
+
+    fn fake_bspline_result(adjusted: Vec<f64>) -> ItpResult {
+        let p = adjusted.len();
+        ItpResult {
+            raw_pvalues: adjusted.clone(),
+            adjusted_pvalues: adjusted,
+            basis_type: ProjectionBasisType::Bspline,
+            n_basis: p,
+            n_perm: 1,
+        }
+    }
+
+    /// Dominant mapping = nearest basis-function centre. For fdars's extended
+    /// cubic basis with `nknots` knots on `[0, 1]` (spacing `h`), component `k`
+    /// is centred at `(k − 2)·h`; hence grid point `t` maps to
+    /// `k = 2 + round(t / h)`.
+    #[test]
+    fn pointwise_dominant_is_nearest_centre() {
+        let p = 9; // nknots = 5, h = 0.25
+        let adjusted: Vec<f64> = (0..p).map(|k| 0.01 * (k + 1) as f64).collect();
+        let res = fake_bspline_result(adjusted.clone());
+        let t = uniform_grid(41);
+        let pw = itp_pointwise_pvalues(&res, &t, ItpDomainMapping::Dominant).unwrap();
+        for (j, &tj) in t.iter().enumerate() {
+            let x = tj / 0.25;
+            if (x - x.floor() - 0.5).abs() < 1e-9 {
+                continue; // equidistant from two centres
+            }
+            let k = 2 + x.round() as usize;
+            assert_eq!(pw[j], adjusted[k], "t = {tj}");
+        }
+        // Outermost (vanishing) components never dominate.
+        assert!(pw.iter().all(|&v| v != adjusted[0] && v != adjusted[p - 1]));
+    }
+
+    #[test]
+    fn pointwise_support_is_conservative() {
+        let adjusted = vec![1.0, 0.9, 0.01, 0.01, 0.01, 0.6, 0.01, 0.8, 1.0];
+        let res = fake_bspline_result(adjusted);
+        let t = uniform_grid(41);
+        let dom = itp_pointwise_pvalues(&res, &t, ItpDomainMapping::Dominant).unwrap();
+        let sup = itp_pointwise_pvalues(&res, &t, ItpDomainMapping::Support).unwrap();
+        assert!(dom.iter().zip(&sup).all(|(d, s)| s >= d));
+        // t = 0.25 is a knot: only components 2, 3, 4 are non-zero (all 0.01).
+        assert_eq!(sup[10], 0.01);
+        // Fourier results cannot be mapped.
+        let mut f = fake_bspline_result(vec![0.5; 7]);
+        f.basis_type = ProjectionBasisType::Fourier;
+        assert!(itp_pointwise_pvalues(&f, &t, ItpDomainMapping::Dominant).is_err());
+    }
+
+    /// Localised mean difference (a smooth step on [0.55, 1]; the ITP needs
+    /// effects spanning several basis supports): regions sit on the step only.
+    #[test]
+    fn itp_two_pop_regions_localises_bump() {
+        use rand::Rng;
+        let m = 60;
+        let t = uniform_grid(m);
+        let mut rng = StdRng::seed_from_u64(76);
+        let mut gen = |bump: f64| {
+            let mut d = FdMatrix::zeros(25, m);
+            for i in 0..25 {
+                let phase: f64 = rng.gen_range(0.0..1.0);
+                for j in 0..m {
+                    let e: f64 = rng.gen_range(-0.4..0.4);
+                    let smooth = 0.1 * (2.0 * std::f64::consts::PI * (t[j] + phase)).sin();
+                    d[(i, j)] = smooth + bump / (1.0 + (-(t[j] - 0.55) / 0.03).exp()) + e;
+                }
+            }
+            d
+        };
+        let a = gen(0.0);
+        let b = gen(1.0);
+        let cfg = ItpRegionConfig {
+            n_perm: 499,
+            ..ItpRegionConfig::default()
+        };
+        let res = itp_two_pop_regions(&a, &b, &t, &cfg).unwrap();
+        assert!(!res.regions.is_empty(), "bump should be detected");
+        for r in &res.regions {
+            assert_eq!(r.direction, crate::regions::SignificanceDirection::Negative);
+            assert!(r.t_start >= 0.4, "{r:?}");
+            assert!(r.min_adjusted_pvalue.unwrap() < 0.05);
+        }
+        assert!(res
+            .regions
+            .iter()
+            .any(|r| r.t_start <= 0.7 && r.t_end >= 0.7));
+        let mut bad = cfg.clone();
+        bad.alpha = 1.5;
+        assert!(itp_two_pop_regions(&a, &b, &t, &bad).is_err());
+    }
+
+    /// The two vanishing B-spline components are excluded and reported as 1.
+    #[test]
+    fn vanishing_bspline_components_reported_as_one() {
+        let m = 30;
+        let t = uniform_grid(m);
+        let a = make_two_pop_sample(8, &t, 0.0, 0.0, 1.0, 11);
+        let b = make_two_pop_sample(8, &t, 1.0, 0.3, 0.7, 12);
+        let r = itp_two_pop(&a, &b, &t, ProjectionBasisType::Bspline, 10, 99, 3).unwrap();
+        let p = r.n_basis;
+        assert_eq!(r.adjusted_pvalues[0], 1.0);
+        assert_eq!(r.adjusted_pvalues[p - 1], 1.0);
+        // Adjusted >= raw for every component (closure is a max over intervals).
+        for k in 1..p - 1 {
+            assert!(r.adjusted_pvalues[k] >= r.raw_pvalues[k] - 1e-12);
+        }
     }
 }
