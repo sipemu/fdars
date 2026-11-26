@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T15:19:25.526Z"
+last_updated: "2026-11-26T15:26:19.004Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 1b4466f4429c3800da3c9a779fda9ac90c63900d
+state_head: 9f844272a671103f4d7e5f0f845b64a70b2aac3b
 progress:
   total_phases: 6
   completed_phases: 6
@@ -206,6 +206,9 @@ Decisions relevant to current work (v0.47.0):
 | 261126-jtn | ALN-CAV Bayesian group band calibration study + template centring fix (#64) | 2026-11-26 | 51a9a762 | [261126-jtn-aln-cav-bayesian-group-band-calibration-](./quick/261126-jtn-aln-cav-bayesian-group-band-calibration-/) |
 | 261126-lfb | ALN-CAV infHMC mode escape via parallel tempering (closes #69) | 2026-11-26 | 576acc52 | [261126-lfb-aln-cav-infhmc-mode-escape-moves-for-stu](./quick/261126-lfb-aln-cav-infhmc-mode-escape-moves-for-stu/) |
 | 261126-m5e | ALN-CAV missing options: continuous registration periodic + partial conformal bandwidth/simultaneous/sparse (#72) | 2026-11-26 | 1b4466f4 | [261126-m5e-aln-cav-missing-options-continuous-regis](./quick/261126-m5e-aln-cav-missing-options-continuous-regis/) |
+| 261126-lj0 | ALN-CAV (GH #73) DTW family: multivariate, shape-DTW, k-NN, LB_Improved/LB_Enhanced | 2026-11-26 | 9f844272 | [261126-lj0-aln-cav-dtw-family](./quick/261126-lj0-aln-cav-dtw-family/) |
+| 261126-ljn | ALN-CAV (GH #68) (a,b) elastic closed curves + exact PL distance | 2026-11-26 | 9f844272 | [261126-ljn-aln-cav-a-b-elastic-closed-curves-exact-](./quick/261126-ljn-aln-cav-a-b-elastic-closed-curves-exact-/) |
+| 261126-mbw | ALN-CAV (GH #71) fdasrvf-compatible model-based shape CI | 2026-11-26 | 9f844272 | [261126-mbw-aln-cav-fdasrvf-compatible-model-based-s](./quick/261126-mbw-aln-cav-fdasrvf-compatible-model-based-s/) |
 
 ## Deferred Items
 
