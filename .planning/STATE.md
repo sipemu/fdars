@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T16:49:15.024Z"
+last_updated: "2026-11-26T21:31:21.909Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 6147fdf425fa8b73ab3f44bbc2e128babd73bdba
+state_head: 222ac2e2efe8c520cf154aa205716b10751f7bce
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-nrt: Fix CI — rustdoc intra-doc links (#73) + libm-portable value pins replacing cross-machine bit-hash pins (12 tests)
+Last activity: 2026-11-26 - Completed quick task 261126-t4g: GH #76 localised amplitude/phase group differences (scb_two_sample_band, ITP grid regions + itp_two_pop permutation fix, elastic_local_difference_test)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -212,6 +212,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-mka | ALN-CAV (GH #75) pmat 3.45 complexity drift: decompose 9 fns (bit-identical), CI pin 3.18 -> 3.45.1 | 2026-11-26 | 77ba1f50 | [261126-mka-aln-cav-pmat-version-drift-decompose-9-c](./quick/261126-mka-aln-cav-pmat-version-drift-decompose-9-c/) |
 | 261126-mun | ALN-CAV regenerate fdasrvf goldens with 2.6.0 (#74) | 2026-11-26 | 2cf3defc | [261126-mun-aln-cav-regenerate-fdasrvf-goldens-with-](./quick/261126-mun-aln-cav-regenerate-fdasrvf-goldens-with-/) |
 | 261126-nrt | Fix CI: portable bit-identity pins + rustdoc errors | 2026-11-26 | 6147fdf4 | [261126-nrt-fix-ci-portable-bit-identity-pins-rustdo](./quick/261126-nrt-fix-ci-portable-bit-identity-pins-rustdo/) |
+| 261126-t4g | ALN localised group differences: SCB band, ITP regions, elastic_local_difference_test (#76) | 2026-11-26 | 222ac2e2 | [261126-t4g-aln-localised-group-differences-scb-band](./quick/261126-t4g-aln-localised-group-differences-scb-band/) |
 
 ## Deferred Items
 
