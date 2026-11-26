@@ -270,3 +270,6 @@ path = "examples/27_spm/main.rs"
 [[example]]
 name = "berkeley_growth"
 path = "examples/28_berkeley_growth/main.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(coverage)"] }

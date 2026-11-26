@@ -734,10 +734,15 @@ mod tests {
         let start = std::time::Instant::now();
         let set = discover_shapelets(&data, &labels, &cfg).unwrap();
         let elapsed = start.elapsed();
-        assert!(
-            elapsed.as_secs() < 10,
-            "contracted discovery too slow: {elapsed:?}"
-        );
+        // Wall-clock budget only on uninstrumented builds: under `cargo llvm-cov`
+        // (which sets `cfg(coverage)`) the instrumented suite runs ~3k tests in
+        // parallel and this timing is meaningless (observed 12 s in CI).
+        if !cfg!(coverage) {
+            assert!(
+                elapsed.as_secs() < 10,
+                "contracted discovery too slow: {elapsed:?}"
+            );
+        }
         assert!(set.len() <= 5, "returned more than max_shapelets");
         assert!(!set.is_empty());
     }
