@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T02:11:05.162Z"
+last_updated: "2026-11-26T02:23:18.513Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 21070abb34418492bbb96cdd34a7f45c8f560a15
+state_head: cf1ec2a5190d4b89cfb2e50aa8feee792d8168e9
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-43c: ALN-NDDOWN (GH #54) R^d curve downstream analyses — Karcher median, TSRVF at the mean, curve depth (fdasrvf curve_depth), shape outlier detection, curve box plot (golden-matched to fdasrvf 2.5.0 curvebox_data), bootstrap shape CI
+Last activity: 2026-11-26 - Completed quick task 261126-4i2: ALN-CONFPART (GH #51) joint registration + split-conformal amplitude/phase prediction sets for partially observed curves (Wang–Kurtek–Zhang 2026; exact closed-form amplitude band, exact phase-set membership, MC coverage validated)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -187,6 +187,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-3av | ALN-HYGIENE (GH #56): closed-curve SRSF/weight hoist + parallel rotation candidates, OutlierThreshold (Tukey default / quantile alpha), opt-in SRSF pre-smoothing (fdasrvf smooth.data / f_to_srvf(smooth=TRUE)), parallel elastic-FPCA loops; all defaults bit-identical | 2026-11-26 | ffd80f88 | [261126-3av-aln-hygiene-56-closed-curve-hoist-outlie](./quick/261126-3av-aln-hygiene-56-closed-curve-hoist-outlie/) |
 | 261126-3sq | ALN-BOX (GH #55): elastic amplitude/phase boxplots (fdasrsf golden) + classify for new functions (incl. MBD phase_boxplot), elastic DP-means (labels/K match fdasrsf) | 2026-11-26 | 84d513ce | [261126-3sq-aln-box-55-amplitude-boxplot-boxplot-cla](./quick/261126-3sq-aln-box-55-amplitude-boxplot-boxplot-cla/) |
 | 261126-43c | ALN-NDDOWN (#54): R^d curve TSRVF, depth, boxplot, outliers, shape CI | 2026-11-26 | 21070abb | [261126-43c-aln-nddown-54-r-d-curve-tsrvf-depth-boxp](./quick/261126-43c-aln-nddown-54-r-d-curve-tsrvf-depth-boxp/) |
+| 261126-4i2 | ALN-CONFPART (#51) joint registration + split-conformal amplitude/phase sets for partial curves | 2026-11-26 | cf1ec2a5 | [261126-4i2-aln-confpart-51-joint-registration-split](./quick/261126-4i2-aln-confpart-51-joint-registration-split/) |
 
 ## Deferred Items
 
