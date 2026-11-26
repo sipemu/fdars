@@ -45,6 +45,18 @@ Changed below).
   and diluted every interval containing them. `itp_two_pop` numeric results
   change accordingly (intentional; Fourier ITP is affected only by the
   permutation fix).
+- `alignment::joint_gauss_model` (GH #80) sampled the joint amplitude/phase
+  scores from a *diagonal* Gaussian, dropping the amplitude–phase
+  cross-covariance it is documented to preserve; it now samples
+  `N(mean, Σ)` with the full sample covariance of the joint score matrix (PSD
+  square root, robust to rank deficiency), equivalent in distribution to jfPCA
+  sampling. Both `joint_gauss_model` and `gauss_model` also composed the sampled
+  amplitude with the sampled alignment warp `γ` instead of `γ⁻¹`
+  (`aligned = f ∘ γ` ⇒ `f = aligned ∘ γ⁻¹`), mirroring the phase and reversing
+  any amplitude–phase correlation (fdasrsf 2.7.5 has the same flip: corr −0.99
+  on the issue's data, +0.99 with `γ⁻¹`). Samples now use `γ⁻¹`; the returned
+  `warps` are unchanged (alignment convention). Sampled curves change for both
+  functions (intentional).
 
 ## [0.48.0] - 2026-11-26
 
