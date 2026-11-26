@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-11-26
+
+**Alignment & registration release.** Closes the alignment gap analysis backlog
+(GH #42–#62, tracking #63) and its caveat follow-ups (GH #64–#75). Additive and
+non-breaking with respect to public API signatures (new fields only on
+`#[non_exhaustive]` configs/results; existing defaults produce bit-identical
+results, proven by hash tests recorded on the pre-change code); no new crate
+dependency. One intentional numeric change: the Bayesian group alignment
+template-band centring fix (GH #64, see *Fixed* below).
+
+Highlights:
+- **Elastic engine:** Riemannian L-BFGS warp optimiser and in-objective penalties
+  (#42/#43), configurable DP neighbourhood / DP2 cost / `scl` refinement (#49),
+  exact DP pruning now on by default (~1.4–1.6× faster, bit-identical; #66),
+  RBFGS for curve shapes, N-d, landmarks, robust Karcher, closed curves, band
+  support and a unified λ scale (#65/#67).
+- **Registration methods:** iterative and landmark shift (#46), Ramsay–Li
+  continuous registration incl. periodic (#47/#72), affine/dilation warps and
+  warp classes in `align_cluster_fd` (#50), exponential-family registration
+  with variational-EM and two-step GFPCA (#60), Tang–Müller pairwise
+  synchronisation (#61), sparse/irregular elastic curves (#53).
+- **Shape analysis:** R^d curve shape space with rotation/scale/closed contours
+  (#48), downstream TSRVF/depth/boxplot/outliers/CI (#54), general (a,b)
+  elastic metrics incl. closed curves and the exact piecewise-linear distance
+  (#59/#68), fdasrvf-compatible model-based shape CI (#71).
+- **Inference & UQ:** Bayesian group alignment (pCN + infHMC, parallel
+  tempering; #52/#64/#69), split-conformal amplitude/phase sets for partially
+  observed curves incl. simultaneous bands, bandwidth tuning and fragments
+  (#51/#72), amplitude/phase PERMANOVA test (#62), elastic boxplots and DP-means
+  (#55).
+- **DTW family:** warping paths, windows, soft-DTW alignment matrix, GAK
+  triangular kernel (#44), DBA and DTW k-means (#45), the aeon elastic-distance
+  family (#57), lower bounds + EAPrunedDTW + exact k-NN (#58/#73), multivariate
+  series and shape-DTW (#73).
+- **Quality:** rustdoc `-Dwarnings` clean, pmat CI pin 3.45.1 with 0 violations
+  (#75), fdasrvf goldens regenerated with 2.6.0 (#74).
+
+Detailed per-item entries follow.
+
+
 **fdasrvf golden values regenerated with 2.6.0 (GH #74 ALN-CAV).** Tests only; no
 library code or numeric change.
 
