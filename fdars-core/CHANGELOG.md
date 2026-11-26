@@ -60,6 +60,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accepting only strict decreases, so it never worsens the coarse warp
   (same example: 0.354 → 0.179). Results with `n_refine_steps > 0` change
   (intentional).
+- `alignment::continuous_registration` (GH #83) reported `converged = true`
+  whenever the Levenberg–Marquardt step search stalled (including when
+  candidate steps were rejected by the coefficient limit), so `converged` did
+  not mean the tolerance was met (e.g. `tol = 0` reported convergence). A stall
+  now reports `converged = false` unless the criterion has been reduced to
+  `≤ tol ×` its starting value (zero-residual fits at round-off level). New
+  `ContinuousRegistrationResult::termination` gives the per-curve reason
+  (`ContinuousRegistrationTermination::{Converged, Stalled, CoefLimit,
+  MaxIter}`). Fitted warps, coefficients and criteria are unchanged.
 
 ## [0.48.0] - 2026-11-26
 

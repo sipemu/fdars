@@ -125,7 +125,7 @@ pub use constrained::{
 };
 pub use continuous::{
     continuous_registration, ContinuousRegistrationConfig, ContinuousRegistrationCriterion,
-    ContinuousRegistrationResult,
+    ContinuousRegistrationResult, ContinuousRegistrationTermination,
 };
 pub use curve_shape::{
     ab_closure_residual, ab_elastic_distance_pl, ab_elastic_match_pl, ab_project_closed,

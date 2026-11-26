@@ -93,6 +93,32 @@ pub enum ContinuousRegistrationCriterion {
     MinEigenvalue,
 }
 
+/// Why the per-curve optimiser of [`continuous_registration`] stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ContinuousRegistrationTermination {
+    /// The relative criterion decrease of an accepted step fell to `≤ tol`, the
+    /// gradient vanished exactly (a stationary point), or the step search
+    /// stalled with the criterion reduced to `≤ tol ×` its starting value (a
+    /// zero-residual fit at round-off level). The only reason for which
+    /// `converged` is `true`.
+    Converged,
+    /// No damped step decreased the criterion (the line search stalled) before
+    /// the tolerance was met — typically at a minimum the criterion can no longer
+    /// resolve in floating point (e.g. `tol = 0`), but convergence to `tol` was
+    /// not established.
+    Stalled,
+    /// The step search stalled and at least one candidate step was rejected
+    /// because a W coefficient would exceed the coefficient limit (R `climit`
+    /// = 50): the optimum may lie outside the admissible coefficient box.
+    CoefLimit,
+    /// `max_iter` iterations were used without meeting the tolerance (also the
+    /// reason for `max_iter = 0`, which returns identity warps).
+    #[default]
+    MaxIter,
+}
+
 /// Configuration of [`continuous_registration`].
 ///
 /// Construct with `ContinuousRegistrationConfig::default()` and assign fields
@@ -271,8 +297,14 @@ pub struct ContinuousRegistrationResult {
     pub target: Vec<f64>,
     /// Gauss–Newton iterations per curve in the last pass.
     pub n_iter: Vec<usize>,
-    /// Per-curve convergence flag of the last pass.
+    /// Per-curve convergence flag of the last pass: `true` exactly when
+    /// `termination[i]` is [`ContinuousRegistrationTermination::Converged`]
+    /// (tolerance met). A stalled step search, a
+    /// coefficient-limit stop or exhausting `max_iter` reports `false`.
     pub converged: Vec<bool>,
+    /// Per-curve reason the optimiser stopped in the last pass.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub termination: Vec<ContinuousRegistrationTermination>,
     /// Number of registration passes performed.
     pub n_template_iter: usize,
     /// Estimated time shift `δᵢ` per curve (R `reglist$shift`); all zeros unless
@@ -720,11 +752,26 @@ pub(super) fn crit_gradient(
 /// Outcome of one Levenberg–Marquardt-safeguarded step.
 enum LmStep {
     Accepted(Vec<f64>, CritEval),
-    Stalled,
+    /// The gradient is exactly zero: a stationary point.
+    Stationary,
+    /// No damped step decreased the criterion; `coef_limited` records whether
+    /// any candidate was rejected by [`COEF_LIMIT`].
+    Stalled {
+        coef_limited: bool,
+    },
+}
+
+/// A damped candidate step.
+enum Candidate {
+    Admissible(Vec<f64>),
+    /// The Cholesky solve failed or a coefficient is non-finite.
+    Failed,
+    /// A coefficient would exceed [`COEF_LIMIT`].
+    CoefLimit,
 }
 
 /// Solve the damped system `(H + μ·D) δ = g` and return `c − δ` if it is admissible.
-fn damped_candidate(hm: &[f64], g: &[f64], c: &[f64], mu: f64, floor: f64) -> Option<Vec<f64>> {
+fn damped_candidate(hm: &[f64], g: &[f64], c: &[f64], mu: f64, floor: f64) -> Candidate {
     let na = g.len();
     // The active parameters are the trailing `na` entries of `c`.
     let first = c.len() - na;
@@ -732,14 +779,20 @@ fn damped_candidate(hm: &[f64], g: &[f64], c: &[f64], mu: f64, floor: f64) -> Op
     for p in 0..na {
         a[p * na + p] += mu * hm[p * na + p].max(floor);
     }
-    let delta = crate::linalg::cholesky_solve(&a, g, na).ok()?;
+    let Ok(delta) = crate::linalg::cholesky_solve(&a, g, na) else {
+        return Candidate::Failed;
+    };
     let mut cn = c.to_vec();
     for (cp, d) in cn[first..].iter_mut().zip(&delta) {
         *cp -= d;
     }
-    cn.iter()
-        .all(|v| v.is_finite() && v.abs() <= COEF_LIMIT)
-        .then_some(cn)
+    if !cn.iter().all(|v| v.is_finite()) {
+        Candidate::Failed
+    } else if cn.iter().any(|v| v.abs() > COEF_LIMIT) {
+        Candidate::CoefLimit
+    } else {
+        Candidate::Admissible(cn)
+    }
 }
 
 fn lm_step(
@@ -753,21 +806,26 @@ fn lm_step(
     let na = setup.n_active();
     let (g, hm) = gn_system(setup, cur, c);
     if g.iter().all(|v| *v == 0.0) {
-        return LmStep::Stalled;
+        return LmStep::Stationary;
     }
     let maxdiag = (0..na).map(|p| hm[p * na + p]).fold(0.0_f64, f64::max);
     let floor = (1e-12 * maxdiag).max(f64::MIN_POSITIVE);
+    let mut coef_limited = false;
     for _ in 0..LM_MAX_TRIES {
-        if let Some(cn) = damped_candidate(&hm, &g, c, *mu, floor) {
-            let ev = crit_eval(setup, spline, y0, &cn, true);
-            if ev.f.is_finite() && ev.f < cur.f {
-                *mu = (*mu / 3.0).max(1e-12);
-                return LmStep::Accepted(cn, ev);
+        match damped_candidate(&hm, &g, c, *mu, floor) {
+            Candidate::Admissible(cn) => {
+                let ev = crit_eval(setup, spline, y0, &cn, true);
+                if ev.f.is_finite() && ev.f < cur.f {
+                    *mu = (*mu / 3.0).max(1e-12);
+                    return LmStep::Accepted(cn, ev);
+                }
             }
+            Candidate::CoefLimit => coef_limited = true,
+            Candidate::Failed => {}
         }
         *mu *= 4.0;
     }
-    LmStep::Stalled
+    LmStep::Stalled { coef_limited }
 }
 
 /// Per-curve optimisation output.
@@ -776,6 +834,7 @@ pub(super) struct CurveFit {
     pub(super) history: Vec<f64>,
     pub(super) n_iter: usize,
     pub(super) converged: bool,
+    pub(super) termination: ContinuousRegistrationTermination,
 }
 
 /// Minimise the criterion of one curve starting from `c0`.
@@ -794,7 +853,7 @@ pub(super) fn register_curve(
     let mut cur = crit_eval(setup, spline, y0, &c, true);
     let mut history = vec![cur.f];
     let mut mu = 1e-3;
-    let mut converged = false;
+    let mut termination = ContinuousRegistrationTermination::MaxIter;
     let mut n_iter = 0;
     while n_iter < max_iter {
         n_iter += 1;
@@ -806,12 +865,27 @@ pub(super) fn register_curve(
                 cur = ev;
                 history.push(cur.f);
                 if done {
-                    converged = true;
+                    termination = ContinuousRegistrationTermination::Converged;
                     break;
                 }
             }
-            LmStep::Stalled => {
-                converged = true;
+            LmStep::Stationary => {
+                termination = ContinuousRegistrationTermination::Converged;
+                break;
+            }
+            LmStep::Stalled { coef_limited } => {
+                // A zero-residual fit (exact recovery) drives the criterion to
+                // its round-off floor, where the relative-decrease test can never
+                // fire; a stall there is convergence when the criterion has been
+                // reduced to `tol` of its starting value. With `tol = 0` this
+                // needs an exactly zero criterion.
+                termination = if cur.f.abs() <= tol * history[0].abs() {
+                    ContinuousRegistrationTermination::Converged
+                } else if coef_limited {
+                    ContinuousRegistrationTermination::CoefLimit
+                } else {
+                    ContinuousRegistrationTermination::Stalled
+                };
                 break;
             }
         }
@@ -820,7 +894,8 @@ pub(super) fn register_curve(
         c,
         history,
         n_iter,
-        converged,
+        converged: termination == ContinuousRegistrationTermination::Converged,
+        termination,
     }
 }
 
@@ -1097,6 +1172,7 @@ fn assemble(
         target,
         n_iter: fits.iter().map(|f| f.n_iter).collect(),
         converged: fits.iter().map(|f| f.converged).collect(),
+        termination: fits.iter().map(|f| f.termination).collect(),
         n_template_iter,
         shift: fits.iter().map(|f| setup.shift(&f.c)).collect(),
     }
