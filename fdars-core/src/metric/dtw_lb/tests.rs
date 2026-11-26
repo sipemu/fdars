@@ -1616,38 +1616,10 @@ fn lb_improved_and_enhanced_bound_dtw_on_random_pairs() {
                 if w.row_bounds(n, m).is_err() {
                     continue;
                 }
-                let env = lb_envelope_windowed(&y, n, w).unwrap();
-                for &p in &[1.0, 2.0, 1.5, 3.0, 0.5] {
-                    let d = dtw_distance_windowed(&x, &y, p, w).unwrap();
-                    let tol = 1e-12 * d.max(1.0);
-                    let keogh = lb_keogh(&x, &env, p).unwrap();
-                    if p >= 1.0 {
-                        let imp = lb_improved(&x, &y, p, w).unwrap();
-                        assert!(
-                            keogh <= imp,
-                            "keogh {keogh} > improved {imp} ({w:?}, p={p}, {n}x{m})"
-                        );
-                        assert!(
-                            imp <= d + tol,
-                            "improved {imp} > dtw {d} ({w:?}, p={p}, {n}x{m})"
-                        );
-                        imp_tighter += usize::from(imp > keogh);
-                    } else {
-                        assert!(matches!(
-                            lb_improved(&x, &y, p, w),
-                            Err(FdarError::InvalidParameter { .. })
-                        ));
-                    }
-                    for v in [1usize, 2, 3, 5, 100] {
-                        let enh = lb_enhanced(&x, &y, p, w, v).unwrap();
-                        assert!(
-                            enh <= d + tol,
-                            "enhanced(v={v}) {enh} > dtw {d} ({w:?}, p={p}, {n}x{m})"
-                        );
-                        enh_tighter += usize::from(enh > keogh);
-                    }
-                    checked += 1;
-                }
+                let (c, it, et) = check_improved_enhanced_case(&x, &y, w);
+                checked += c;
+                imp_tighter += it;
+                enh_tighter += et;
             }
         }
     }
@@ -1660,6 +1632,47 @@ fn lb_improved_and_enhanced_bound_dtw_on_random_pairs() {
         enh_tighter > checked,
         "LB_Enhanced tighter only {enh_tighter}"
     );
+}
+
+/// LB_Keogh ≤ LB_Improved ≤ DTW and LB_Enhanced ≤ DTW for one pair under one window,
+/// over several exponents `p`. Returns (cases checked, #Improved tighter than Keogh,
+/// #Enhanced tighter than Keogh).
+fn check_improved_enhanced_case(x: &[f64], y: &[f64], w: DtwWindow) -> (usize, usize, usize) {
+    let (n, m) = (x.len(), y.len());
+    let env = lb_envelope_windowed(y, n, w).unwrap();
+    let (mut checked, mut imp_tighter, mut enh_tighter) = (0usize, 0usize, 0usize);
+    for &p in &[1.0, 2.0, 1.5, 3.0, 0.5] {
+        let d = dtw_distance_windowed(x, y, p, w).unwrap();
+        let tol = 1e-12 * d.max(1.0);
+        let keogh = lb_keogh(x, &env, p).unwrap();
+        if p >= 1.0 {
+            let imp = lb_improved(x, y, p, w).unwrap();
+            assert!(
+                keogh <= imp,
+                "keogh {keogh} > improved {imp} ({w:?}, p={p}, {n}x{m})"
+            );
+            assert!(
+                imp <= d + tol,
+                "improved {imp} > dtw {d} ({w:?}, p={p}, {n}x{m})"
+            );
+            imp_tighter += usize::from(imp > keogh);
+        } else {
+            assert!(matches!(
+                lb_improved(x, y, p, w),
+                Err(FdarError::InvalidParameter { .. })
+            ));
+        }
+        for v in [1usize, 2, 3, 5, 100] {
+            let enh = lb_enhanced(x, y, p, w, v).unwrap();
+            assert!(
+                enh <= d + tol,
+                "enhanced(v={v}) {enh} > dtw {d} ({w:?}, p={p}, {n}x{m})"
+            );
+            enh_tighter += usize::from(enh > keogh);
+        }
+        checked += 1;
+    }
+    (checked, imp_tighter, enh_tighter)
 }
 
 #[test]
