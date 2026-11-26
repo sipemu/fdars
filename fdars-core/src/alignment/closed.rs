@@ -5,7 +5,8 @@
 //! in addition to the standard elastic warping.
 
 use super::dp_alignment_core;
-use super::pairwise::elastic_align_pair;
+use super::optim::{check_grid, optimal_warp, WarpOptimConfig};
+use super::pairwise::{elastic_align_pair, elastic_align_pair_with_config};
 use super::srsf::{reparameterize_curve, srsf_single};
 use crate::error::FdarError;
 use crate::helpers::{l2_distance, simpsons_weights};
@@ -83,6 +84,17 @@ where
 ///
 /// Returns `(best_rotation, best_distance)`.
 fn find_best_rotation(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> (usize, f64) {
+    find_best_rotation_with(f1, f2, argvals, |q1, q2| {
+        dp_alignment_core(q1, q2, argvals, lambda)
+    })
+}
+
+/// [`find_best_rotation`] with an arbitrary warp optimiser
+/// `warp(q1, q2) -> γ` (the classic DP closure reproduces it exactly).
+fn find_best_rotation_with<W>(f1: &[f64], f2: &[f64], argvals: &[f64], warp: W) -> (usize, f64)
+where
+    W: Fn(&[f64], &[f64]) -> Vec<f64> + Sync,
+{
     let m = f1.len();
     if m < 2 {
         return (0, 0.0);
@@ -93,7 +105,7 @@ fn find_best_rotation(f1: &[f64], f2: &[f64], argvals: &[f64], lambda: f64) -> (
     let rotation_distance = |k: usize| -> f64 {
         let f2_rot = circular_shift(f2, k);
         let q2 = srsf_single(&f2_rot, argvals);
-        let gamma = dp_alignment_core(&q1, &q2, argvals, lambda);
+        let gamma = warp(&q1, &q2);
         let f_aligned = reparameterize_curve(&f2_rot, argvals, &gamma);
         let q_aligned = srsf_single(&f_aligned, argvals);
         l2_distance(&q1, &q_aligned, &weights)
@@ -258,6 +270,77 @@ pub fn elastic_distance_closed(
     lambda: f64,
 ) -> Result<f64, FdarError> {
     Ok(elastic_align_pair_closed(f1, f2, argvals, lambda)?.distance)
+}
+
+/// [`elastic_align_pair_closed`] with a configurable warp optimiser
+/// ([`WarpOptimConfig`]): the circular-shift search and the final alignment
+/// both use `config`'s optimiser and penalty.
+///
+/// The default DP leaves a grid-independent residual on smoothly warped
+/// copies because its warp slopes are quantised to `{dr/dc : dr, dc ≤ 7}`
+/// (GH #65); [`WarpOptimMethod::Rbfgs`](super::WarpOptimMethod::Rbfgs) or
+/// `nbhd_dim = 10` + [`DpEdgeCost::PiecewiseLinear`](super::DpEdgeCost::PiecewiseLinear)
+/// lower it. [`WarpOptimConfig::default`] with `lambda` set gives exactly
+/// [`elastic_align_pair_closed`].
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] if lengths differ or `m < 2`;
+/// [`FdarError::InvalidParameter`] if `argvals` is not strictly increasing or
+/// `config` is invalid ([`WarpOptimConfig::validate`]).
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{
+///     elastic_align_pair_closed_with_config, WarpOptimConfig, WarpOptimMethod,
+/// };
+/// let m = 60;
+/// let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+/// let tau = 2.0 * std::f64::consts::PI;
+/// let f1: Vec<f64> = t.iter().map(|&s| (tau * s).sin() + 0.5 * (2.0 * tau * s).cos()).collect();
+/// // same periodic curve, started 9 samples later
+/// let f2: Vec<f64> = (0..m).map(|j| f1[(j + 9) % (m - 1)]).collect();
+/// let mut cfg = WarpOptimConfig::default();
+/// cfg.method = WarpOptimMethod::Rbfgs;
+/// let res = elastic_align_pair_closed_with_config(&f1, &f2, &t, &cfg).unwrap();
+/// assert!(res.distance.is_finite());
+/// assert!(res.gamma.windows(2).all(|w| w[1] >= w[0]));
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_align_pair_closed_with_config(
+    f1: &[f64],
+    f2: &[f64],
+    argvals: &[f64],
+    config: &WarpOptimConfig,
+) -> Result<ClosedAlignmentResult, FdarError> {
+    check_grid(argvals, f1.len(), "f1")?;
+    check_grid(argvals, f2.len(), "f2")?;
+    config.validate()?;
+    let (best_k, _) = find_best_rotation_with(f1, f2, argvals, |q1, q2| {
+        optimal_warp(q1, q2, argvals, config, None)
+    });
+    let f2_rotated = circular_shift(f2, best_k);
+    let result = elastic_align_pair_with_config(f1, &f2_rotated, argvals, config)?;
+    Ok(ClosedAlignmentResult {
+        gamma: result.gamma,
+        f_aligned: result.f_aligned,
+        distance: result.distance,
+        optimal_rotation: best_k,
+    })
+}
+
+/// Elastic distance between two closed curves under a configurable warp
+/// optimiser (see [`elastic_align_pair_closed_with_config`]).
+///
+/// # Errors
+/// As [`elastic_align_pair_closed_with_config`].
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_distance_closed_with_config(
+    f1: &[f64],
+    f2: &[f64],
+    argvals: &[f64],
+    config: &WarpOptimConfig,
+) -> Result<f64, FdarError> {
+    Ok(elastic_align_pair_closed_with_config(f1, f2, argvals, config)?.distance)
 }
 
 /// Compute the Karcher (Frechet) mean for closed curves.

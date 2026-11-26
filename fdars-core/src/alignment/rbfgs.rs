@@ -200,13 +200,20 @@ struct CostGrad {
     barrier_grad: Vec<f64>,
 }
 
-/// Port of fdasrsf `rlbfgs` for one 1-D SRSF pair on a grid `t ⊂ [0, 1]`.
+/// Port of fdasrsf `rlbfgs` for one SRSF pair on a grid `t ⊂ [0, 1]`.
+///
+/// The SRSFs may have several channels (the coordinates of an R^d SRVF); the
+/// data term is then summed over channels, `Σ_c ‖q1_c − (q2_c∘γ)·l‖²`, and both
+/// SRSFs are normalised by their total L² norm. One channel is fdasrsf's 1-D
+/// problem.
 pub(super) struct RbfgsProblem {
     t: Vec<f64>,
     w: Vec<f64>,
     sqrtw: Vec<f64>,
-    q1: Vec<f64>,
-    q2spline: NaturalSpline,
+    /// Normalised target SRSF, one vector per channel.
+    q1: Vec<Vec<f64>>,
+    /// Natural splines of the normalised source SRSF, one per channel.
+    q2spline: Vec<NaturalSpline>,
     lam: f64,
     penalty: WarpObjectivePenalty,
 }
@@ -223,7 +230,9 @@ const OMEGA_RATE: f64 = 0.8;
 
 impl RbfgsProblem {
     /// Set up the problem. `lam` is the user's penalty weight (fdasrsf `lam`
-    /// passed to `solve`); it is rescaled by `lamScale` as in fdasrsf.
+    /// passed to `solve`); it is rescaled by `lamScale` as in fdasrsf. One-channel
+    /// form of [`Self::new_multi`] (used by the tests).
+    #[cfg(test)]
     pub(super) fn new(
         q1: &[f64],
         q2: &[f64],
@@ -231,29 +240,52 @@ impl RbfgsProblem {
         lam: f64,
         penalty: WarpObjectivePenalty,
     ) -> Self {
+        Self::new_multi(&[q1], &[q2], t, lam, penalty)
+    }
+
+    /// Multi-channel problem: `q1[c]`, `q2[c]` are channel `c` of the SRSFs
+    /// (equal channel counts, each of length `t.len()`). With one channel this
+    /// is the classic 1-D problem (same arithmetic, bit-identical).
+    pub(super) fn new_multi(
+        q1: &[&[f64]],
+        q2: &[&[f64]],
+        t: &[f64],
+        lam: f64,
+        penalty: WarpObjectivePenalty,
+    ) -> Self {
         let w = trapz_weights(t);
         let sqrtw: Vec<f64> = w.iter().map(|v| v.sqrt()).collect();
-        let norm_l2 = |f: &[f64]| -> f64 {
-            f.iter()
-                .zip(&w)
-                .map(|(v, wi)| wi * v * v)
+        let norm_l2 = |chs: &[&[f64]]| -> f64 {
+            chs.iter()
+                .map(|f| f.iter().zip(&w).map(|(v, wi)| wi * v * v).sum::<f64>())
                 .sum::<f64>()
                 .sqrt()
         };
+        let euclid =
+            |chs: &[&[f64]]| -> f64 { chs.iter().map(|f| lbfgs_dot(f, f)).sum::<f64>().sqrt() };
         let n1 = norm_l2(q1).max(1e-300);
         let n2 = norm_l2(q2).max(1e-300);
-        let e1 = euclid_norm(q1).max(1e-300);
-        let e2 = euclid_norm(q2).max(1e-300);
+        let e1 = euclid(q1).max(1e-300);
+        let e2 = euclid(q2).max(1e-300);
         // normL2(q/‖q‖) = normL2(q)/‖q‖
         let lam_scale = 1.0 / ((n1 / e1) * (n2 / e2));
-        let q1n: Vec<f64> = q1.iter().map(|v| v / n1).collect();
-        let q2n: Vec<f64> = q2.iter().map(|v| v / n2).collect();
+        let q1n: Vec<Vec<f64>> = q1
+            .iter()
+            .map(|f| f.iter().map(|v| v / n1).collect())
+            .collect();
+        let q2spline: Vec<NaturalSpline> = q2
+            .iter()
+            .map(|f| {
+                let q2n: Vec<f64> = f.iter().map(|v| v / n2).collect();
+                NaturalSpline::new(t, &q2n)
+            })
+            .collect();
         Self {
             t: t.to_vec(),
             w,
             sqrtw,
             q1: q1n,
-            q2spline: NaturalSpline::new(t, &q2n),
+            q2spline,
             lam: lam * lam_scale,
             penalty,
         }
@@ -342,11 +374,21 @@ impl RbfgsProblem {
         let mut a = vec![0.0; n];
         let mut fixed_grad = vec![0.0; n];
         for k in 0..n {
-            let (qv, qd) = self.q2spline.eval(gam[k]);
-            let r = self.q1[k] - qv * l[k];
-            fixed += w[k] * r * r;
-            a[k] = -2.0 * w[k] * r * qd * l[k];
-            fixed_grad[k] = -2.0 * w[k] * r * qv;
+            for (c, (q1c, spl)) in self.q1.iter().zip(&self.q2spline).enumerate() {
+                let (qv, qd) = spl.eval(gam[k]);
+                let r = q1c[k] - qv * l[k];
+                fixed += w[k] * r * r;
+                let (ak, gk) = (-2.0 * w[k] * r * qd * l[k], -2.0 * w[k] * r * qv);
+                // The first channel assigns (as the 1-D original), so one
+                // channel is bit-identical, signed zeros included.
+                if c == 0 {
+                    a[k] = ak;
+                    fixed_grad[k] = gk;
+                } else {
+                    a[k] += ak;
+                    fixed_grad[k] += gk;
+                }
+            }
         }
         let adj = cumtrapz_adjoint(t, &a);
         for k in 0..n {
@@ -628,27 +670,34 @@ pub(super) struct RbfgsParams {
     pub scl: usize,
 }
 
-/// Coarse DP start on ≤ 51 uniform points of `[0, 1]`, honouring the
-/// DP-expressible penalties (fdasrsf `pen_start`).
-fn coarse_dp_start(q1: &[f64], q2: &[f64], t1: &[f64], p: &RbfgsParams) -> (Vec<f64>, Vec<f64>) {
+/// Classic 1-D DP on the coarse grid `tc`, honouring the DP-expressible
+/// penalties (fdasrsf `pen_start`).
+fn coarse_dp_1d(q1c: &[f64], q2c: &[f64], tc: &[f64], p: &RbfgsParams) -> Vec<f64> {
+    if p.lambda == 0.0 {
+        dp_alignment_core_banded(q1c, q2c, tc, 0.0, None)
+    } else if p.penalty == WarpObjectivePenalty::L2Gam {
+        dp_alignment_core_banded(q1c, q2c, tc, p.lambda, None)
+    } else {
+        let prune = dp_prune_is_exact(tc, p.lambda);
+        dp_alignment_core_with_penalty(q1c, q2c, tc, None, prune, |sc, tc_, sr, tr| {
+            dp_l2psi_penalty(tc, sc, tc_, sr, tr, p.lambda)
+        })
+    }
+}
+
+/// Coarse grid of ≤ 51 uniform points of `[0, 1]` and the SRSF channels
+/// resampled onto it by natural cubic splines.
+fn coarse_resample(q: &[&[f64]], t1: &[f64]) -> (Vec<f64>, Vec<Vec<f64>>) {
     let nc = t1.len().min(51);
     let tc: Vec<f64> = (0..nc).map(|i| i as f64 / (nc - 1) as f64).collect();
-    let s1 = NaturalSpline::new(t1, q1);
-    let s2 = NaturalSpline::new(t1, q2);
-    let q1c: Vec<f64> = tc.iter().map(|&t| s1.eval(t).0).collect();
-    let q2c: Vec<f64> = tc.iter().map(|&t| s2.eval(t).0).collect();
-    let gamc = if p.lambda == 0.0 {
-        dp_alignment_core_banded(&q1c, &q2c, &tc, 0.0, None)
-    } else if p.penalty == WarpObjectivePenalty::L2Gam {
-        dp_alignment_core_banded(&q1c, &q2c, &tc, p.lambda, None)
-    } else {
-        let tcr = &tc;
-        let prune = dp_prune_is_exact(tcr, p.lambda);
-        dp_alignment_core_with_penalty(&q1c, &q2c, tcr, None, prune, |sc, tc_, sr, tr| {
-            dp_l2psi_penalty(tcr, sc, tc_, sr, tr, p.lambda)
+    let qc = q
+        .iter()
+        .map(|f| {
+            let s = NaturalSpline::new(t1, f);
+            tc.iter().map(|&t| s.eval(t).0).collect()
         })
-    };
-    (tc, gamc)
+        .collect();
+    (tc, qc)
 }
 
 /// Refine `t1` (sorted, in `[0,1]`) `scl` times: `scl − 1` equispaced points
@@ -671,6 +720,25 @@ fn refine_grid(t1: &[f64], scl: usize) -> Vec<f64> {
 /// `optimum_reparam`). Returns γ in `argvals` units, boundary-exact and
 /// monotone.
 pub(super) fn rbfgs_warp(q1: &[f64], q2: &[f64], argvals: &[f64], p: &RbfgsParams) -> Vec<f64> {
+    rbfgs_warp_multi(&[q1], &[q2], argvals, p, |q1c, q2c, tc| {
+        coarse_dp_1d(&q1c[0], &q2c[0], tc, p)
+    })
+}
+
+/// Multi-channel RBFGS warp (the data term summed over the channels of an
+/// R^d SRVF). `coarse_dp(q1c, q2c, tc)` returns the DP starting warp on the
+/// coarse grid `tc ⊂ [0, 1]` for the spline-resampled channels. One channel
+/// with [`coarse_dp_1d`] is [`rbfgs_warp`].
+pub(super) fn rbfgs_warp_multi<F>(
+    q1: &[&[f64]],
+    q2: &[&[f64]],
+    argvals: &[f64],
+    p: &RbfgsParams,
+    coarse_dp: F,
+) -> Vec<f64>
+where
+    F: FnOnce(&[Vec<f64>], &[Vec<f64>], &[f64]) -> Vec<f64>,
+{
     let m = argvals.len();
     if m < 3 {
         return argvals.to_vec();
@@ -678,7 +746,9 @@ pub(super) fn rbfgs_warp(q1: &[f64], q2: &[f64], argvals: &[f64], p: &RbfgsParam
     let (a0, a1) = (argvals[0], argvals[m - 1]);
     let span = a1 - a0;
     let t1: Vec<f64> = argvals.iter().map(|&a| (a - a0) / span).collect();
-    let (tc, gamc) = coarse_dp_start(q1, q2, &t1, p);
+    let (tc, q1c) = coarse_resample(q1, &t1);
+    let (_, q2c) = coarse_resample(q2, &t1);
+    let gamc = coarse_dp(&q1c, &q2c, &tc);
     let identity_start = gamc.iter().zip(&tc).all(|(g, t)| (g - t).abs() < 1e-12);
 
     let scl = p.scl.max(1);
@@ -688,11 +758,17 @@ pub(super) fn rbfgs_warp(q1: &[f64], q2: &[f64], argvals: &[f64], p: &RbfgsParam
     } else {
         Some(tf.iter().map(|&t| linear_interp(&tc, &gamc, t)).collect())
     };
-    let q1f: Vec<f64> = tf.iter().map(|&t| linear_interp(&t1, q1, t)).collect();
-    let q2f: Vec<f64> = tf.iter().map(|&t| linear_interp(&t1, q2, t)).collect();
+    let fine = |q: &[&[f64]]| -> Vec<Vec<f64>> {
+        q.iter()
+            .map(|f| tf.iter().map(|&t| linear_interp(&t1, f, t)).collect())
+            .collect()
+    };
+    let (q1f, q2f) = (fine(q1), fine(q2));
+    let q1r: Vec<&[f64]> = q1f.iter().map(Vec::as_slice).collect();
+    let q2r: Vec<&[f64]> = q2f.iter().map(Vec::as_slice).collect();
     // lam is divided by scl to weigh the penalty as it would on t1 (fdasrsf).
     let lamf = p.lambda / scl as f64;
-    let prob = RbfgsProblem::new(&q1f, &q2f, &tf, lamf, p.penalty);
+    let prob = RbfgsProblem::new_multi(&q1r, &q2r, &tf, lamf, p.penalty);
     let (mut gamf, cost) = prob.solve(gam0.as_deref(), p.max_iter);
     if lamf > 0.0 {
         let (gami, costi) = prob.solve(None, p.max_iter);

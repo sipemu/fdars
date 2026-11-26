@@ -20,6 +20,7 @@ use crate::error::FdarError;
 /// fdasrsf `method`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum WarpOptimMethod {
     /// Exact dynamic programming over a coprime move neighbourhood (by default
     /// the classic 35-move `nbhd_dim = 7` engine; default and exactness
@@ -63,6 +64,7 @@ pub enum WarpOptimMethod {
 /// lam=…)` semantics. The two scales are not interchangeable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum WarpObjectivePenalty {
     /// `∫ (γ̇ − 1)²` — the classic fdars first-order penalty (default).
     #[default]
@@ -84,6 +86,7 @@ pub enum WarpObjectivePenalty {
 /// the SRSFs are taken between their samples.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DpEdgeCost {
     /// SRSFs constant on each grid interval (left sample) — the classic fdars /
     /// pre-2.5 fdasrvf `dp_edge_weight` (default).
@@ -139,6 +142,8 @@ pub enum DpEdgeCost {
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(default))]
 pub struct WarpOptimConfig {
     /// Warp optimiser (default [`WarpOptimMethod::Dp`]).
     pub method: WarpOptimMethod,

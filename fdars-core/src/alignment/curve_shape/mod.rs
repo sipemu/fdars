@@ -13,7 +13,9 @@
 //! * **rotation** — optimal `R ∈ SO(d)` by SVD Procrustes (Kabsch), optionally
 //!   over O(d) (`allow_reflection`);
 //! * **reparametrisation** — optimal warp `γ` by the shared fdasrvf
-//!   coprime-neighbourhood dynamic program (summed over coordinates);
+//!   coprime-neighbourhood dynamic program (summed over coordinates), or the
+//!   Riemannian L-BFGS / finer-DP options of [`CurveShapeConfig::warp_optim`]
+//!   that remove the DP's grid-independent slope-quantisation floor;
 //! * **starting point** (closed contours) — seed search over circular shifts;
 //!   closed SRVFs are projected onto the closed-curve manifold
 //!   `{q : ∫ q‖q‖ = 0}` (Srivastava–Klassen).
@@ -69,6 +71,8 @@ mod downstream_tests;
 mod geometry;
 mod karcher;
 #[cfg(test)]
+mod optim_tests;
+#[cfg(test)]
 mod tests;
 
 pub use boxplot::{
@@ -87,6 +91,7 @@ pub use karcher::{
 
 use geometry::Grid;
 
+use super::optim::WarpOptimConfig;
 use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::{FdCurveSet, FdMatrix};
@@ -251,6 +256,54 @@ pub struct CurveShapeConfig {
     /// Shape-space metric. Default [`CurveShapeMetric::Srvf`];
     /// [`CurveShapeMetric::Elastic`] requires open planar curves.
     pub metric: CurveShapeMetric,
+    /// Warp optimiser of the reparametrisation step (default: the classic
+    /// 35-move DP, bit-identical to the behaviour before this option).
+    ///
+    /// The DP restricts `γ'` to the slopes `{dr/dc : dr, dc ≤ nbhd_dim}` of its
+    /// moves, so it cannot undo a smooth warp exactly: the self-distance
+    /// `d(β, β∘γ)` stalls at a **grid-independent floor** (≈ 0.02 for the SRVF
+    /// with the default 7-move neighbourhood, see GH #65) instead of shrinking
+    /// with `m`. Recommended settings when that floor matters:
+    ///
+    /// * [`WarpOptimMethod::Rbfgs`](super::WarpOptimMethod::Rbfgs) — Riemannian L-BFGS refinement of a coarse
+    ///   DP warp over smooth warps (fdasrsf `method="RBFGS"`, here summed over
+    ///   the coordinates); with [`align_iter`](Self::align_iter) `≥ 4` (so the
+    ///   rotation ↔ warp alternation settles) the residual drops to the
+    ///   resampling floor of the exact warp, an order of magnitude below the DP
+    ///   floor, and keeps shrinking with `m` (≈ 0.0019 at m = 81, 0.0005 at
+    ///   m = 321);
+    /// * `nbhd_dim = 10` + [`DpEdgeCost::PiecewiseLinear`](super::DpEdgeCost::PiecewiseLinear) (fdasrsf `DP2`) —
+    ///   stays a global DP, lowers the floor moderately at ≈ 5× the DP cost.
+    ///
+    /// The warp penalty weight is always [`lambda`](Self::lambda) with the
+    /// penalty shape `warp_optim.penalty` (`L2Gam` = the classic `∫(γ' − 1)²`);
+    /// `warp_optim.lambda` must stay `0`. With RBFGS `lambda` has fdasrsf's
+    /// RBFGS scale (see [`WarpObjectivePenalty`](super::WarpObjectivePenalty)).
+    ///
+    /// ```
+    /// use fdars_core::alignment::{curve_shape_distance, CurveShapeConfig, WarpOptimMethod};
+    /// use fdars_core::matrix::FdMatrix;
+    /// let m = 60;
+    /// let curve = |g: &dyn Fn(f64) -> f64| {
+    ///     let mut b = FdMatrix::zeros(2, m);
+    ///     for j in 0..m {
+    ///         let t = g(j as f64 / (m - 1) as f64);
+    ///         b[(0, j)] = t;
+    ///         b[(1, j)] = 0.3 * (6.0 * t).sin();
+    ///     }
+    ///     b
+    /// };
+    /// let b1 = curve(&|t| t);
+    /// let b2 = curve(&|t| t + 0.25 * t * (1.0 - t)); // same shape, warped
+    /// let dp = curve_shape_distance(&b1, &b2, &CurveShapeConfig::default()).unwrap();
+    /// let mut cfg = CurveShapeConfig::default();
+    /// cfg.warp_optim.method = WarpOptimMethod::Rbfgs;
+    /// cfg.align_iter = 4;
+    /// let rbfgs = curve_shape_distance(&b1, &b2, &cfg).unwrap();
+    /// assert!(rbfgs < dp);
+    /// ```
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub warp_optim: WarpOptimConfig,
 }
 
 impl Default for CurveShapeConfig {
@@ -267,6 +320,7 @@ impl Default for CurveShapeConfig {
             lambda: 0.0,
             align_iter: 2,
             metric: CurveShapeMetric::Srvf,
+            warp_optim: WarpOptimConfig::default(),
         }
     }
 }
@@ -276,8 +330,10 @@ impl CurveShapeConfig {
     ///
     /// # Errors
     /// [`FdarError::InvalidParameter`] if `seed_step == 0`, `align_iter == 0`,
-    /// `lambda` is negative / non-finite, the metric parameters are invalid, or
-    /// the elastic `(a, b)` metric is combined with `closed = true`.
+    /// `lambda` is negative / non-finite, the metric parameters are invalid,
+    /// the elastic `(a, b)` metric is combined with `closed = true`,
+    /// `warp_optim.lambda ≠ 0`, or `warp_optim` (with weight `lambda`) is
+    /// invalid ([`WarpOptimConfig::validate`]).
     pub fn validate(&self) -> Result<(), FdarError> {
         let bad = |parameter: &'static str, message: String| {
             Err(FdarError::InvalidParameter { parameter, message })
@@ -295,6 +351,19 @@ impl CurveShapeConfig {
             );
         }
         self.metric.validate()?;
+        if self.warp_optim.lambda != 0.0 {
+            return bad(
+                "warp_optim.lambda",
+                format!(
+                    "the warp penalty weight is CurveShapeConfig::lambda; leave \
+                     warp_optim.lambda at 0 (got {})",
+                    self.warp_optim.lambda
+                ),
+            );
+        }
+        let mut warp = self.warp_optim.clone();
+        warp.lambda = self.lambda;
+        warp.validate()?;
         if self.closed && self.metric != CurveShapeMetric::Srvf {
             return bad(
                 "metric",
@@ -815,7 +884,8 @@ fn align_fixed_seed(
         return best;
     }
     for _ in 0..cfg.align_iter {
-        let gamma = geometry::dp_warp(q1, &geometry::rotate(&r, &q2), grid, cfg.lambda);
+        let q2r = geometry::rotate(&r, &q2);
+        let gamma = geometry::optimal_warp(q1, &q2r, grid, cfg.lambda, &cfg.warp_optim);
         let beta_w = geometry::warp_curve(beta2, grid, &gamma);
         let q_w = srvf_cfg(&beta_w, cfg, grid);
         r = best_rotation(q1, &q_w, cfg, grid);

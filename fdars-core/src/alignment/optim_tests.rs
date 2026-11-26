@@ -491,3 +491,79 @@ fn rbfgs_is_deterministic() {
     let b = optimal_warp(&q1, &q2, &t, &rbfgs_cfg(), None);
     assert_eq!(a, b);
 }
+
+/// FNV-1a hashes of 1-D RBFGS warps recorded before the R^d generalisation of
+/// the RBFGS problem (ALN-CAV #65): the 1-D path must stay bit-identical.
+#[test]
+fn rbfgs_1d_bit_identical_to_pre_multichannel() {
+    let mut h = FNV0;
+    for (t, q1, q2) in [case_a(41), case_b(61), case_a(101)] {
+        for (lam, pen) in [
+            (0.0, WarpObjectivePenalty::L2Gam),
+            (0.05, WarpObjectivePenalty::L2Psi),
+            (0.02, WarpObjectivePenalty::Roughness),
+        ] {
+            let mut cfg = rbfgs_cfg();
+            cfg.lambda = lam;
+            cfg.penalty = pen;
+            fnv(&mut h, &optimal_warp(&q1, &q2, &t, &cfg, None));
+        }
+    }
+    eprintln!("rbfgs 1-D hash {h:#x}");
+    assert_eq!(h, RBFGS_1D_HASH);
+}
+
+const RBFGS_1D_HASH: u64 = 0x7317_e324_5b93_1fc6;
+
+// ─── Closed (periodic) 1-D curves with a configurable optimiser (#65) ───────
+
+fn periodic_pair(m: usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
+    let t = grid(m);
+    let tau = 2.0 * std::f64::consts::PI;
+    let f = |s: f64| (tau * s).sin() + 0.5 * (2.0 * tau * s).cos() + 0.3 * bump(s, 0.6, 0.004);
+    let f1: Vec<f64> = t.iter().map(|&s| f(s)).collect();
+    // warped by t + 0.25 t(1 − t), then started 7 samples later
+    let g: Vec<f64> = t.iter().map(|&s| f(s + 0.25 * s * (1.0 - s))).collect();
+    let f2: Vec<f64> = (0..m).map(|j| g[(j + 7) % (m - 1)]).collect();
+    (t, f1, f2)
+}
+
+#[test]
+fn closed_with_default_config_equals_classic() {
+    use crate::alignment::{elastic_align_pair_closed, elastic_align_pair_closed_with_config};
+    let (t, f1, f2) = periodic_pair(61);
+    for lam in [0.0, 0.05] {
+        let classic = elastic_align_pair_closed(&f1, &f2, &t, lam).unwrap();
+        let cfg = WarpOptimConfig::classic_dp(lam);
+        let new = elastic_align_pair_closed_with_config(&f1, &f2, &t, &cfg).unwrap();
+        assert_eq!(classic, new, "lambda {lam}");
+    }
+}
+
+#[test]
+fn closed_with_refined_optimisers_lowers_residual() {
+    use crate::alignment::{
+        elastic_align_pair_closed_with_config, elastic_distance_closed_with_config,
+    };
+    let (t, f1, f2) = periodic_pair(81);
+    let d0 =
+        elastic_distance_closed_with_config(&f1, &f2, &t, &WarpOptimConfig::default()).unwrap();
+    let rb = elastic_align_pair_closed_with_config(&f1, &f2, &t, &rbfgs_cfg()).unwrap();
+    let mut dp2 = WarpOptimConfig::default();
+    dp2.nbhd_dim = 10;
+    dp2.dp_cost = DpEdgeCost::PiecewiseLinear;
+    let d2 = elastic_distance_closed_with_config(&f1, &f2, &t, &dp2).unwrap();
+    eprintln!(
+        "closed 1-D: dp {d0} dp2 {d2} rbfgs {} (shift {})",
+        rb.distance, rb.optimal_rotation
+    );
+    assert_valid_warp(&rb.gamma, &t);
+    assert!(
+        rb.distance < d0 && d2 < d0,
+        "dp {d0} dp2 {d2} rbfgs {}",
+        rb.distance
+    );
+    let mut bad = WarpOptimConfig::default();
+    bad.scl = 0;
+    assert!(elastic_distance_closed_with_config(&f1, &f2, &t, &bad).is_err());
+}

@@ -4,8 +4,12 @@
 //! column = sample) on the implicit uniform grid `t_j = j/(m−1)` of `[0, 1]`.
 //! L² inner products use trapezoidal weights on that grid.
 
+use crate::alignment::rbfgs::{rbfgs_warp_multi, RbfgsParams};
 use crate::alignment::{
-    dp_edge_weight_core, dp_grid_solve, dp_lambda_penalty, dp_path_to_gamma, dp_prune_is_exact,
+    coprime_nbhd, dp_edge_weight_core, dp_edge_weight_linear_core, dp_grid_solve,
+    dp_grid_solve_moves, dp_l2psi_penalty, dp_lambda_penalty, dp_path_to_gamma, dp_prune_is_exact,
+    refine_srsf_linear, DpEdgeCost, DpMoves, WarpObjectivePenalty, WarpOptimConfig,
+    WarpOptimMethod,
 };
 use crate::error::FdarError;
 use crate::helpers::linear_interp;
@@ -527,4 +531,138 @@ pub(super) fn dp_warp(q1: &FdMatrix, q2: &FdMatrix, grid: &Grid, lambda: f64) ->
         w + dp_lambda_penalty(t, sc, tc, sr, tr, lambda)
     });
     dp_path_to_gamma(&path, t)
+}
+
+/// Whether `opt` selects exactly the classic R^d DP of [`dp_warp`] (35 moves,
+/// original grid, piecewise-constant cost, first-order `L2Gam` penalty).
+fn is_classic_dp(opt: &WarpOptimConfig) -> bool {
+    opt.method == WarpOptimMethod::Dp
+        && opt.nbhd_dim == 7
+        && opt.dp_scl == 1
+        && opt.dp_cost == DpEdgeCost::PiecewiseConstant
+        && opt.penalty == WarpObjectivePenalty::L2Gam
+}
+
+/// Optimal warp of the R^d SRVF `q2` to `q1` under the warp optimiser `opt`
+/// with penalty weight `lambda` (`opt.lambda` is not used). The classic DP
+/// options run [`dp_warp`] unchanged (bit-identical).
+pub(super) fn optimal_warp(
+    q1: &FdMatrix,
+    q2: &FdMatrix,
+    grid: &Grid,
+    lambda: f64,
+    opt: &WarpOptimConfig,
+) -> Vec<f64> {
+    match opt.method {
+        WarpOptimMethod::Dp if is_classic_dp(opt) => dp_warp(q1, q2, grid, lambda),
+        WarpOptimMethod::Dp => dp_warp_opts(q1, q2, grid, lambda, opt),
+        WarpOptimMethod::Rbfgs => rbfgs_warp_curve(q1, q2, grid, lambda, opt),
+    }
+}
+
+/// R^d DP with the full option set of [`WarpOptimConfig`]: `nbhd_dim` moves,
+/// SRVFs resampled `dp_scl` times finer, piecewise-constant or
+/// piecewise-linear edge cost, `L2Gam` / `L2Psi` penalty — the edge weight
+/// summed over coordinates (the 1-D engine's weights, without its
+/// per-curve normalisation).
+pub(super) fn dp_warp_opts(
+    q1: &FdMatrix,
+    q2: &FdMatrix,
+    grid: &Grid,
+    lambda: f64,
+    opt: &WarpOptimConfig,
+) -> Vec<f64> {
+    let (d, m) = q1.shape();
+    let s = opt.dp_scl.max(1);
+    let refine = |q: &FdMatrix| -> Vec<Vec<f64>> {
+        (0..d)
+            .map(|k| {
+                let r = q.row(k);
+                if s > 1 {
+                    refine_srsf_linear(&r, s)
+                } else {
+                    r
+                }
+            })
+            .collect()
+    };
+    let (r1, r2) = (refine(q1), refine(q2));
+    let nbhd = coprime_nbhd(opt.nbhd_dim);
+    let w = nbhd.iter().map(|&(dr, dc)| dr.max(dc)).max().unwrap_or(1) + 1;
+    let mut rslope = vec![vec![0.0f64; w]; w];
+    for (dr, row) in rslope.iter_mut().enumerate().skip(1) {
+        for (dc, cell) in row.iter_mut().enumerate().skip(1) {
+            *cell = (dr as f64 / dc as f64).sqrt();
+        }
+    }
+    let (h, t) = (grid.h, &grid.t);
+    let moves = DpMoves {
+        nbhd: &nbhd,
+        prune: opt.dp_prune && h > 0.0 && dp_prune_is_exact(t, lambda),
+    };
+    let weight = match opt.dp_cost {
+        DpEdgeCost::PiecewiseLinear => dp_edge_weight_linear_core,
+        _ => dp_edge_weight_core,
+    };
+    let l2psi = opt.penalty == WarpObjectivePenalty::L2Psi;
+    let path = dp_grid_solve_moves(m, m, None, moves, |sr, sc, tr, tc| {
+        let (dr, dc) = (tr - sr, tc - sc);
+        let rs = rslope[dr][dc];
+        let span = dc as f64 * h;
+        let data: f64 = (0..d)
+            .map(|k| weight(&r1[k], &r2[k], sc * s, tc * s, sr * s, tr * s, rs, span))
+            .sum();
+        let pen = if l2psi {
+            dp_l2psi_penalty(t, sc, tc, sr, tr, lambda)
+        } else {
+            dp_lambda_penalty(t, sc, tc, sr, tr, lambda)
+        };
+        data + pen
+    });
+    dp_path_to_gamma(&path, t)
+}
+
+/// RBFGS warp of an R^d SRVF pair (data term summed over coordinates),
+/// started from the classic R^d DP on a coarse grid of ≤ 51 points. The
+/// coarse start honours the DP-expressible penalties as the 1-D optimiser
+/// does (`L2Gam`, otherwise `L2Psi`).
+fn rbfgs_warp_curve(
+    q1: &FdMatrix,
+    q2: &FdMatrix,
+    grid: &Grid,
+    lambda: f64,
+    opt: &WarpOptimConfig,
+) -> Vec<f64> {
+    let d = q1.nrows();
+    let rows1: Vec<Vec<f64>> = (0..d).map(|k| q1.row(k)).collect();
+    let rows2: Vec<Vec<f64>> = (0..d).map(|k| q2.row(k)).collect();
+    let c1: Vec<&[f64]> = rows1.iter().map(Vec::as_slice).collect();
+    let c2: Vec<&[f64]> = rows2.iter().map(Vec::as_slice).collect();
+    let p = RbfgsParams {
+        lambda,
+        penalty: opt.penalty,
+        max_iter: opt.max_iter,
+        scl: opt.scl,
+    };
+    rbfgs_warp_multi(&c1, &c2, &grid.t, &p, |q1c, q2c, tc| {
+        let nc = tc.len();
+        let to_mat = |rows: &[Vec<f64>]| {
+            let mut out = FdMatrix::zeros(d, nc);
+            for (k, r) in rows.iter().enumerate() {
+                for (j, &v) in r.iter().enumerate() {
+                    out[(k, j)] = v;
+                }
+            }
+            out
+        };
+        let mut start = WarpOptimConfig::default();
+        if lambda > 0.0 && opt.penalty != WarpObjectivePenalty::L2Gam {
+            start.penalty = WarpObjectivePenalty::L2Psi;
+        }
+        let cg = Grid::new(nc);
+        let g = optimal_warp(&to_mat(q1c), &to_mat(q2c), &cg, lambda, &start);
+        // `Grid::new` and the RBFGS coarse grid are the same uniform grid of
+        // [0, 1]; re-sample to be safe against last-ulp differences.
+        tc.iter().map(|&x| linear_interp(&cg.t, &g, x)).collect()
+    })
 }

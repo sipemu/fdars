@@ -13,6 +13,32 @@ Changed below).
 
 ## [Unreleased]
 
+**Elastic DP residual floor: diagnosis + refined warp optimisers for curve shapes (GH #65
+ALN-CAV).** Additive and non-breaking: defaults are bit-identical (FNV-hash tests recorded before
+the change); no new crate dependency.
+
+### Added
+
+- `CurveShapeConfig::warp_optim: WarpOptimConfig` — warp optimiser of every `curve_shape_*`
+  function (pairwise, distance matrices, Karcher mean/median/PCA, TSRVF, depth, outliers, box plot,
+  CI; open and closed curves, SRVF and `(a,b)` metrics): `WarpOptimMethod::Rbfgs` (Riemannian
+  L-BFGS summed over coordinates) or the DP options `nbhd_dim` / `dp_cost` / `dp_scl` / `penalty`.
+  Default = the classic 35-move DP. The penalty weight stays `CurveShapeConfig::lambda`
+  (`warp_optim.lambda` must be 0).
+- `elastic_align_pair_closed_with_config` / `elastic_distance_closed_with_config` — 1-D closed
+  (periodic) alignment with a configurable optimiser (shift search and final alignment).
+- serde derives for `WarpOptimConfig`, `WarpOptimMethod`, `WarpObjectivePenalty`, `DpEdgeCost`
+  (`serde` feature).
+
+### Notes
+
+- Diagnosis: the DP restricts `γ'` to the slopes `{dr/dc : dr, dc ≤ nbhd_dim}`, so `d(β, β∘γ)` has
+  a grid-independent floor (SRVF ≈ 0.0186 for m = 81…321; `nbhd_dim = 10` + linear cost ≈ 0.011);
+  the resampling/quadrature floor with the exact warp is O(h) (0.0018 → 0.00046). RBFGS with
+  `align_iter ≥ 4` reaches that floor (0.0019 → 0.00051); with the default `align_iter = 2` the
+  unconverged rotation ↔ warp alternation leaves ≈ 0.002 (hidden below the DP floor).
+  Recommended: `warp_optim.method = Rbfgs` + `align_iter = 4`.
+
 **Exact DP pruning on by default (GH #66 ALN-CAV).** Behaviour-preserving and non-breaking: every
 result is bit-identical (FNV-hash tests recorded on the unpruned code); no signature change, no new
 crate dependency.

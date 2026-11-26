@@ -107,7 +107,8 @@ pub use bayesian_group::{
     BayesianSampler,
 };
 pub use closed::{
-    elastic_align_pair_closed, elastic_distance_closed, karcher_mean_closed, ClosedAlignmentResult,
+    elastic_align_pair_closed, elastic_align_pair_closed_with_config, elastic_distance_closed,
+    elastic_distance_closed_with_config, karcher_mean_closed, ClosedAlignmentResult,
     ClosedKarcherMeanResult,
 };
 pub use clustering::{
