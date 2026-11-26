@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T04:08:51.957Z"
+last_updated: "2026-11-26T04:27:12.095Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 76a75d07999daa7caf420477475415437d9a3f17
+state_head: 724c982208858896d1f962ccf345b2ed9b8888b1
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-6po: ALN-SPARSE (GH #53, closes) closed sparse elastic means (elasdics fit_mean_closed generalised to any d; polygon goldens 1e-9) and optimiser-independent smooth-mean goldens
+Last activity: 2026-11-26 - Completed quick task 261126-78p: ALN-ELDIST (GH #57, closes) aeon elastic-distance family DDTW/WDTW/WDDTW/ADTW/ERP/EDR/TWE/MSM/LCSS x 4 fns + DtwWindow aeon fraction windows (aeon 1.6.0 goldens 1e-10)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -192,6 +192,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-5ke | ALN-BAYESGRP infHMC sampler for Bayesian group alignment (#52) | 2026-11-26 | 735f5e3e | [261126-5ke-aln-bayesgrp-infhmc-sampler-for-bayesian](./quick/261126-5ke-aln-bayesgrp-infhmc-sampler-for-bayesian/) |
 | 261126-69q | ALN-SPARSE (GH #53) elastic alignment and means for sparse irregular curves (elasdics) | 2026-11-26 | 2a76a25b | [261126-69q-aln-sparse-gh-53-elastic-alignment-and-m](./quick/261126-69q-aln-sparse-gh-53-elastic-alignment-and-m/) |
 | 261126-6po | ALN-SPARSE (GH #53, closes) closed sparse elastic means (elasdics fit_mean_closed, any d) + platform-robust smooth-mean goldens | 2026-11-26 | 76a75d07 | [261126-6po-aln-sparse-53-closed-sparse-elastic-mean](./quick/261126-6po-aln-sparse-53-closed-sparse-elastic-mean/) |
+| 261126-78p | ALN-ELDIST #57 aeon elastic-distance family (DDTW WDTW WDDTW ADTW ERP EDR TWE MSM LCSS) | 2026-11-26 | 724c9822 | [261126-78p-aln-eldist-57-aeon-elastic-distance-fami](./quick/261126-78p-aln-eldist-57-aeon-elastic-distance-fami/) |
 
 ## Deferred Items
 
