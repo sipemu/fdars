@@ -1907,7 +1907,8 @@ fn test_transport_methods_differ() {
     let r_schilds =
         tsrvf_from_alignment_with_method(&karcher_res, &t, TransportMethod::SchildsLadder);
 
-    // Methods should produce different (but related) tangent vectors
+    // The ladder transports a geodesic-aligned vector, so it agrees with the
+    // log map up to round-off (see test_gh79_tsrvf_transport_methods_agree).
     let mut total_diff = 0.0;
     for i in 0..n {
         for j in 0..m {
@@ -1915,8 +1916,7 @@ fn test_transport_methods_differ() {
         }
     }
 
-    // They should be non-zero different (unless all curves are identical to mean)
-    // Just check both produce finite results
+    // Check both produce finite results
     assert!(total_diff.is_finite());
 }
 
@@ -2917,5 +2917,134 @@ fn test_karcher_mean_with_band_some_zero_matches_exact() {
             "mean mismatch with Some(0.0): {a} vs {b} (diff {})",
             (a - b).abs()
         );
+    }
+}
+
+// ── GH #79: ladder parallel transport vs closed-form sphere transport ──
+
+/// Unit-normalise `f` in the L2 metric on `time`.
+fn gh79_unit(f: &[f64], time: &[f64]) -> Vec<f64> {
+    let nrm = crate::warping::l2_norm_l2(f, time);
+    f.iter().map(|&x| x / nrm).collect()
+}
+
+/// Closed-form parallel transport of `w ∈ T_p S` along the great circle p → q on the
+/// unit Hilbert sphere: with θ = d(p, q), u = log_p(q)/θ,
+/// `PT(w) = w + ⟨w, u⟩ [(cos θ − 1) u − sin θ · p]`.
+fn gh79_exact_pt(w: &[f64], p: &[f64], q: &[f64], time: &[f64]) -> Vec<f64> {
+    let log_pq = crate::warping::inv_exp_map_sphere(p, q, time);
+    let theta = crate::warping::l2_norm_l2(&log_pq, time);
+    let u: Vec<f64> = log_pq.iter().map(|&x| x / theta).collect();
+    let wu = inner_product_l2(w, &u, time);
+    w.iter()
+        .zip(u.iter().zip(p.iter()))
+        .map(|(&wi, (&ui, &pi))| wi + wu * ((theta.cos() - 1.0) * ui - theta.sin() * pi))
+        .collect()
+}
+
+/// Two nearby points on the sphere and a tangent vector at the first one that is
+/// NOT along the connecting geodesic (generic transport case).
+fn gh79_setup(m: usize, eps: f64) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+    use std::f64::consts::PI;
+    let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    let from = gh79_unit(&vec![1.0; m], &time);
+    let raw_to: Vec<f64> = time
+        .iter()
+        .map(|&t| 1.0 + eps * (2.0 * PI * t).sin())
+        .collect();
+    let to = gh79_unit(&raw_to, &time);
+    let raw_v: Vec<f64> = time
+        .iter()
+        .map(|&t| eps * ((4.0 * PI * t).cos() + 0.5 * (2.0 * PI * t).sin()))
+        .collect();
+    // Project onto T_from.
+    let c = inner_product_l2(&raw_v, &from, &time);
+    let v: Vec<f64> = raw_v
+        .iter()
+        .zip(from.iter())
+        .map(|(&x, &f)| x - c * f)
+        .collect();
+    (time, from, to, v)
+}
+
+fn gh79_rel_err(a: &[f64], b: &[f64], time: &[f64]) -> f64 {
+    let d: Vec<f64> = a.iter().zip(b.iter()).map(|(&x, &y)| x - y).collect();
+    crate::warping::l2_norm_l2(&d, time) / crate::warping::l2_norm_l2(b, time)
+}
+
+#[test]
+fn test_gh79_pole_ladder_matches_exact_sphere_transport() {
+    // Pole ladder is exact on symmetric spaces (the geodesic symmetry at the
+    // midpoint is an isometry mapping `from` to `to`), so it must reproduce the
+    // closed-form transport up to round-off.
+    use super::tsrvf::parallel_transport_pole;
+    let (time, from, to, v) = gh79_setup(101, 0.3);
+    let exact = gh79_exact_pt(&v, &from, &to, &time);
+    let pole = parallel_transport_pole(&v, &from, &to, &time);
+    let err = gh79_rel_err(&pole, &exact, &time);
+    assert!(err < 1e-8, "pole ladder rel. error {err:e}");
+}
+
+#[test]
+fn test_gh79_schilds_ladder_converges_to_exact_sphere_transport() {
+    // One Schild's rung has error O(|v| · d · (|v| + d)) → relative error O(ε²)
+    // when |v| ~ d ~ ε: halving ε must cut the relative error by ≈ 4×.
+    use super::tsrvf::parallel_transport_schilds;
+    let errs: Vec<f64> = [0.2, 0.1, 0.05]
+        .iter()
+        .map(|&eps| {
+            let (time, from, to, v) = gh79_setup(101, eps);
+            let exact = gh79_exact_pt(&v, &from, &to, &time);
+            let sch = parallel_transport_schilds(&v, &from, &to, &time);
+            gh79_rel_err(&sch, &exact, &time)
+        })
+        .collect();
+    assert!(
+        errs[0] < 0.05,
+        "Schild's rel. error {:e} at eps=0.2",
+        errs[0]
+    );
+    for w in errs.windows(2) {
+        assert!(
+            w[1] < w[0] / 3.0,
+            "Schild's error should shrink quadratically, got {errs:?}"
+        );
+    }
+}
+
+#[test]
+fn test_gh79_tsrvf_transport_methods_agree() {
+    // The TSRVF ladders transport v = −log_{q_i}(μ), which lies on the geodesic
+    // q_i → μ; its exact transport is log_μ(q_i) = the LogMap tangent vector.
+    // (Before the fix: pole ladder ≡ 0, Schild's ladder ≡ 2 × LogMap.)
+    let m = 101;
+    let t = uniform_grid(m);
+    let n = 8;
+    let mut data = FdMatrix::zeros(n, m);
+    for i in 0..n {
+        let amp = 1.0 + 0.05 * (i as f64 - 3.5);
+        let shift = 0.5 + 0.01 * ((i * 7 % 5) as f64 - 2.0);
+        for j in 0..m {
+            data[(i, j)] = amp * (-((t[j] - shift) / 0.12).powi(2)).exp();
+        }
+    }
+    let karcher = karcher_mean(&data, &t, 10, 1e-3, 0.0);
+    let log = tsrvf_from_alignment_with_method(&karcher, &t, TransportMethod::LogMap);
+    let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    for method in [TransportMethod::SchildsLadder, TransportMethod::PoleLadder] {
+        let r = tsrvf_from_alignment_with_method(&karcher, &t, method);
+        for i in 0..n {
+            let a = r.tangent_vectors.row(i);
+            let b = log.tangent_vectors.row(i);
+            let nb = crate::warping::l2_norm_l2(&b, &time);
+            if nb < 1e-8 {
+                continue;
+            }
+            let err = gh79_rel_err(&a, &b, &time);
+            assert!(
+                err < 1e-6,
+                "{method:?} curve {i}: rel. deviation from LogMap {err:e}"
+            );
+        }
     }
 }

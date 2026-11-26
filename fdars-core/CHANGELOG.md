@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (these types now also derive serde under the `serde` feature).
 
 ### Fixed
+- `alignment::tsrvf_transform_with_method` / `tsrvf_from_alignment_with_method`:
+  the Schild's and pole ladder transports were mis-constructed — `PoleLadder`
+  returned exactly 0 and `SchildsLadder` exactly 2× the `LogMap` tangent vectors.
+  Both ladders now follow the standard one-rung constructions (Lorenzi & Pennec
+  2014); the pole ladder matches closed-form sphere parallel transport to
+  round-off, Schild's ladder converges at third order, and all three TSRVF
+  methods now agree (the transported vector lies on the geodesic). Ladder
+  `tangent_vectors` change accordingly (intentional; `LogMap` unchanged) (GH #79).
 - `landmark::landmark_register` / `detect_and_register` returned all-zero
   `gammas` (not a valid warp) without an error on inconsistent input (`n == 0`,
   `m == 0`, `argvals.len() != m`, `landmarks.len() != n`); they now return identity

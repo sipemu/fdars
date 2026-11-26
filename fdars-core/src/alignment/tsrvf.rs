@@ -78,7 +78,24 @@ fn smooth_aligned_srsfs(srsf: &FdMatrix, m: usize) -> FdMatrix {
 
 // ─── Parallel Transport ─────────────────────────────────────────────────────
 
-/// Schild's ladder parallel transport of vector `v` from `from` to `to` on the sphere.
+/// Geodesic midpoint of `a` and `b` on the sphere: `exp_a(½ log_a(b))`.
+fn sphere_midpoint(a: &[f64], b: &[f64], time: &[f64]) -> Vec<f64> {
+    let half: Vec<f64> = inv_exp_map_sphere(a, b, time)
+        .iter()
+        .map(|&x| 0.5 * x)
+        .collect();
+    exp_map_sphere(a, &half, time)
+}
+
+/// Schild's ladder parallel transport of vector `v ∈ T_from` from `from` to `to`
+/// on the unit Hilbert sphere (one rung; Lorenzi & Pennec 2014):
+///
+/// 1. `x0 = exp_from(v)`,
+/// 2. `p = midpoint(x0, to)`,
+/// 3. `x1 = exp_from(2 · log_from(p))` (geodesic `from → p` extended to twice its length),
+/// 4. transported vector `log_to(x1)`.
+///
+/// Third-order accurate in `(|v|, d(from, to))`; exact for `v` along the geodesic.
 pub(super) fn parallel_transport_schilds(
     v: &[f64],
     from: &[f64],
@@ -90,22 +107,26 @@ pub(super) fn parallel_transport_schilds(
         return vec![0.0; v.len()];
     }
 
-    // endpoint = exp_from(v)
-    let endpoint = exp_map_sphere(from, v, time);
-
-    // midpoint_v = log_to(endpoint) — vector at `to` pointing toward endpoint
-    let log_to_ep = inv_exp_map_sphere(to, &endpoint, time);
-
-    // midpoint = exp_to(0.5 * log_to_ep)
-    let half_log: Vec<f64> = log_to_ep.iter().map(|&x| 0.5 * x).collect();
-    let midpoint = exp_map_sphere(to, &half_log, time);
-
-    // transported = 2 * log_to(midpoint)
-    let log_to_mid = inv_exp_map_sphere(to, &midpoint, time);
-    log_to_mid.iter().map(|&x| 2.0 * x).collect()
+    let x0 = exp_map_sphere(from, v, time);
+    let p = sphere_midpoint(&x0, to, time);
+    let double_log: Vec<f64> = inv_exp_map_sphere(from, &p, time)
+        .iter()
+        .map(|&x| 2.0 * x)
+        .collect();
+    let x1 = exp_map_sphere(from, &double_log, time);
+    inv_exp_map_sphere(to, &x1, time)
 }
 
-/// Pole ladder parallel transport of vector `v` from `from` to `to` on the sphere.
+/// Pole ladder parallel transport of vector `v ∈ T_from` from `from` to `to` on
+/// the unit Hilbert sphere (one rung; Lorenzi & Pennec 2014):
+///
+/// 1. `m = midpoint(from, to)` (the pole),
+/// 2. `x0 = exp_from(v)`,
+/// 3. `x1 = exp_m(−log_m(x0))` (geodesic reflection of `x0` through the pole),
+/// 4. transported vector `−log_to(x1)`.
+///
+/// Exact on symmetric spaces such as the sphere: the reflection through `m` is an
+/// isometry mapping `from` to `to` whose differential is `−PT`.
 pub(super) fn parallel_transport_pole(
     v: &[f64],
     from: &[f64],
@@ -117,20 +138,17 @@ pub(super) fn parallel_transport_pole(
         return vec![0.0; v.len()];
     }
 
-    // pole = exp_from(-v)
-    let neg_v: Vec<f64> = v.iter().map(|&x| -x).collect();
-    let pole = exp_map_sphere(from, &neg_v, time);
-
-    // midpoint_v = log_to(pole)
-    let log_to_pole = inv_exp_map_sphere(to, &pole, time);
-
-    // midpoint = exp_to(0.5 * log_to_pole)
-    let half_log: Vec<f64> = log_to_pole.iter().map(|&x| 0.5 * x).collect();
-    let midpoint = exp_map_sphere(to, &half_log, time);
-
-    // transported = -2 * log_to(midpoint)
-    let log_to_mid = inv_exp_map_sphere(to, &midpoint, time);
-    log_to_mid.iter().map(|&x| -2.0 * x).collect()
+    let pole = sphere_midpoint(from, to, time);
+    let x0 = exp_map_sphere(from, v, time);
+    let neg_log: Vec<f64> = inv_exp_map_sphere(&pole, &x0, time)
+        .iter()
+        .map(|&x| -x)
+        .collect();
+    let x1 = exp_map_sphere(&pole, &neg_log, time);
+    inv_exp_map_sphere(to, &x1, time)
+        .iter()
+        .map(|&x| -x)
+        .collect()
 }
 
 // ─── TSRVF Public API ───────────────────────────────────────────────────────
@@ -322,6 +340,10 @@ pub fn tsrvf_transform_with_method(
 /// - [`TransportMethod::SchildsLadder`]: Computes `v = -log_qi(mu)`, then transports
 ///   via Schild's ladder from qi to mu.
 /// - [`TransportMethod::PoleLadder`]: Same but via pole ladder.
+///
+/// `v` lies on the geodesic `qi → mu`, so its exact parallel transport is
+/// `log_mu(qi)`: all three methods agree up to round-off (the ladders are exact
+/// for geodesic-aligned vectors on the sphere).
 pub fn tsrvf_from_alignment_with_method(
     karcher: &KarcherMeanResult,
     argvals: &[f64],
