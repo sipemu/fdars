@@ -120,7 +120,9 @@ pub use nd::{
 };
 pub use nd::{karcher_covariance_nd, karcher_mean_nd, pca_nd, KarcherMeanResultNd, PcaNdResult};
 pub use optim::{DpEdgeCost, WarpObjectivePenalty, WarpOptimConfig, WarpOptimMethod};
-pub use outlier::{elastic_outlier_detection, ElasticOutlierConfig, ElasticOutlierResult};
+pub use outlier::{
+    elastic_outlier_detection, ElasticOutlierConfig, ElasticOutlierResult, OutlierThreshold,
+};
 pub use pairwise::{
     amplitude_distance, amplitude_self_distance_matrix, elastic_align_pair,
     elastic_align_pair_banded, elastic_align_pair_penalized, elastic_align_pair_with_config,

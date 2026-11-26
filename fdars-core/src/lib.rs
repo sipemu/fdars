@@ -309,12 +309,12 @@ pub use alignment::{
     GenerativeModelResult, GeodesicPath, GeodesicPathNd, IterativeShiftConfig,
     IterativeShiftResult, KMedoidsConfig, KMedoidsResult, KarcherMeanResult, KarcherMeanResultNd,
     LambdaCvConfig, LambdaCvResult, LandmarkLocation, LandmarkShiftConfig, LandmarkShiftResult,
-    LinearWarpClass, Linkage, MultiresConfig, OrbitRepresentative, PartialMatchConfig,
-    PartialMatchResult, PcaNdResult, PersistenceDiagramResult, PhaseBoxplot, RobustKarcherConfig,
-    RobustKarcherResult, ShapeCiConfig, ShapeCiResult, ShapeDistanceResult, ShapeMeanResult,
-    ShapeQuotient, ShiftExtrapolation, ShiftRegistrationResult, ShiftTemplate, ShiftedCurves,
-    TransferAlignConfig, TransferAlignResult, TransportMethod, TsrvfResult, WarpObjectivePenalty,
-    WarpOptimConfig, WarpOptimMethod, WarpPenaltyType, WarpStatistics,
+    LinearWarpClass, Linkage, MultiresConfig, OrbitRepresentative, OutlierThreshold,
+    PartialMatchConfig, PartialMatchResult, PcaNdResult, PersistenceDiagramResult, PhaseBoxplot,
+    RobustKarcherConfig, RobustKarcherResult, ShapeCiConfig, ShapeCiResult, ShapeDistanceResult,
+    ShapeMeanResult, ShapeQuotient, ShiftExtrapolation, ShiftRegistrationResult, ShiftTemplate,
+    ShiftedCurves, TransferAlignConfig, TransferAlignResult, TransportMethod, TsrvfResult,
+    WarpObjectivePenalty, WarpOptimConfig, WarpOptimMethod, WarpPenaltyType, WarpStatistics,
 };
 
 // Re-export commonly used items

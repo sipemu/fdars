@@ -1,13 +1,55 @@
 //! SRVF-based outlier detection using elastic distances.
 //!
 //! Detects outlier curves by computing elastic distances from a reference
-//! (Karcher mean or median) and applying the Tukey fence rule.
+//! (Karcher mean or median) and applying a threshold rule: the Tukey fence
+//! (default) or an empirical `(1 − alpha)` quantile (see [`OutlierThreshold`]).
 
 use super::karcher::karcher_mean;
 use super::pairwise::{amplitude_distance, elastic_distance, phase_distance_pair};
 use super::robust_karcher::{karcher_median, RobustKarcherConfig};
 use crate::error::FdarError;
+use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
+
+/// Rule turning the per-curve elastic distances into an outlier cutoff.
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{ElasticOutlierConfig, OutlierThreshold};
+///
+/// let mut cfg = ElasticOutlierConfig::default();
+/// assert_eq!(cfg.threshold_method, OutlierThreshold::TukeyFence { k: 1.5 });
+/// // Flag curves beyond the empirical 90% quantile of the distances.
+/// cfg.threshold_method = OutlierThreshold::Quantile;
+/// cfg.alpha = 0.10;
+/// ```
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OutlierThreshold {
+    /// Tukey fence `Q3 + k · IQR` on the distances (quartiles by linear
+    /// interpolation). `k = 1.5` is the default and reproduces the fixed fence
+    /// used before this option existed (fdasrvf `outlier.detection(k = 1.5)`
+    /// uses the same boxplot rule). With fewer than 4 curves the cutoff is
+    /// `max(distance) + 1`, i.e. nothing is flagged. Ignores `alpha`.
+    TukeyFence {
+        /// Fence multiplier (finite, `>= 0`).
+        k: f64,
+    },
+    /// Empirical `(1 − alpha)` quantile of the distances (linear
+    /// interpolation between order statistics), using
+    /// [`ElasticOutlierConfig::alpha`] (`0 < alpha < 1`). Curves strictly
+    /// above it are flagged, so roughly a fraction `alpha` of the sample is
+    /// flagged whatever its shape: this is a screening rule, not a test.
+    Quantile,
+}
+
+impl Default for OutlierThreshold {
+    fn default() -> Self {
+        Self::TukeyFence { k: 1.5 }
+    }
+}
 
 /// Configuration for elastic outlier detection.
 ///
@@ -17,12 +59,16 @@ use crate::matrix::FdMatrix;
 pub struct ElasticOutlierConfig {
     /// Roughness penalty for elastic alignment (0.0 = no penalty).
     pub lambda: f64,
-    /// Significance level (controls threshold sensitivity; currently used
-    /// to document intent — the actual threshold uses the Tukey fence).
+    /// Tail fraction used by [`OutlierThreshold::Quantile`] (default 0.05):
+    /// the cutoff is the empirical `(1 − alpha)` quantile of the distances.
+    /// It has **no effect** with the default [`OutlierThreshold::TukeyFence`].
     pub alpha: f64,
     /// If `true`, use the Karcher median as reference (more robust).
     /// If `false`, use the Karcher mean.
     pub use_median: bool,
+    /// Threshold rule (default: Tukey fence with `k = 1.5`, identical to
+    /// the behaviour before this field existed).
+    pub threshold_method: OutlierThreshold,
 }
 
 impl Default for ElasticOutlierConfig {
@@ -31,6 +77,7 @@ impl Default for ElasticOutlierConfig {
             lambda: 0.0,
             alpha: 0.05,
             use_median: true,
+            threshold_method: OutlierThreshold::default(),
         }
     }
 }
@@ -43,7 +90,8 @@ pub struct ElasticOutlierResult {
     pub outlier_indices: Vec<usize>,
     /// Total elastic distance from each curve to the reference (length n).
     pub distances: Vec<f64>,
-    /// Cutoff distance (Tukey fence: Q3 + 1.5 * IQR).
+    /// Cutoff distance (Tukey fence `Q3 + k·IQR`, or the `(1 − alpha)`
+    /// quantile, per [`ElasticOutlierConfig::threshold_method`]).
     pub threshold: f64,
     /// Amplitude component of elastic distance for each curve (length n).
     pub amplitude_distances: Vec<f64>,
@@ -51,11 +99,14 @@ pub struct ElasticOutlierResult {
     pub phase_distances: Vec<f64>,
 }
 
-/// Detect outlier curves using elastic distances and the Tukey fence.
+/// Detect outlier curves using elastic distances and a threshold rule.
 ///
 /// Computes a reference curve (Karcher mean or median), then measures the
-/// elastic distance from each curve to the reference. Curves exceeding the
-/// Tukey fence threshold (Q3 + 1.5 * IQR) are flagged as outliers.
+/// elastic distance from each curve to the reference. Curves whose distance
+/// exceeds the cutoff are flagged. The cutoff is the Tukey fence
+/// `Q3 + 1.5·IQR` by default, or an empirical `(1 − alpha)` quantile with
+/// [`OutlierThreshold::Quantile`]. The per-curve distances are computed in
+/// parallel (results are identical to a sequential run).
 ///
 /// # Arguments
 /// * `data`    — Functional data matrix (n x m).
@@ -64,7 +115,29 @@ pub struct ElasticOutlierResult {
 ///
 /// # Errors
 /// Returns [`FdarError::InvalidDimension`] if `argvals` length does not match `m`
-/// or `n < 2`.
+/// or `n < 2`, and [`FdarError::InvalidParameter`] if the Tukey `k` is negative
+/// or non-finite, or if `alpha` is not in `(0, 1)` with
+/// [`OutlierThreshold::Quantile`].
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{elastic_outlier_detection, ElasticOutlierConfig};
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let (n, m) = (8, 30);
+/// let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+/// let mut data = FdMatrix::zeros(n, m);
+/// for i in 0..n {
+///     for j in 0..m {
+///         data[(i, j)] = ((t[j] + 0.02 * i as f64) * 4.0).sin();
+///     }
+/// }
+/// for j in 0..m {
+///     data[(7, j)] = 10.0 * (20.0 * t[j]).cos(); // gross outlier
+/// }
+/// let res = elastic_outlier_detection(&data, &t, &ElasticOutlierConfig::default()).unwrap();
+/// assert!(res.outlier_indices.contains(&7));
+/// ```
 #[must_use = "expensive computation whose result should not be discarded"]
 pub fn elastic_outlier_detection(
     data: &FdMatrix,
@@ -88,6 +161,8 @@ pub fn elastic_outlier_detection(
         });
     }
 
+    validate_threshold(config)?;
+
     // Step 1: Compute reference curve.
     let reference = if config.use_median {
         let median_config = RobustKarcherConfig {
@@ -104,7 +179,7 @@ pub fn elastic_outlier_detection(
     };
 
     // Step 2: Compute elastic distances from reference.
-    let distances: Vec<f64> = (0..n)
+    let distances: Vec<f64> = iter_maybe_parallel!(0..n)
         .map(|i| {
             let fi = data.row(i);
             elastic_distance(&reference, &fi, argvals, config.lambda)
@@ -112,22 +187,25 @@ pub fn elastic_outlier_detection(
         .collect();
 
     // Step 3: Compute amplitude and phase distances.
-    let amplitude_distances: Vec<f64> = (0..n)
+    let amplitude_distances: Vec<f64> = iter_maybe_parallel!(0..n)
         .map(|i| {
             let fi = data.row(i);
             amplitude_distance(&reference, &fi, argvals, config.lambda)
         })
         .collect();
 
-    let phase_distances: Vec<f64> = (0..n)
+    let phase_distances: Vec<f64> = iter_maybe_parallel!(0..n)
         .map(|i| {
             let fi = data.row(i);
             phase_distance_pair(&reference, &fi, argvals, config.lambda)
         })
         .collect();
 
-    // Step 4: Tukey fence on total distances.
-    let threshold = tukey_fence(&distances);
+    // Step 4: Threshold on total distances.
+    let threshold = match config.threshold_method {
+        OutlierThreshold::TukeyFence { k } => tukey_fence(&distances, k),
+        OutlierThreshold::Quantile => quantile_threshold(&distances, config.alpha),
+    };
 
     // Step 5: Identify outliers.
     let outlier_indices: Vec<usize> = (0..n).filter(|&i| distances[i] > threshold).collect();
@@ -141,8 +219,37 @@ pub fn elastic_outlier_detection(
     })
 }
 
-/// Compute the Tukey fence threshold: Q3 + 1.5 * IQR.
-fn tukey_fence(values: &[f64]) -> f64 {
+/// Validate the threshold-rule parameters.
+fn validate_threshold(config: &ElasticOutlierConfig) -> Result<(), FdarError> {
+    match config.threshold_method {
+        OutlierThreshold::TukeyFence { k } if !(k.is_finite() && k >= 0.0) => {
+            Err(FdarError::InvalidParameter {
+                parameter: "threshold_method",
+                message: format!("Tukey fence k must be finite and >= 0, got {k}"),
+            })
+        }
+        OutlierThreshold::Quantile if !(config.alpha > 0.0 && config.alpha < 1.0) => {
+            Err(FdarError::InvalidParameter {
+                parameter: "alpha",
+                message: format!(
+                    "alpha must be in (0, 1) for the quantile threshold, got {}",
+                    config.alpha
+                ),
+            })
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Empirical `(1 − alpha)` quantile of `values` (linear interpolation).
+fn quantile_threshold(values: &[f64], alpha: f64) -> f64 {
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    percentile_sorted(&sorted, 100.0 * (1.0 - alpha))
+}
+
+/// Compute the Tukey fence threshold: `Q3 + k · IQR`.
+fn tukey_fence(values: &[f64], k: f64) -> f64 {
     let n = values.len();
     if n < 4 {
         // With very few values, use max + epsilon as a permissive threshold.
@@ -156,7 +263,7 @@ fn tukey_fence(values: &[f64]) -> f64 {
     let q3 = percentile_sorted(&sorted, 75.0);
     let iqr = q3 - q1;
 
-    q3 + 1.5 * iqr
+    q3 + k * iqr
 }
 
 /// Compute a percentile from a sorted slice using linear interpolation.
@@ -183,6 +290,7 @@ fn percentile_sorted(sorted: &[f64], pct: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::field_reassign_with_default)]
     use super::*;
     use crate::test_helpers::uniform_grid;
 
@@ -263,5 +371,103 @@ mod tests {
         assert!((cfg.lambda - 0.0).abs() < f64::EPSILON);
         assert!((cfg.alpha - 0.05).abs() < f64::EPSILON);
         assert!(cfg.use_median);
+        assert_eq!(
+            cfg.threshold_method,
+            OutlierThreshold::TukeyFence { k: 1.5 }
+        );
+    }
+
+    #[test]
+    fn tukey_fence_hand_computed() {
+        // Sorted 1..=8: Q1 at rank 1.75 -> 2.75, Q3 at rank 5.25 -> 6.25, IQR 3.5.
+        let v: Vec<f64> = (1..=8).rev().map(f64::from).collect();
+        assert!((tukey_fence(&v, 1.5) - 11.5).abs() < 1e-12);
+        assert!((tukey_fence(&v, 0.0) - 6.25).abs() < 1e-12);
+        assert!((tukey_fence(&v, 3.0) - 16.75).abs() < 1e-12);
+    }
+
+    #[test]
+    fn quantile_threshold_hand_computed() {
+        // Sorted 1..=10, alpha = 0.1: rank 0.9 * 9 = 8.1 -> 9 + 0.1 * (10 - 9).
+        let v: Vec<f64> = (1..=10).rev().map(f64::from).collect();
+        assert!((quantile_threshold(&v, 0.1) - 9.1).abs() < 1e-12);
+        // alpha = 0.5 is the median of 1..=10.
+        assert!((quantile_threshold(&v, 0.5) - 5.5).abs() < 1e-12);
+    }
+
+    fn data_with_outlier() -> (FdMatrix, Vec<f64>) {
+        let (n, m) = (9, 20);
+        let t = uniform_grid(m);
+        let mut d = FdMatrix::zeros(n, m);
+        for i in 0..n - 1 {
+            for j in 0..m {
+                d[(i, j)] = ((t[j] + 0.02 * i as f64) * 4.0).sin() * (1.0 + 0.03 * i as f64);
+            }
+        }
+        for j in 0..m {
+            d[(n - 1, j)] = (t[j] * 20.0).cos() * 10.0;
+        }
+        (d, t)
+    }
+
+    #[test]
+    fn quantile_threshold_option_end_to_end() {
+        let (d, t) = data_with_outlier();
+        let mut cfg = ElasticOutlierConfig::default();
+        cfg.threshold_method = OutlierThreshold::Quantile;
+        cfg.alpha = 0.12;
+        let r = elastic_outlier_detection(&d, &t, &cfg).unwrap();
+
+        // The cutoff is the empirical 88% quantile of the returned distances.
+        let mut s = r.distances.clone();
+        s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let rank = 0.88 * 8.0; // 7.04: between the 8th and 9th order statistics
+        let expect = s[7] + (rank - 7.0) * (s[8] - s[7]);
+        assert!((r.threshold - expect).abs() <= 1e-12 * expect.abs().max(1.0));
+        // Only the largest distance exceeds it: the gross outlier.
+        assert_eq!(r.outlier_indices, vec![8]);
+
+        // Distances do not depend on the threshold rule.
+        let r0 = elastic_outlier_detection(&d, &t, &ElasticOutlierConfig::default()).unwrap();
+        assert_eq!(r0.distances, r.distances);
+        assert_eq!(r0.amplitude_distances, r.amplitude_distances);
+    }
+
+    #[test]
+    fn tukey_k_and_alpha_independence() {
+        let (d, t) = data_with_outlier();
+        let base = elastic_outlier_detection(&d, &t, &ElasticOutlierConfig::default()).unwrap();
+        // alpha has no effect on the default Tukey rule.
+        let mut cfg = ElasticOutlierConfig::default();
+        cfg.alpha = 0.3;
+        assert_eq!(elastic_outlier_detection(&d, &t, &cfg).unwrap(), base);
+        // An explicit k = 1.5 is the default; k = 0 gives the plain Q3 cutoff.
+        cfg.threshold_method = OutlierThreshold::TukeyFence { k: 0.0 };
+        let r = elastic_outlier_detection(&d, &t, &cfg).unwrap();
+        let mut s = base.distances.clone();
+        s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let q3 = percentile_sorted(&s, 75.0);
+        assert_eq!(r.threshold.to_bits(), q3.to_bits());
+        assert!(r.threshold <= base.threshold);
+        assert!(r.outlier_indices.len() >= base.outlier_indices.len());
+    }
+
+    #[test]
+    fn threshold_parameter_validation() {
+        let (d, t) = data_with_outlier();
+        let mut cfg = ElasticOutlierConfig::default();
+        cfg.threshold_method = OutlierThreshold::TukeyFence { k: -1.0 };
+        assert!(matches!(
+            elastic_outlier_detection(&d, &t, &cfg),
+            Err(FdarError::InvalidParameter { .. })
+        ));
+        cfg.threshold_method = OutlierThreshold::Quantile;
+        for a in [0.0, 1.0, f64::NAN] {
+            cfg.alpha = a;
+            assert!(matches!(
+                elastic_outlier_detection(&d, &t, &cfg),
+                Err(FdarError::InvalidParameter { .. })
+            ));
+        }
     }
 }
