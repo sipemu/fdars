@@ -22,7 +22,9 @@
 //!   least-squares and minimum-eigenvalue criteria) with monotone B-spline warps
 //! - [`curve_shape_align_pair`] / [`curve_shape_distance`] / [`curve_shape_karcher_mean`] /
 //!   [`curve_shape_pca`] — elastic shape analysis of R^d curves (open or closed) modulo
-//!   rotation, scale, reparametrisation and starting point ([`CurveShapeConfig`])
+//!   rotation, scale, reparametrisation and starting point ([`CurveShapeConfig`]), with
+//!   TSRVF, depth, outliers, box plot and bootstrap CI downstream ([`curve_shape_depth`],
+//!   [`curve_shape_boxplot`], …)
 
 mod affine;
 mod bayesian;
@@ -95,11 +97,15 @@ pub use continuous::{
     ContinuousRegistrationResult,
 };
 pub use curve_shape::{
-    closure_residual, curve_from_set, curve_shape_align_pair, curve_shape_distance,
-    curve_shape_karcher_covariance, curve_shape_karcher_mean, curve_shape_pca,
-    curve_shape_self_distance_matrix, curve_srvf, curves_to_set, optimal_rotation,
-    project_closed_srvf, srvf_to_curve, CurveShapeAlignment, CurveShapeConfig,
-    CurveShapeKarcherResult, CurveShapePcaResult,
+    closure_residual, curve_from_set, curve_shape_align_pair, curve_shape_boxplot,
+    curve_shape_boxplot_from_aligned, curve_shape_confidence_interval, curve_shape_depth,
+    curve_shape_distance, curve_shape_karcher_covariance, curve_shape_karcher_mean,
+    curve_shape_karcher_median, curve_shape_outlier_detection, curve_shape_pca,
+    curve_shape_self_distance_matrix, curve_shape_tangent_to_curve, curve_shape_tsrvf, curve_srvf,
+    curves_to_set, optimal_rotation, project_closed_srvf, srvf_to_curve, CurveShapeAlignment,
+    CurveShapeBoxplot, CurveShapeBoxplotConfig, CurveShapeCentre, CurveShapeCiConfig,
+    CurveShapeCiResult, CurveShapeConfig, CurveShapeDepthResult, CurveShapeKarcherResult,
+    CurveShapeOutlierConfig, CurveShapeOutlierResult, CurveShapePcaResult, CurveShapeTsrvfResult,
 };
 pub use diagnostics::{
     diagnose_alignment, diagnose_pairwise, AlignmentDiagnostic, AlignmentDiagnosticSummary,

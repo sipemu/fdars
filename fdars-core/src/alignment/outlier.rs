@@ -242,14 +242,14 @@ fn validate_threshold(config: &ElasticOutlierConfig) -> Result<(), FdarError> {
 }
 
 /// Empirical `(1 − alpha)` quantile of `values` (linear interpolation).
-fn quantile_threshold(values: &[f64], alpha: f64) -> f64 {
+pub(super) fn quantile_threshold(values: &[f64], alpha: f64) -> f64 {
     let mut sorted = values.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     percentile_sorted(&sorted, 100.0 * (1.0 - alpha))
 }
 
 /// Compute the Tukey fence threshold: `Q3 + k · IQR`.
-fn tukey_fence(values: &[f64], k: f64) -> f64 {
+pub(super) fn tukey_fence(values: &[f64], k: f64) -> f64 {
     let n = values.len();
     if n < 4 {
         // With very few values, use max + epsilon as a permissive threshold.

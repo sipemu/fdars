@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**R^d curve downstream analyses (GH #54 ALN-NDDOWN).** Additive and non-breaking: the
+`curve_shape` Karcher mean code path is unchanged (same alignment sweep, update and stopping
+rule); no new crate dependency.
+
+### Added
+
+- `alignment::curve_shape_karcher_median` — Karcher (geometric) median of R^d curve shapes
+  (fdasrvf `multivariate_karcher_mean(ms = "median")`: Weiszfeld tangent step, medoid start).
+- `alignment::curve_shape_tsrvf(mean, curves)` → `CurveShapeTsrvfResult` — TSRVF /
+  tangent-space coordinates of training or new curves at the Karcher mean (sphere log map,
+  closure-normal projection for closed contours; reproduces `shooting_vectors` exactly), and
+  `curve_shape_tangent_to_curve(mean, v)` for the inverse map.
+- `alignment::curve_shape_depth(curves, cfg)` → `CurveShapeDepthResult` — amplitude / phase
+  elastic depth of curves (fdasrvf `curve_depth`); agrees with fdasrvf 2.5.0 to 2.1e-3
+  (amplitude) with identical depth rankings.
+- `alignment::curve_shape_outlier_detection(curves, &CurveShapeOutlierConfig)` →
+  `CurveShapeOutlierResult` — shape-distance outliers around the Karcher median / mean
+  (`CurveShapeCentre`), reusing the `OutlierThreshold` Tukey / quantile rules.
+- `alignment::curve_shape_boxplot(median, cfg)` / `curve_shape_boxplot_from_aligned` →
+  `CurveShapeBoxplot` (`CurveShapeBoxplotConfig { alpha = 0.05, k_a = 1.0 }`) — port of fdasrvf
+  `curve_boxplot` (median, quartile and `(1 − alpha)` curves, whiskers, outliers, extremes);
+  golden-matched to fdasrvf 2.5.0 `curvebox_data` (distances to 1e-12, all indices).
+- `alignment::curve_shape_confidence_interval(curves, shape, &CurveShapeCiConfig)` →
+  `CurveShapeCiResult` — bootstrap confidence region of the Karcher mean shape (geodesic
+  radius + pointwise bands of the aligned bootstrap means).
+
 **Elastic box plots and DP-means (GH #55 ALN-BOX).** Additive and non-breaking: existing
 functions return identical values (`PhaseBoxplot` gains two fields); no new crate dependency.
 

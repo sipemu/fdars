@@ -72,7 +72,12 @@ pub struct CurveShapePcaResult {
 
 /// Log map at `mu` (sphere if scale removed, flat otherwise), projected onto the
 /// tangent space of the closed-curve manifold when `closed`.
-fn log_map(mu: &FdMatrix, q: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
+pub(super) fn log_map(
+    mu: &FdMatrix,
+    q: &FdMatrix,
+    cfg: &CurveShapeConfig,
+    grid: &Grid,
+) -> FdMatrix {
     let v = if cfg.scale {
         let theta = srvf_distance(mu, q, cfg, grid);
         let c = theta.cos();
@@ -95,7 +100,12 @@ fn log_map(mu: &FdMatrix, q: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> 
 
 /// Exp map at `mu` (sphere or flat), projected back onto the closed manifold
 /// when `closed`.
-fn exp_map(mu: &FdMatrix, v: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
+pub(super) fn exp_map(
+    mu: &FdMatrix,
+    v: &FdMatrix,
+    cfg: &CurveShapeConfig,
+    grid: &Grid,
+) -> FdMatrix {
     let q = if cfg.scale {
         let nv = geometry::norm(v, grid);
         if nv < 1e-300 {
@@ -127,23 +137,111 @@ struct Sweep {
     vbar: FdMatrix,
 }
 
-fn sweep(mu: &FdMatrix, prepared: &[Prepared], cfg: &CurveShapeConfig, grid: &Grid) -> Sweep {
+fn sweep(
+    mu: &FdMatrix,
+    prepared: &[Prepared],
+    cfg: &CurveShapeConfig,
+    grid: &Grid,
+    median: bool,
+) -> Sweep {
     let n = prepared.len();
-    let cands: Vec<Candidate> = iter_maybe_parallel!(0..n)
-        .map(|i| align_to_srvf(mu, &prepared[i].beta, cfg, grid))
-        .collect();
+    let cands = align_all(mu, prepared, cfg, grid);
     let shoots: Vec<FdMatrix> = cands.iter().map(|c| log_map(mu, &c.q, cfg, grid)).collect();
-    let energy = cands.iter().map(|c| c.distance * c.distance).sum();
-    let mut vbar = FdMatrix::zeros(mu.nrows(), mu.ncols());
-    for v in &shoots {
-        vbar = geometry::axpby(1.0, &vbar, 1.0 / n as f64, v);
-    }
+    let (energy, vbar) = if median {
+        weiszfeld_direction(&cands, &shoots, grid)
+    } else {
+        let energy = cands.iter().map(|c| c.distance * c.distance).sum();
+        let mut vbar = FdMatrix::zeros(mu.nrows(), mu.ncols());
+        for v in &shoots {
+            vbar = geometry::axpby(1.0, &vbar, 1.0 / n as f64, v);
+        }
+        (energy, vbar)
+    };
     Sweep {
         cands,
         shoots,
         energy,
         vbar,
     }
+}
+
+/// Align every prepared curve to the SRVF `mu` (in parallel).
+pub(super) fn align_all(
+    mu: &FdMatrix,
+    prepared: &[Prepared],
+    cfg: &CurveShapeConfig,
+    grid: &Grid,
+) -> Vec<Candidate> {
+    iter_maybe_parallel!(0..prepared.len())
+        .map(|i| align_to_srvf(mu, &prepared[i].beta, cfg, grid))
+        .collect()
+}
+
+/// Karcher-median energy `Σ dᵢ` and Weiszfeld direction
+/// `v̄ = Σ vᵢ/‖vᵢ‖ / Σ_{‖vᵢ‖>0} 1/‖vᵢ‖` (fdasrvf `pointwise_karcher_mean(ms =
+/// "median")`; curves at distance 0 are skipped).
+fn weiszfeld_direction(cands: &[Candidate], shoots: &[FdMatrix], grid: &Grid) -> (f64, FdMatrix) {
+    let energy = cands.iter().map(|c| c.distance).sum();
+    let (d, m) = shoots[0].shape();
+    let mut sum = FdMatrix::zeros(d, m);
+    let mut inv_sum = 0.0;
+    for v in shoots {
+        let nv = geometry::norm(v, grid);
+        if nv > 0.0 {
+            sum = geometry::axpby(1.0, &sum, 1.0 / nv, v);
+            inv_sum += 1.0 / nv;
+        }
+    }
+    let vbar = if inv_sum > 0.0 {
+        geometry::scaled(&sum, 1.0 / inv_sum)
+    } else {
+        sum
+    };
+    (energy, vbar)
+}
+
+/// Bring an arbitrary SRVF onto the configured manifold (unit norm if `scale`,
+/// closure-projected if `closed`).
+fn to_manifold(q: FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
+    let q = if cfg.scale {
+        let nq = geometry::norm(&q, grid);
+        if nq > 1e-300 {
+            geometry::scaled(&q, 1.0 / nq)
+        } else {
+            q
+        }
+    } else {
+        q
+    };
+    if cfg.closed {
+        geometry::project_closed(&q, grid).0
+    } else {
+        q
+    }
+}
+
+/// Medoid initialisation of the Karcher median (fdasrvf): align every curve to
+/// the first one, average the aligned SRVFs and start at the curve closest to
+/// that average.
+fn median_init(prepared: &[Prepared], cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
+    let cands = align_all(&prepared[0].q, prepared, cfg, grid);
+    let n = cands.len() as f64;
+    let (d, m) = prepared[0].q.shape();
+    let mut avg = FdMatrix::zeros(d, m);
+    for c in &cands {
+        avg = geometry::axpby(1.0, &avg, 1.0 / n, &c.q);
+    }
+    let avg = to_manifold(avg, cfg, grid);
+    let mut best = 0;
+    let mut best_d = f64::INFINITY;
+    for (i, c) in cands.iter().enumerate() {
+        let di = srvf_distance(&avg, &c.q, cfg, grid);
+        if di < best_d {
+            best_d = di;
+            best = i;
+        }
+    }
+    prepared[best].q.clone()
 }
 
 /// Validate the inputs of [`curve_shape_karcher_mean`] and extract the curves.
@@ -191,17 +289,27 @@ fn karcher_iterate(
     grid: &Grid,
     max_iter: usize,
     tol: f64,
+    median: bool,
 ) -> (FdMatrix, Sweep, Vec<f64>, usize, bool) {
-    let step = if cfg.scale { SPHERE_STEP } else { 1.0 };
-    let mut mu = prepared[0].q.clone();
-    let mut cur = sweep(&mu, prepared, cfg, grid);
+    // The median always takes the damped Weiszfeld step of fdasrvf (0.5).
+    let step = if cfg.scale || median {
+        SPHERE_STEP
+    } else {
+        1.0
+    };
+    let mut mu = if median {
+        median_init(prepared, cfg, grid)
+    } else {
+        prepared[0].q.clone()
+    };
+    let mut cur = sweep(&mu, prepared, cfg, grid, median);
     let mut energy = vec![cur.energy];
     let mut n_iter = 0;
     let mut converged = geometry::norm(&cur.vbar, grid) < tol;
     while !converged && n_iter < max_iter {
         n_iter += 1;
         let mu_new = exp_map(&mu, &geometry::scaled(&cur.vbar, step), cfg, grid);
-        let next = sweep(&mu_new, prepared, cfg, grid);
+        let next = sweep(&mu_new, prepared, cfg, grid, median);
         if next.energy > cur.energy {
             // Energy increased (step overshoot or DP discretisation floor): keep
             // the previous mean, as fdasrsf does by stopping.
@@ -262,6 +370,63 @@ pub fn curve_shape_karcher_mean(
     max_iter: usize,
     tol: f64,
 ) -> Result<CurveShapeKarcherResult, FdarError> {
+    karcher_impl(curves, config, max_iter, tol, false)
+}
+
+/// Karcher (geometric) **median** of a set of curves in elastic shape space —
+/// the minimiser of `Σ d(μ, [βᵢ])` instead of `Σ d²` (fdasrvf
+/// `multivariate_karcher_mean(ms = "median")`, the centre used by
+/// `curve_boxplot` and `shape_CI`).
+///
+/// Same alignment sweeps as [`curve_shape_karcher_mean`], but the update uses
+/// the Weiszfeld direction `v̄ = Σ vᵢ/‖vᵢ‖ / Σ 1/‖vᵢ‖` of the shooting vectors
+/// with fdasrvf's damped step 0.5, and the iteration starts at the medoid (the
+/// curve closest to the average of the SRVFs aligned to the first curve). The
+/// returned `energy` history is `Σ dᵢ` (not squared); `converged` refers to
+/// `‖v̄‖ < tol`. Robust to outlying curves, unlike the mean.
+///
+/// # Errors
+/// As [`curve_shape_karcher_mean`].
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{curve_shape_karcher_median, curves_to_set, CurveShapeConfig};
+/// use fdars_core::matrix::FdMatrix;
+/// let m = 30;
+/// let curves: Vec<FdMatrix> = (0..5)
+///     .map(|i| {
+///         let a = 0.2 + 0.05 * i as f64;
+///         let mut b = FdMatrix::zeros(2, m);
+///         for j in 0..m {
+///             let t = j as f64 / (m - 1) as f64;
+///             b[(0, j)] = t;
+///             b[(1, j)] = a * (std::f64::consts::PI * t).sin();
+///         }
+///         b
+///     })
+///     .collect();
+/// let set = curves_to_set(&curves).unwrap();
+/// let med = curve_shape_karcher_median(&set, &CurveShapeConfig::default(), 10, 1e-3).unwrap();
+/// assert_eq!(med.mean.shape(), (2, m)); // the median shape (field name shared with the mean)
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn curve_shape_karcher_median(
+    curves: &FdCurveSet,
+    config: &CurveShapeConfig,
+    max_iter: usize,
+    tol: f64,
+) -> Result<CurveShapeKarcherResult, FdarError> {
+    karcher_impl(curves, config, max_iter, tol, true)
+}
+
+/// Shared body of the Karcher mean (`median = false`) and median.
+fn karcher_impl(
+    curves: &FdCurveSet,
+    config: &CurveShapeConfig,
+    max_iter: usize,
+    tol: f64,
+    median: bool,
+) -> Result<CurveShapeKarcherResult, FdarError> {
     let list = karcher_inputs(curves, config, tol)?;
     let (n, d, m) = (curves.ncurves(), curves.ndim(), curves.npoints());
     let grid = Grid::new(m);
@@ -270,7 +435,7 @@ pub fn curve_shape_karcher_mean(
         .map(|c| prepare(c, config, &grid))
         .collect::<Result<_, _>>()?;
     let (mu, fin, energy, n_iter, converged) =
-        karcher_iterate(&prepared, config, &grid, max_iter, tol);
+        karcher_iterate(&prepared, config, &grid, max_iter, tol, median);
 
     let mut aligned = Vec::with_capacity(n);
     let mut aligned_q = Vec::with_capacity(n);

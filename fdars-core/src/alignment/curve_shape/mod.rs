@@ -26,7 +26,16 @@
 //! [`curve_shape_karcher_covariance`], [`curve_shape_pca`]) work in the tangent
 //! space at the Karcher mean (sphere log/exp maps when scale is removed, flat
 //! maps otherwise; closure-normal projection for closed contours), following
-//! fdasrsf `fdacurve.karcher_mean` / `karcher_cov` / `shape_pca`.
+//! fdasrsf `fdacurve.karcher_mean` / `karcher_cov` / `shape_pca`; the Karcher
+//! median ([`curve_shape_karcher_median`]) uses the Weiszfeld step of fdasrvf
+//! `multivariate_karcher_mean(ms = "median")`.
+//!
+//! Downstream analyses: tangent-space (TSRVF) coordinates at the mean
+//! ([`curve_shape_tsrvf`], [`curve_shape_tangent_to_curve`]), amplitude / phase
+//! depth ([`curve_shape_depth`], fdasrvf `curve_depth`), shape outlier detection
+//! ([`curve_shape_outlier_detection`]), the shape box plot
+//! ([`curve_shape_boxplot`], fdasrvf `curve_boxplot`) and a bootstrap confidence
+//! region of the mean shape ([`curve_shape_confidence_interval`]).
 //!
 //! **Data layout.** A single curve is an `FdMatrix` of shape `d × m` (row =
 //! coordinate, column = sample) on the implicit uniform grid `t_j = j/(m−1)` of
@@ -38,14 +47,27 @@
 //! Reference: Srivastava & Klassen, *Functional and Shape Data Analysis*
 //! (Springer 2016), ch. 5–6; fdasrsf 2.7.5 `curve_functions` / `curve_stats`.
 
+mod boxplot;
+mod downstream;
+#[cfg(test)]
+mod downstream_tests;
 mod geometry;
 mod karcher;
 #[cfg(test)]
 mod tests;
 
+pub use boxplot::{
+    curve_shape_boxplot, curve_shape_boxplot_from_aligned, curve_shape_confidence_interval,
+    CurveShapeBoxplot, CurveShapeBoxplotConfig, CurveShapeCiConfig, CurveShapeCiResult,
+};
+pub use downstream::{
+    curve_shape_depth, curve_shape_outlier_detection, curve_shape_tangent_to_curve,
+    curve_shape_tsrvf, CurveShapeCentre, CurveShapeDepthResult, CurveShapeOutlierConfig,
+    CurveShapeOutlierResult, CurveShapeTsrvfResult,
+};
 pub use karcher::{
-    curve_shape_karcher_covariance, curve_shape_karcher_mean, curve_shape_pca,
-    CurveShapeKarcherResult, CurveShapePcaResult,
+    curve_shape_karcher_covariance, curve_shape_karcher_mean, curve_shape_karcher_median,
+    curve_shape_pca, CurveShapeKarcherResult, CurveShapePcaResult,
 };
 
 use geometry::Grid;
