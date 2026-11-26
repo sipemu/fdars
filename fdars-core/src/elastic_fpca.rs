@@ -27,6 +27,26 @@ use rayon::iter::ParallelIterator;
 /// streaming-sentinel payback analysis, PERF-04-C).
 const SCORES_PARALLEL_THRESHOLD: usize = 50;
 
+/// Approximate floating-point work (≈ flops) below which the per-curve /
+/// per-row helpers in this module stay sequential: rayon dispatch costs a few
+/// µs, which a loop this small cannot repay (ALN-HYGIENE #56).
+const PAR_WORK_THRESHOLD: usize = 200_000;
+
+/// `(0..len).map(f).collect()`, dispatched through `iter_maybe_parallel!` when
+/// `work >= PAR_WORK_THRESHOLD`. Both paths evaluate the same `f(i)` and
+/// collect in index order, so the output is bit-identical either way.
+fn map_indexed<T, F>(len: usize, work: usize, f: F) -> Vec<T>
+where
+    T: Send,
+    F: Fn(usize) -> T + Sync + Send,
+{
+    if work >= PAR_WORK_THRESHOLD {
+        iter_maybe_parallel!(0..len).map(f).collect()
+    } else {
+        (0..len).map(f).collect()
+    }
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Result of vertical (amplitude) FPCA.
@@ -650,25 +670,24 @@ pub(crate) fn warps_to_normalized_psi(gammas: &FdMatrix, argvals: &[f64]) -> Vec
     let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
     let binsize = 1.0 / (m - 1) as f64;
 
-    (0..n)
-        .map(|i| {
-            let gam_01: Vec<f64> = (0..m).map(|j| (gammas[(i, j)] - t0) / domain).collect();
-            let mut grad = vec![0.0; m];
-            grad[0] = (gam_01[1] - gam_01[0]) / binsize;
-            for j in 1..m - 1 {
-                grad[j] = (gam_01[j + 1] - gam_01[j - 1]) / (2.0 * binsize);
+    // Per-curve, independent: (parallel) map, collected in index order.
+    map_indexed(n, 8 * n * m, |i| {
+        let gam_01: Vec<f64> = (0..m).map(|j| (gammas[(i, j)] - t0) / domain).collect();
+        let mut grad = vec![0.0; m];
+        grad[0] = (gam_01[1] - gam_01[0]) / binsize;
+        for j in 1..m - 1 {
+            grad[j] = (gam_01[j + 1] - gam_01[j - 1]) / (2.0 * binsize);
+        }
+        grad[m - 1] = (gam_01[m - 1] - gam_01[m - 2]) / binsize;
+        let mut psi: Vec<f64> = grad.iter().map(|&g| g.max(0.0).sqrt()).collect();
+        let norm = l2_norm_l2(&psi, &time);
+        if norm > 1e-10 {
+            for v in &mut psi {
+                *v /= norm;
             }
-            grad[m - 1] = (gam_01[m - 1] - gam_01[m - 2]) / binsize;
-            let mut psi: Vec<f64> = grad.iter().map(|&g| g.max(0.0).sqrt()).collect();
-            let norm = l2_norm_l2(&psi, &time);
-            if norm > 1e-10 {
-                for v in &mut psi {
-                    *v /= norm;
-                }
-            }
-            psi
-        })
-        .collect()
+        }
+        psi
+    })
 }
 
 /// Compute Karcher mean on the Hilbert sphere via iterative exp/log maps.
@@ -843,13 +862,32 @@ fn build_symmetric_covariance(
     d: usize,
 ) -> nalgebra::DMatrix<f64> {
     let nf = (n - 1) as f64;
+    // Rows p of the upper triangle are independent, so they are built in
+    // parallel (above the work threshold). Each entry (p, q) is still
+    // accumulated over i = 0..n in order from 0.0, exactly as the former
+    // `for i { for p { for q } }` loop did, so the sums are bit-identical.
+    // The centred values `data[(i, p)] - mean[p]` are the same f64 operations
+    // as before, just precomputed once into contiguous columns.
+    let cen: Vec<f64> = (0..d)
+        .flat_map(|p| (0..n).map(move |i| data[(i, p)] - mean[p]))
+        .collect();
+    let rows: Vec<Vec<f64>> = map_indexed(d, n * d * d / 2, |p| {
+        let cp = &cen[p * n..(p + 1) * n];
+        (p..d)
+            .map(|q| {
+                let cq = &cen[q * n..(q + 1) * n];
+                let mut acc = 0.0;
+                for i in 0..n {
+                    acc += cp[i] * cq[i];
+                }
+                acc
+            })
+            .collect()
+    });
     let mut k_mat = nalgebra::DMatrix::zeros(d, d);
-    for i in 0..n {
-        for p in 0..d {
-            let dp = data[(i, p)] - mean[p];
-            for q in p..d {
-                k_mat[(p, q)] += dp * (data[(i, q)] - mean[q]);
-            }
+    for (p, row) in rows.into_iter().enumerate() {
+        for (off, v) in row.into_iter().enumerate() {
+            k_mat[(p, p + off)] = v;
         }
     }
     for p in 0..d {
@@ -871,14 +909,22 @@ fn project_onto_eigenvectors(
     d: usize,
     ncomp: usize,
 ) -> FdMatrix {
+    // Per-curve rows in parallel; each score is the same in-order dot product.
+    let rows: Vec<Vec<f64>> = map_indexed(n, 2 * n * d * ncomp, |i| {
+        (0..ncomp)
+            .map(|k| {
+                let mut s = 0.0;
+                for j in 0..d {
+                    s += (data[(i, j)] - mean[j]) * u_cov[(j, k)];
+                }
+                s
+            })
+            .collect()
+    });
     let mut scores = FdMatrix::zeros(n, ncomp);
-    for k in 0..ncomp {
-        for i in 0..n {
-            let mut s = 0.0;
-            for j in 0..d {
-                s += (data[(i, j)] - mean[j]) * u_cov[(j, k)];
-            }
-            scores[(i, k)] = s;
+    for (i, row) in rows.into_iter().enumerate() {
+        for (k, v) in row.into_iter().enumerate() {
+            scores[(i, k)] = v;
         }
     }
     scores
@@ -898,9 +944,13 @@ fn normalize_to_sphere(mu: &mut [f64], time: &[f64]) {
 fn mean_tangent_vector(psis: &[Vec<f64>], mu_psi: &[f64], time: &[f64]) -> Vec<f64> {
     let n = psis.len();
     let m = mu_psi.len();
+    // Log maps in parallel; the sum is then taken sequentially in curve order
+    // (deterministic reduction, bit-identical to the sequential loop).
+    let logs: Vec<Vec<f64>> = map_indexed(n, 16 * n * m, |i| {
+        inv_exp_map_sphere(mu_psi, &psis[i], time)
+    });
     let mut mean_v = vec![0.0; m];
-    for psi in psis {
-        let v = inv_exp_map_sphere(mu_psi, psi, time);
+    for v in &logs {
         for j in 0..m {
             mean_v[j] += v[j];
         }
@@ -989,7 +1039,9 @@ fn optimize_balance_c_raw(
     for _ in 0..20 {
         let c1 = b - golden_ratio * (b - a);
         let c2 = a + golden_ratio * (b - a);
-        if eval_c(c1) < eval_c(c2) {
+        // The two probe SVDs are independent: evaluate them concurrently.
+        let f: Vec<f64> = iter_maybe_parallel!([c1, c2]).map(eval_c).collect();
+        if f[0] < f[1] {
             b = c2;
         } else {
             a = c1;
@@ -1495,5 +1547,120 @@ mod tests {
         assert!(vert_fpca_from_alignment(&data, None, &t, 3).is_err());
         assert!(horiz_fpca_from_alignment(&data, &t, 3).is_err());
         assert!(joint_fpca_from_alignment(&data, None, &data, &t, 3, Some(1.0)).is_err());
+    }
+
+    // ── ALN-HYGIENE #56: parallel helpers vs the former sequential loops ──
+    // Reference implementations are verbatim copies of the pre-change loops;
+    // sizes are chosen above PAR_WORK_THRESHOLD so the parallel path runs.
+
+    fn pseudo(n: usize, d: usize, seed: f64) -> FdMatrix {
+        let mut x = FdMatrix::zeros(n, d);
+        for i in 0..n {
+            for j in 0..d {
+                x[(i, j)] =
+                    ((i as f64 + 1.3) * (j as f64 + 0.7) * seed).sin() + 0.1 * (i * j % 7) as f64;
+            }
+        }
+        x
+    }
+
+    fn bits(xs: &[f64]) -> Vec<u64> {
+        xs.iter().map(|x| x.to_bits()).collect()
+    }
+
+    #[test]
+    fn covariance_parallel_matches_sequential_bits() {
+        let (n, d) = (100, 70);
+        assert!(n * d * d / 2 >= PAR_WORK_THRESHOLD);
+        let x = pseudo(n, d, 0.37);
+        let (_, mean) = center_matrix(&x, n, d);
+        let nf = (n - 1) as f64;
+        let mut r = nalgebra::DMatrix::zeros(d, d);
+        for i in 0..n {
+            for p in 0..d {
+                let dp = x[(i, p)] - mean[p];
+                for q in p..d {
+                    r[(p, q)] += dp * (x[(i, q)] - mean[q]);
+                }
+            }
+        }
+        for p in 0..d {
+            r[(p, p)] /= nf;
+            for q in (p + 1)..d {
+                r[(p, q)] /= nf;
+                r[(q, p)] = r[(p, q)];
+            }
+        }
+        let k = build_symmetric_covariance(&x, &mean, n, d);
+        assert_eq!(bits(k.as_slice()), bits(r.as_slice()));
+    }
+
+    #[test]
+    fn projection_parallel_matches_sequential_bits() {
+        let (n, d, nc) = (100, 210, 5);
+        assert!(2 * n * d * nc >= PAR_WORK_THRESHOLD);
+        let x = pseudo(n, d, 0.11);
+        let (_, mean) = center_matrix(&x, n, d);
+        let u = pseudo(d, nc, 0.53).to_dmatrix();
+        let mut r = FdMatrix::zeros(n, nc);
+        for k in 0..nc {
+            for i in 0..n {
+                let mut s = 0.0;
+                for j in 0..d {
+                    s += (x[(i, j)] - mean[j]) * u[(j, k)];
+                }
+                r[(i, k)] = s;
+            }
+        }
+        let sc = project_onto_eigenvectors(&x, &mean, &u, n, d, nc);
+        assert_eq!(bits(sc.as_slice()), bits(r.as_slice()));
+    }
+
+    #[test]
+    fn sphere_helpers_parallel_match_sequential_bits() {
+        let (n, m) = (100, 260);
+        assert!(8 * n * m >= PAR_WORK_THRESHOLD && 16 * n * m >= PAR_WORK_THRESHOLD);
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        // Monotone warps gamma_i(t) = t + a_i t (1 - t), |a_i| < 1.
+        let mut g = FdMatrix::zeros(n, m);
+        for i in 0..n {
+            let a = 0.9 * ((i as f64) * 0.77).sin();
+            for j in 0..m {
+                g[(i, j)] = t[j] + a * t[j] * (1.0 - t[j]);
+            }
+        }
+        let psis = warps_to_normalized_psi(&g, &t);
+        let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let binsize = 1.0 / (m - 1) as f64;
+        for i in 0..n {
+            let gam: Vec<f64> = (0..m).map(|j| g[(i, j)]).collect();
+            let mut grad = vec![0.0; m];
+            grad[0] = (gam[1] - gam[0]) / binsize;
+            for j in 1..m - 1 {
+                grad[j] = (gam[j + 1] - gam[j - 1]) / (2.0 * binsize);
+            }
+            grad[m - 1] = (gam[m - 1] - gam[m - 2]) / binsize;
+            let mut psi: Vec<f64> = grad.iter().map(|&v| v.max(0.0).sqrt()).collect();
+            let norm = l2_norm_l2(&psi, &time);
+            if norm > 1e-10 {
+                for v in &mut psi {
+                    *v /= norm;
+                }
+            }
+            assert_eq!(bits(&psis[i]), bits(&psi), "psi row {i}");
+        }
+
+        let mu = psis[0].clone();
+        let mut r = vec![0.0; m];
+        for psi in &psis {
+            let v = inv_exp_map_sphere(&mu, psi, &time);
+            for j in 0..m {
+                r[j] += v[j];
+            }
+        }
+        for v in &mut r {
+            *v /= n as f64;
+        }
+        assert_eq!(bits(&mean_tangent_vector(&psis, &mu, &time)), bits(&r));
     }
 }
