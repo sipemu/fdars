@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**aeon elastic-distance family (GH #57 ALN-ELDIST).** Additive and non-breaking: new
+`metric::elastic_family` module plus two new `DtwWindow` variants (`#[non_exhaustive]` enum);
+existing variants, DTW / soft-DTW / DBA code paths and results unchanged; no new crate dependency.
+
+### Added
+
+- `metric::elastic_family` — DDTW, WDTW, WDDTW, ADTW, ERP, EDR, TWE, MSM and LCSS, each with
+  aeon's four functions `<name>_distance`, `<name>_pairwise_distance` (self with `other = None`,
+  or cross; parallel), `<name>_cost_matrix` and `<name>_alignment_path` (→ `ElasticDistancePath`).
+  Parameter names and defaults follow aeon (`g`, `warp_penalty`, `epsilon`, `nu`/`lmbda`, `c`,
+  `independent`); DDTW/WDDTW use aeon's Keogh–Pazzani average-of-slopes derivative (interior
+  points only, length `n − 2`). Golden-tested against aeon 1.6.0 (distance, cost matrix,
+  path; unequal lengths, Sakoe-Chiba fraction and Itakura windows) to 1e-10, cross-checked
+  against tsdistances 0.1.9. Shared padded-lattice DP core.
+- `DtwWindow::SakoeChibaFraction { window }` and `DtwWindow::ItakuraFraction { max_slope }` —
+  exact ports of aeon's `create_bounding_matrix(window=…)` / `(itakura_max_slope=…)`; accepted
+  by every windowed DP in the crate.
+
 **Sparse / irregular elastic alignment and means (GH #53 ALN-SPARSE).** Additive and
 non-breaking: new `alignment::sparse` module only (new config/result fields default to the
 previous behaviour); no existing code path touched; no new crate dependency.

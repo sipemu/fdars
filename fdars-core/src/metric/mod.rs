@@ -12,6 +12,8 @@
 //! - Derivative-based semimetric
 //! - Basis coefficient semimetric
 //! - Kullback-Leibler divergence
+//! - The aeon elastic-distance family (DDTW, WDTW, WDDTW, ADTW, ERP, EDR, TWE, MSM,
+//!   LCSS), see [`elastic_family`]
 
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
@@ -22,6 +24,7 @@ pub mod basis_coef;
 pub mod dba;
 pub mod deriv;
 pub mod dtw;
+pub mod elastic_family;
 pub mod fourier;
 pub mod gak;
 pub mod hausdorff;
@@ -142,6 +145,17 @@ pub use basis_coef::{basis_coef_cross, basis_coef_self};
 pub use dba::{dtw_barycenter_averaging, DbaConfig, DbaInit, DbaResult};
 pub use deriv::{deriv_cross, deriv_self};
 pub use dtw::{dtw_cross, dtw_distance, dtw_distance_windowed, dtw_path, dtw_self, DtwPath};
+pub use elastic_family::{
+    adtw_alignment_path, adtw_cost_matrix, adtw_distance, adtw_pairwise_distance,
+    ddtw_alignment_path, ddtw_cost_matrix, ddtw_distance, ddtw_pairwise_distance,
+    edr_alignment_path, edr_cost_matrix, edr_distance, edr_pairwise_distance, erp_alignment_path,
+    erp_cost_matrix, erp_distance, erp_pairwise_distance, lcss_alignment_path, lcss_cost_matrix,
+    lcss_distance, lcss_pairwise_distance, msm_alignment_path, msm_cost_matrix, msm_distance,
+    msm_pairwise_distance, twe_alignment_path, twe_cost_matrix, twe_distance,
+    twe_pairwise_distance, wddtw_alignment_path, wddtw_cost_matrix, wddtw_distance,
+    wddtw_pairwise_distance, wdtw_alignment_path, wdtw_cost_matrix, wdtw_distance,
+    wdtw_pairwise_distance, ElasticDistancePath,
+};
 pub use fourier::{fourier_cross, fourier_self};
 pub use gak::{
     gak, gak_gram_matrix, gak_gram_predict, gak_gram_train, gak_triangular, sigma_gak, GakConfig,
