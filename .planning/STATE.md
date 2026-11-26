@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T03:27:56.282Z"
+last_updated: "2026-11-26T03:46:19.167Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 735f5e3e569d4c6f9a4e4a9c89a4b944ad15866b
+state_head: 2a76a25beb163ab199e6b7346b0fd326958a6d68
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-5ke: ALN-BAYESGRP (GH #52, closed) infHMC sampler (prior-preconditioned HMC warps, exact gradient, dual-averaging step sizes, Gibbs template, injective warps) + ESS / bimodality diagnostics; default pCN bit-identical
+Last activity: 2026-11-26 - Completed quick task 261126-69q: ALN-SPARSE (GH #53, refs) elastic alignment (open + closed) and spline-SRV elastic means (open; smooth + polygon) for sparse irregular curves in R^d, elasdics 1.1.3 goldens; closed means remain
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -190,6 +190,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-4i2 | ALN-CONFPART (#51) joint registration + split-conformal amplitude/phase sets for partial curves | 2026-11-26 | cf1ec2a5 | [261126-4i2-aln-confpart-51-joint-registration-split](./quick/261126-4i2-aln-confpart-51-joint-registration-split/) |
 | 261126-4r5 | ALN-BAYESGRP Bayesian group alignment pCN multi-chain (#52) | 2026-11-26 | 065279f0 | [261126-4r5-aln-bayesgrp-bayesian-group-alignment-pc](./quick/261126-4r5-aln-bayesgrp-bayesian-group-alignment-pc/) |
 | 261126-5ke | ALN-BAYESGRP infHMC sampler for Bayesian group alignment (#52) | 2026-11-26 | 735f5e3e | [261126-5ke-aln-bayesgrp-infhmc-sampler-for-bayesian](./quick/261126-5ke-aln-bayesgrp-infhmc-sampler-for-bayesian/) |
+| 261126-69q | ALN-SPARSE (GH #53) elastic alignment and means for sparse irregular curves (elasdics) | 2026-11-26 | 2a76a25b | [261126-69q-aln-sparse-gh-53-elastic-alignment-and-m](./quick/261126-69q-aln-sparse-gh-53-elastic-alignment-and-m/) |
 
 ## Deferred Items
 
