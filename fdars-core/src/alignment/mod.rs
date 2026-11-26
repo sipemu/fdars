@@ -15,6 +15,8 @@
 //! - [`WarpOptimConfig`] + `*_with_config` — DP or Riemannian L-BFGS warp optimiser
 //!   with in-objective warp penalties (`l2gam`, `l2psi`, `roughness`, `geodesic`)
 //! - [`elastic_self_distance_matrix`] / [`elastic_cross_distance_matrix`] — Distance matrices
+//! - [`elastic_phase_amplitude_test`] — permutation (PERMANOVA) tests of group differences in
+//!   amplitude and in phase after label-free joint alignment
 //! - [`reparameterize_curve`] / [`compose_warps`] — Warping utilities
 //! - [`iterative_shift_registration`] — iterative least-squares shift registration
 //!   with template re-estimation; [`landmark_shift_registration`] — landmark shift
@@ -63,6 +65,7 @@ mod outlier;
 mod pairwise;
 mod partial_match;
 mod persistence;
+mod phase_amplitude_test;
 mod phase_boxplot;
 mod quality;
 mod rbfgs;
@@ -175,6 +178,10 @@ pub use pairwise::{
 };
 pub use partial_match::{elastic_partial_match, PartialMatchConfig, PartialMatchResult};
 pub use persistence::{peak_persistence, PersistenceDiagramResult};
+pub use phase_amplitude_test::{
+    elastic_phase_amplitude_test, AmplitudeMetric, PhaseAmplitudeTestConfig,
+    PhaseAmplitudeTestResult,
+};
 pub use phase_boxplot::{phase_boxplot, PhaseBoxplot};
 pub use quality::{
     alignment_quality, least_squares_score, pairwise_consistency, pairwise_correlation_score,

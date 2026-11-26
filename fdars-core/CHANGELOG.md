@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Permutation test of group amplitude and phase differences (GH #62 ALN-PHTEST).** Additive and
+non-breaking (new modules `alignment::phase_amplitude_test` and `inference::permanova`; existing code
+untouched apart from re-exports); no new crate dependency.
+
+### Added
+
+- `alignment::elastic_phase_amplitude_test` (+ `PhaseAmplitudeTestConfig`, `PhaseAmplitudeTestResult`,
+  `AmplitudeMetric`) — tests H0 "no group difference" (2+ groups) separately for amplitude, for phase
+  and (optionally) jointly in the elastic quotient space. All curves are aligned jointly and
+  label-free to their Karcher mean (so permuting labels with fixed distance matrices is an exact test
+  under exchangeability); amplitude distances are pairwise elastic distances (default) or L² between
+  template-aligned SRSFs, phase distances are Fisher–Rao geodesics `arccos⟨ψᵢ, ψⱼ⟩` between the warps,
+  and the joint distance combines both scale-free. Each is tested with a PERMANOVA pseudo-F and a
+  seeded permutation p-value (`seed + k`, parallel over permutations, identical with or without the
+  `parallel` feature). Returns statistics, p-values, both distance matrices and the alignment.
+- `inference::permanova` (+ `PermanovaResult`) — one-way PERMANOVA (Anderson 2001) on any symmetric
+  distance matrix; pseudo-F, sums of squares and R² match R `vegan` 2.7.8 `adonis2` to 1e-10, and the
+  p-value uses vegan's tie tolerance `F* ≥ F − √ε`.
+
 **Exponential-family registration with generalized FPCA (GH #60 ALN-EXPFAM).** Additive and
 non-breaking (new module `alignment::expfam`; existing code untouched apart from re-exports); no new
 crate dependency.

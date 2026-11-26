@@ -111,9 +111,9 @@ pub use crate::alignment::{
     CurveShapePcaResult, CurveShapeTsrvfResult, Dendrogram, ElasticBoxplots, ElasticDepthResult,
     ElasticOutlierResult, ElasticPhaseBoxplot, FpnsResult, GenerativeModelResult, GeodesicPath,
     KMedoidsResult, KarcherMeanResult, KarcherMeanResultNd, LambdaCvResult, PartialMatchResult,
-    PcaNdResult, PersistenceDiagramResult, PhaseBoxplot, RobustKarcherResult, ShapeCiResult,
-    ShapeMeanResult, SparseAlignmentResult, SparseCurve, SparseElasticMeanResult,
-    TransferAlignResult, WarpStatistics,
+    PcaNdResult, PersistenceDiagramResult, PhaseAmplitudeTestResult, PhaseBoxplot,
+    RobustKarcherResult, ShapeCiResult, ShapeMeanResult, SparseAlignmentResult, SparseCurve,
+    SparseElasticMeanResult, TransferAlignResult, WarpStatistics,
 };
 
 // Irregular functional data
