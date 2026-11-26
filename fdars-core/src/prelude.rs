@@ -105,11 +105,12 @@ pub use crate::cv::{CvMetrics, CvType};
 // Alignment
 pub use crate::alignment::amplitude_distance_at_warp_generic;
 pub use crate::alignment::{
-    AlignmentOutput, AlignmentResult, BayesianAlignmentResult, ClosedKarcherMeanResult, Dendrogram,
-    ElasticDepthResult, ElasticOutlierResult, FpnsResult, GenerativeModelResult, GeodesicPath,
-    KMedoidsResult, KarcherMeanResult, KarcherMeanResultNd, LambdaCvResult, PartialMatchResult,
-    PcaNdResult, PersistenceDiagramResult, PhaseBoxplot, RobustKarcherResult, ShapeCiResult,
-    ShapeMeanResult, TransferAlignResult, WarpStatistics,
+    AlignmentOutput, AlignmentResult, BayesianAlignmentResult, ClosedKarcherMeanResult,
+    CurveShapeKarcherResult, CurveShapePcaResult, Dendrogram, ElasticDepthResult,
+    ElasticOutlierResult, FpnsResult, GenerativeModelResult, GeodesicPath, KMedoidsResult,
+    KarcherMeanResult, KarcherMeanResultNd, LambdaCvResult, PartialMatchResult, PcaNdResult,
+    PersistenceDiagramResult, PhaseBoxplot, RobustKarcherResult, ShapeCiResult, ShapeMeanResult,
+    TransferAlignResult, WarpStatistics,
 };
 
 // Irregular functional data

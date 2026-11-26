@@ -13,6 +13,40 @@ Changed below).
 
 ## [Unreleased]
 
+**R^d curve shape analysis (GH #48 ALN-CURVE).** Additive and non-breaking; no
+existing code path changed (the shared DP engine is reused, not modified); no new crate
+dependency.
+
+### Added
+
+- New `alignment::curve_shape` module (re-exported from `alignment` and the crate root):
+  elastic shape analysis of open curves and closed contours `β : [0,1] → R^d` (curves are
+  `d × m` `FdMatrix`, sets are `FdCurveSet`). Sealed `CurveShapeConfig { rotation = true,
+  allow_reflection = false, scale = true, include_length = false, closed = false,
+  seed_search = true, seed_step = 4, reparam = true, lambda = 0, align_iter = 2 }`.
+  - `curve_shape_align_pair` / `curve_shape_distance` / `curve_shape_self_distance_matrix`
+    — shape distance modulo translation, rotation (SVD Procrustes / Kabsch over SO(d), or
+    O(d) with `allow_reflection`), scale (pre-shape sphere, `arccos⟨q1,q2*⟩`, optional
+    log-length term; flat L² size-and-shape distance with `scale = false`),
+    reparametrisation (R^d DP on the shared coprime-neighbourhood engine) and, for closed
+    contours, starting point (coarse/fine seed search). Rotation and warp are optimised
+    by alternation. `CurveShapeAlignment { beta1, beta2_aligned, q1, q2_aligned,
+    rotation, gamma, seed, length1, length2, distance }`.
+  - `project_closed_srvf` (Srivastava–Klassen closure projection, fdasrsf
+    `project_curve` generalised to R^d with the exact Jacobian), `closure_residual`,
+    `curve_srvf`, `srvf_to_curve`, `optimal_rotation`, `curve_from_set`, `curves_to_set`.
+  - `curve_shape_karcher_mean` (sphere or flat log/exp maps, closure-normal tangent
+    projection for closed contours) → `CurveShapeKarcherResult` (mean, mean SRVF,
+    aligned curves/SRVFs, rotations, warps, seeds, shooting vectors, distances, lengths,
+    geometric mean length, energy); `curve_shape_karcher_covariance`; `curve_shape_pca`
+    (L²-weighted tangent PCA via the Gram matrix) → `CurveShapePcaResult` with
+    `mode_shape` principal-geodesic reconstruction.
+  - Validated against fdasrsf 2.7.5 (`elastic_distance_curve`, `fdacurve.karcher_mean`):
+    open 2-D/3-D and closed distances within 5e-3 (fdasrsf's own resolution spread is
+    1–2e-3); with rotation fdars reaches a lower distance than fdasrsf's coordinate-space
+    rotation; the fdars Karcher mean has lower energy than fdasrsf's. Exact recovery of
+    rotations, scales, reflections and sample seed shifts; closure residual < 1e-9.
+
 **Ramsay–Li continuous registration (GH #47 ALN-CC).** Additive and non-breaking;
 no existing code path changed; no new crate dependency.
 

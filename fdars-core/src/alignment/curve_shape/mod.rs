@@ -1,0 +1,762 @@
+//! Elastic shape analysis of curves in R^d (open curves and closed contours).
+//!
+//! A curve `β : [0, 1] → R^d` is represented by its square-root velocity
+//! function (SRVF) `q = β'/√‖β'‖`. Shapes are equivalence classes of curves
+//! modulo
+//!
+//! * **translation** — removed by the SRVF itself (curves are also centred on
+//!   their arc-length centroid for output);
+//! * **scale** — `scale = true` rescales every curve to unit length, so SRVFs
+//!   live on the unit L² sphere (the *pre-shape sphere*) and the shape distance
+//!   is the great-circle distance `arccos⟨q1, q2*⟩`; with `scale = false` the
+//!   size is kept and the distance is the flat L² distance `‖q1 − q2*‖`;
+//! * **rotation** — optimal `R ∈ SO(d)` by SVD Procrustes (Kabsch), optionally
+//!   over O(d) (`allow_reflection`);
+//! * **reparametrisation** — optimal warp `γ` by the shared fdasrvf
+//!   coprime-neighbourhood dynamic program (summed over coordinates);
+//! * **starting point** (closed contours) — seed search over circular shifts;
+//!   closed SRVFs are projected onto the closed-curve manifold
+//!   `{q : ∫ q‖q‖ = 0}` (Srivastava–Klassen).
+//!
+//! Rotation and reparametrisation are optimised by alternation (`align_iter`
+//! rounds of Procrustes ↔ DP), which never does worse than the single
+//! rotation-then-DP pass of fdasrsf `find_rotation_and_seed_coord`.
+//!
+//! Group statistics ([`curve_shape_karcher_mean`],
+//! [`curve_shape_karcher_covariance`], [`curve_shape_pca`]) work in the tangent
+//! space at the Karcher mean (sphere log/exp maps when scale is removed, flat
+//! maps otherwise; closure-normal projection for closed contours), following
+//! fdasrsf `fdacurve.karcher_mean` / `karcher_cov` / `shape_pca`.
+//!
+//! **Data layout.** A single curve is an `FdMatrix` of shape `d × m` (row =
+//! coordinate, column = sample) on the implicit uniform grid `t_j = j/(m−1)` of
+//! `[0, 1]`; a set of `n` curves is an [`FdCurveSet`] (`d` matrices of shape
+//! `n × m`) — convert with [`curve_from_set`] / [`curves_to_set`]. Closed
+//! contours are sampled with the last point repeating the first
+//! (`β(:, m−1) = β(:, 0)`), as in fdasrsf.
+//!
+//! Reference: Srivastava & Klassen, *Functional and Shape Data Analysis*
+//! (Springer 2016), ch. 5–6; fdasrsf 2.7.5 `curve_functions` / `curve_stats`.
+
+mod geometry;
+mod karcher;
+#[cfg(test)]
+mod tests;
+
+pub use karcher::{
+    curve_shape_karcher_covariance, curve_shape_karcher_mean, curve_shape_pca,
+    CurveShapeKarcherResult, CurveShapePcaResult,
+};
+
+use geometry::Grid;
+
+use crate::error::FdarError;
+use crate::iter_maybe_parallel;
+use crate::matrix::{FdCurveSet, FdMatrix};
+#[cfg(feature = "parallel")]
+use rayon::iter::ParallelIterator;
+
+// ─── Configuration ──────────────────────────────────────────────────────────
+
+/// Configuration of the shape quotient for R^d curve shape analysis.
+///
+/// Construct with `CurveShapeConfig::default()` and assign fields (the struct is
+/// `#[non_exhaustive]`).
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::CurveShapeConfig;
+/// let mut cfg = CurveShapeConfig::default();
+/// cfg.closed = true; // closed contours: closure projection + seed search
+/// assert!(cfg.rotation && cfg.scale && cfg.validate().is_ok());
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CurveShapeConfig {
+    /// Quotient out rotations (SVD Procrustes). Default `true`.
+    pub rotation: bool,
+    /// Allow reflections (optimise over O(d) instead of SO(d)). Default `false`.
+    pub allow_reflection: bool,
+    /// Quotient out scale (unit-length curves, pre-shape sphere geometry).
+    /// Default `true`.
+    pub scale: bool,
+    /// With `scale = true`: add the log SRVF-norm ratio to the distance,
+    /// `d = √(θ² + ln²(‖q1‖/‖q2‖))` (fdasrsf `elastic_distance_curve(scale=True)`).
+    /// Default `false`.
+    pub include_length: bool,
+    /// Treat the curves as closed contours (closure projection and seed search).
+    /// Default `false`.
+    pub closed: bool,
+    /// Search over starting points (closed contours only). Default `true`.
+    pub seed_search: bool,
+    /// Coarse seed stride in samples; the best coarse seed is refined at every
+    /// sample within `±(seed_step − 1)`. Default 4 (fdasrsf's stride). Must be ≥ 1.
+    pub seed_step: usize,
+    /// Quotient out reparametrisations (elastic DP). Default `true`; `false`
+    /// gives rigid (rotation/scale/seed only) Procrustes shape analysis.
+    pub reparam: bool,
+    /// Warp roughness penalty `λ ∫(γ' − 1)²` in the DP. Default 0.
+    pub lambda: f64,
+    /// Rounds of the Procrustes ↔ DP alternation per seed candidate (≥ 1).
+    /// Default 2.
+    pub align_iter: usize,
+}
+
+impl Default for CurveShapeConfig {
+    fn default() -> Self {
+        Self {
+            rotation: true,
+            allow_reflection: false,
+            scale: true,
+            include_length: false,
+            closed: false,
+            seed_search: true,
+            seed_step: 4,
+            reparam: true,
+            lambda: 0.0,
+            align_iter: 2,
+        }
+    }
+}
+
+impl CurveShapeConfig {
+    /// Validate the configuration.
+    ///
+    /// # Errors
+    /// [`FdarError::InvalidParameter`] if `seed_step == 0`, `align_iter == 0` or
+    /// `lambda` is negative / non-finite.
+    pub fn validate(&self) -> Result<(), FdarError> {
+        let bad = |parameter: &'static str, message: String| {
+            Err(FdarError::InvalidParameter { parameter, message })
+        };
+        if self.seed_step == 0 {
+            return bad("seed_step", "must be >= 1".to_string());
+        }
+        if self.align_iter == 0 {
+            return bad("align_iter", "must be >= 1".to_string());
+        }
+        if !(self.lambda.is_finite() && self.lambda >= 0.0) {
+            return bad(
+                "lambda",
+                format!("must be finite and >= 0, got {}", self.lambda),
+            );
+        }
+        Ok(())
+    }
+}
+
+// ─── Results ────────────────────────────────────────────────────────────────
+
+/// Result of aligning curve `beta2` to curve `beta1` in shape space.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct CurveShapeAlignment {
+    /// Preprocessed target `β1` (centred; unit length if `scale`), `d × m`.
+    pub beta1: FdMatrix,
+    /// `β2` optimally aligned to `β1`: `R · β2(shifted)∘γ`, centred (unit
+    /// length if `scale`), `d × m`.
+    pub beta2_aligned: FdMatrix,
+    /// SRVF of the preprocessed target (closure-projected if `closed`), `d × m`.
+    pub q1: FdMatrix,
+    /// SRVF of the aligned `β2` (closure-projected if `closed`), `d × m`.
+    pub q2_aligned: FdMatrix,
+    /// Optimal rotation `R` (`d × d`), applied as `R · β2`.
+    pub rotation: FdMatrix,
+    /// Optimal warp `γ` on the grid `t_j = j/(m−1)` (identity if `reparam = false`).
+    pub gamma: Vec<f64>,
+    /// Optimal starting-point shift (samples) applied to `β2` before warping
+    /// (0 for open curves).
+    pub seed: usize,
+    /// Length `∫‖β1'‖` of the input `β1`.
+    pub length1: f64,
+    /// Length `∫‖β2'‖` of the input `β2`.
+    pub length2: f64,
+    /// Shape distance after alignment.
+    pub distance: f64,
+}
+
+// ─── Public geometry helpers ────────────────────────────────────────────────
+
+/// Extract curve `i` of a set as a `d × m` matrix.
+///
+/// # Errors
+/// [`FdarError::InvalidParameter`] if `i` is out of range.
+pub fn curve_from_set(curves: &FdCurveSet, i: usize) -> Result<FdMatrix, FdarError> {
+    if i >= curves.ncurves() {
+        return Err(FdarError::InvalidParameter {
+            parameter: "i",
+            message: format!("index {i} out of range ({} curves)", curves.ncurves()),
+        });
+    }
+    let (d, m) = (curves.ndim(), curves.npoints());
+    let mut out = FdMatrix::zeros(d, m);
+    for (k, dim) in curves.dims.iter().enumerate() {
+        for j in 0..m {
+            out[(k, j)] = dim[(i, j)];
+        }
+    }
+    Ok(out)
+}
+
+/// Stack `d × m` curves into an [`FdCurveSet`].
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] if `curves` is empty or shapes differ.
+pub fn curves_to_set(curves: &[FdMatrix]) -> Result<FdCurveSet, FdarError> {
+    let first = curves.first().ok_or_else(|| FdarError::InvalidDimension {
+        parameter: "curves",
+        expected: "at least one curve".to_string(),
+        actual: "0".to_string(),
+    })?;
+    let (d, m) = first.shape();
+    let n = curves.len();
+    let mut dims: Vec<FdMatrix> = (0..d).map(|_| FdMatrix::zeros(n, m)).collect();
+    for (i, c) in curves.iter().enumerate() {
+        if c.shape() != (d, m) {
+            return Err(FdarError::InvalidDimension {
+                parameter: "curves",
+                expected: format!("all curves {d} x {m}"),
+                actual: format!("curve {i}: {} x {}", c.nrows(), c.ncols()),
+            });
+        }
+        for (k, dim) in dims.iter_mut().enumerate() {
+            for j in 0..m {
+                dim[(i, j)] = c[(k, j)];
+            }
+        }
+    }
+    Ok(FdCurveSet { dims })
+}
+
+/// Validate a single `d × m` curve.
+fn validate_curve(beta: &FdMatrix, parameter: &'static str) -> Result<(), FdarError> {
+    let (d, m) = beta.shape();
+    if d == 0 || m < 4 {
+        return Err(FdarError::InvalidDimension {
+            parameter,
+            expected: "d >= 1 coordinates and m >= 4 samples (d x m matrix)".to_string(),
+            actual: format!("{d} x {m}"),
+        });
+    }
+    if beta.as_slice().iter().any(|v| !v.is_finite()) {
+        return Err(FdarError::InvalidParameter {
+            parameter,
+            message: "contains non-finite values".to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Square-root velocity function `q = β'/√‖β'‖` of a `d × m` curve on the
+/// uniform grid of `[0, 1]`; with `scale = true` it is normalised to unit L²
+/// norm (equivalently, the curve is rescaled to unit length).
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] / [`FdarError::InvalidParameter`] for an
+/// invalid curve; [`FdarError::ComputationFailed`] if `scale` is requested for a
+/// zero-length curve.
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::curve_srvf;
+/// use fdars_core::matrix::FdMatrix;
+/// // straight segment of length 2 along the x axis
+/// let m = 11;
+/// let mut beta = FdMatrix::zeros(2, m);
+/// for j in 0..m { beta[(0, j)] = 2.0 * j as f64 / (m - 1) as f64; }
+/// let q = curve_srvf(&beta, false).unwrap();
+/// assert!((q[(0, 5)] - 2f64.sqrt()).abs() < 1e-12 && q[(1, 5)].abs() < 1e-12);
+/// ```
+pub fn curve_srvf(beta: &FdMatrix, scale: bool) -> Result<FdMatrix, FdarError> {
+    validate_curve(beta, "beta")?;
+    let grid = Grid::new(beta.ncols());
+    let q = geometry::srvf_raw(beta, &grid);
+    if !scale {
+        return Ok(q);
+    }
+    let nq = geometry::norm(&q, &grid);
+    if nq < 1e-300 {
+        return Err(FdarError::ComputationFailed {
+            operation: "curve_srvf",
+            detail: "zero-length curve cannot be scaled".to_string(),
+        });
+    }
+    Ok(geometry::scaled(&q, 1.0 / nq))
+}
+
+/// Reconstruct a curve from its SRVF, `β(t) = ∫₀ᵗ q‖q‖`, starting at the origin.
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] / [`FdarError::InvalidParameter`] for an
+/// invalid `d × m` input.
+pub fn srvf_to_curve(q: &FdMatrix) -> Result<FdMatrix, FdarError> {
+    validate_curve(q, "q")?;
+    Ok(geometry::q_to_curve(q, &Grid::new(q.ncols())))
+}
+
+/// Closure residual `∫ q(t)‖q(t)‖ dt ∈ R^d` of an SRVF — the displacement
+/// `β(1) − β(0)` of the curve it represents (zero for a closed curve).
+///
+/// # Errors
+/// As [`srvf_to_curve`].
+pub fn closure_residual(q: &FdMatrix) -> Result<Vec<f64>, FdarError> {
+    validate_curve(q, "q")?;
+    Ok(geometry::closure_vec(q, &Grid::new(q.ncols())))
+}
+
+/// Project an SRVF onto the closed-curve manifold `{q : ∫ q‖q‖ = 0}`
+/// (Srivastava–Klassen; fdasrsf `project_curve`, generalised to R^d with the
+/// exact Jacobian). The L² norm is preserved; on return the closure residual is
+/// below `1e-10 · ‖q‖²`.
+///
+/// # Errors
+/// As [`srvf_to_curve`], plus [`FdarError::ComputationFailed`] if `d < 2` or the
+/// Newton iteration does not reach the tolerance.
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{closure_residual, curve_srvf, project_closed_srvf};
+/// use fdars_core::matrix::FdMatrix;
+/// // an open arc (three quarters of a circle)
+/// let m = 101;
+/// let mut beta = FdMatrix::zeros(2, m);
+/// for j in 0..m {
+///     let th = 1.5 * std::f64::consts::PI * j as f64 / (m - 1) as f64;
+///     beta[(0, j)] = th.cos();
+///     beta[(1, j)] = th.sin();
+/// }
+/// let q = curve_srvf(&beta, true).unwrap();
+/// let qc = project_closed_srvf(&q).unwrap();
+/// let r = closure_residual(&qc).unwrap();
+/// assert!(r.iter().all(|v| v.abs() < 1e-9));
+/// ```
+pub fn project_closed_srvf(q: &FdMatrix) -> Result<FdMatrix, FdarError> {
+    validate_curve(q, "q")?;
+    if q.nrows() < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "q",
+            expected: "d >= 2 for closed curves".to_string(),
+            actual: format!("d = {}", q.nrows()),
+        });
+    }
+    let (qc, ok) = geometry::project_closed(q, &Grid::new(q.ncols()));
+    if !ok {
+        return Err(FdarError::ComputationFailed {
+            operation: "project_closed_srvf",
+            detail: "closure projection did not converge".to_string(),
+        });
+    }
+    Ok(qc)
+}
+
+/// Optimal rotation `R = argmax ⟨q1, R q2⟩` over SO(d) (or O(d) with
+/// `allow_reflection`) by SVD Procrustes (Kabsch). Exact for `q1 = R₀ q2`.
+///
+/// Inputs are `d × m` SRVFs (or any `d × m` vector fields; for curves of equal
+/// parametrisation, passing SRVFs gives the shape-space optimum).
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] if shapes differ or are invalid;
+/// [`FdarError::ComputationFailed`] if the SVD fails.
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::optimal_rotation;
+/// use fdars_core::matrix::FdMatrix;
+/// let m = 20;
+/// let (c, s) = (0.6f64.cos(), 0.6f64.sin());
+/// let mut q2 = FdMatrix::zeros(2, m);
+/// let mut q1 = FdMatrix::zeros(2, m);
+/// for j in 0..m {
+///     let t = j as f64 / (m - 1) as f64;
+///     q2[(0, j)] = 1.0 + t;
+///     q2[(1, j)] = (3.0 * t).sin();
+///     q1[(0, j)] = c * q2[(0, j)] - s * q2[(1, j)];
+///     q1[(1, j)] = s * q2[(0, j)] + c * q2[(1, j)];
+/// }
+/// let r = optimal_rotation(&q1, &q2, false).unwrap();
+/// assert!((r[(0, 0)] - c).abs() < 1e-12 && (r[(1, 0)] - s).abs() < 1e-12);
+/// ```
+pub fn optimal_rotation(
+    q1: &FdMatrix,
+    q2: &FdMatrix,
+    allow_reflection: bool,
+) -> Result<FdMatrix, FdarError> {
+    validate_curve(q1, "q1")?;
+    validate_curve(q2, "q2")?;
+    check_same_shape(q1, q2)?;
+    geometry::procrustes(q1, q2, &Grid::new(q1.ncols()), allow_reflection)
+}
+
+fn check_same_shape(a: &FdMatrix, b: &FdMatrix) -> Result<(), FdarError> {
+    if a.shape() != b.shape() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "beta2",
+            expected: format!("{} x {}", a.nrows(), a.ncols()),
+            actual: format!("{} x {}", b.nrows(), b.ncols()),
+        });
+    }
+    Ok(())
+}
+
+// ─── Internal: preprocessing and the alignment core ────────────────────────
+
+/// A curve brought to the representation used by the alignment core.
+#[derive(Debug, Clone)]
+struct Prepared {
+    /// Centred curve (unit length if `scale`).
+    pub beta: FdMatrix,
+    /// Its SRVF (unit norm if `scale`, closure-projected if `closed`).
+    pub q: FdMatrix,
+    /// Length of the original curve.
+    pub length: f64,
+}
+
+/// SRVF of an (already centred / scaled) curve under the configuration:
+/// renormalised to unit norm if `scale`, projected if `closed`.
+fn srvf_cfg(beta: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
+    let mut q = geometry::srvf_raw(beta, grid);
+    if cfg.scale {
+        let nq = geometry::norm(&q, grid);
+        if nq > 1e-300 {
+            q = geometry::scaled(&q, 1.0 / nq);
+        }
+    }
+    if cfg.closed {
+        q = geometry::project_closed(&q, grid).0;
+    }
+    q
+}
+
+/// Centre, scale and transform one curve.
+fn prepare(beta: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> Result<Prepared, FdarError> {
+    let length = geometry::curve_length(beta, grid);
+    if length.is_nan() || length <= 1e-300 {
+        return Err(FdarError::ComputationFailed {
+            operation: "curve shape preprocessing",
+            detail: "zero-length (constant) curve has no shape".to_string(),
+        });
+    }
+    let mut b = geometry::center(beta, grid);
+    if cfg.scale {
+        b = geometry::scaled(&b, 1.0 / length);
+    }
+    let q = srvf_cfg(&b, cfg, grid);
+    Ok(Prepared { beta: b, q, length })
+}
+
+/// Shape distance between two configured SRVFs (without the length term).
+fn srvf_distance(q1: &FdMatrix, q2: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> f64 {
+    if cfg.scale {
+        // Great-circle angle via the chord, θ = 2·asin(‖u1 − u2‖/2) for unit
+        // u1, u2 — numerically stable near 0, unlike arccos⟨u1, u2⟩.
+        let (n1, n2) = (geometry::norm(q1, grid), geometry::norm(q2, grid));
+        if n1 <= 0.0 || n2 <= 0.0 {
+            return 0.0;
+        }
+        let chord = geometry::norm(&geometry::axpby(1.0 / n1, q1, -1.0 / n2, q2), grid);
+        2.0 * (0.5 * chord).min(1.0).asin()
+    } else {
+        geometry::norm(&geometry::axpby(1.0, q1, -1.0, q2), grid)
+    }
+}
+
+/// One candidate alignment of β2 to the target.
+#[derive(Debug, Clone)]
+struct Candidate {
+    pub rotation: FdMatrix,
+    pub gamma: Vec<f64>,
+    pub seed: usize,
+    pub beta: FdMatrix,
+    pub q: FdMatrix,
+    pub distance: f64,
+}
+
+/// Build a candidate from a (rotation, warp) of the seed-shifted curve.
+fn make_candidate(
+    q1: &FdMatrix,
+    r: FdMatrix,
+    gamma: Vec<f64>,
+    seed: usize,
+    beta_w: &FdMatrix,
+    q_w: &FdMatrix,
+    cfg: &CurveShapeConfig,
+    grid: &Grid,
+) -> Candidate {
+    let q = geometry::rotate(&r, q_w);
+    let beta = geometry::rotate(&r, beta_w);
+    let distance = srvf_distance(q1, &q, cfg, grid);
+    Candidate {
+        rotation: r,
+        gamma,
+        seed,
+        beta,
+        q,
+        distance,
+    }
+}
+
+/// Procrustes rotation if enabled, identity otherwise.
+fn best_rotation(q1: &FdMatrix, q2: &FdMatrix, cfg: &CurveShapeConfig, grid: &Grid) -> FdMatrix {
+    if cfg.rotation {
+        geometry::procrustes(q1, q2, grid, cfg.allow_reflection)
+            .unwrap_or_else(|_| geometry::identity(q1.nrows()))
+    } else {
+        geometry::identity(q1.nrows())
+    }
+}
+
+/// Align a prepared curve with a fixed starting point: alternate Procrustes and
+/// DP for `align_iter` rounds and keep the best candidate.
+fn align_fixed_seed(
+    q1: &FdMatrix,
+    beta2: &FdMatrix,
+    seed: usize,
+    cfg: &CurveShapeConfig,
+    grid: &Grid,
+) -> Candidate {
+    let q2 = srvf_cfg(beta2, cfg, grid);
+    let mut r = best_rotation(q1, &q2, cfg, grid);
+    let mut best = make_candidate(q1, r.clone(), grid.t.clone(), seed, beta2, &q2, cfg, grid);
+    if !cfg.reparam {
+        return best;
+    }
+    for _ in 0..cfg.align_iter {
+        let gamma = geometry::dp_warp(q1, &geometry::rotate(&r, &q2), grid, cfg.lambda);
+        let beta_w = geometry::warp_curve(beta2, grid, &gamma);
+        let q_w = srvf_cfg(&beta_w, cfg, grid);
+        r = best_rotation(q1, &q_w, cfg, grid);
+        let cand = make_candidate(q1, r.clone(), gamma, seed, &beta_w, &q_w, cfg, grid);
+        if cand.distance < best.distance {
+            best = cand;
+        }
+    }
+    best
+}
+
+/// Starting-point candidates: coarse stride over the `m − 1` distinct samples.
+fn coarse_seeds(m: usize, cfg: &CurveShapeConfig) -> Vec<usize> {
+    if !(cfg.closed && cfg.seed_search) {
+        return vec![0];
+    }
+    (0..m - 1).step_by(cfg.seed_step).collect()
+}
+
+/// Align a prepared `β2` to the target SRVF `q1` over rotation, warp and (for
+/// closed curves) starting point.
+fn align_to_srvf(
+    q1: &FdMatrix,
+    beta2: &FdMatrix,
+    cfg: &CurveShapeConfig,
+    grid: &Grid,
+) -> Candidate {
+    let m = grid.len();
+    let eval = |s: usize| {
+        let b = if s == 0 {
+            beta2.clone()
+        } else {
+            geometry::shift_closed(beta2, s)
+        };
+        align_fixed_seed(q1, &b, s, cfg, grid)
+    };
+    let pick = |a: Candidate, b: Candidate| if b.distance < a.distance { b } else { a };
+    let seeds = coarse_seeds(m, cfg);
+    let mut best = seeds
+        .iter()
+        .map(|&s| eval(s))
+        .reduce(pick)
+        .expect("at least one seed candidate");
+    if cfg.closed && cfg.seed_search && cfg.seed_step > 1 {
+        let p = m - 1;
+        let s0 = best.seed;
+        for off in 1..cfg.seed_step {
+            for s in [(s0 + off) % p, (s0 + p - off % p) % p] {
+                best = pick(best, eval(s));
+            }
+        }
+    }
+    best
+}
+
+/// Total distance including the optional length term.
+fn total_distance(theta: f64, len1: f64, len2: f64, cfg: &CurveShapeConfig) -> f64 {
+    if cfg.scale && cfg.include_length {
+        let l = (len1.sqrt() / len2.sqrt()).ln();
+        (theta * theta + l * l).sqrt()
+    } else {
+        theta
+    }
+}
+
+/// Validate a pair of curves against the configuration.
+fn validate_pair(
+    beta1: &FdMatrix,
+    beta2: &FdMatrix,
+    cfg: &CurveShapeConfig,
+) -> Result<(), FdarError> {
+    cfg.validate()?;
+    validate_curve(beta1, "beta1")?;
+    validate_curve(beta2, "beta2")?;
+    check_same_shape(beta1, beta2)?;
+    if cfg.closed && beta1.nrows() < 2 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "beta1",
+            expected: "d >= 2 for closed curves".to_string(),
+            actual: format!("d = {}", beta1.nrows()),
+        });
+    }
+    Ok(())
+}
+
+// ─── Public pairwise API ────────────────────────────────────────────────────
+
+/// Align curve `beta2` to curve `beta1` in elastic shape space: optimal
+/// rotation (SVD Procrustes), scale (unit length), reparametrisation (DP) and,
+/// for closed contours, starting point — see [`CurveShapeConfig`].
+///
+/// `beta1`, `beta2` are `d × m` matrices (row = coordinate) sampled on a common
+/// uniform parameter grid; closed contours repeat their first point at the end.
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] / [`FdarError::InvalidParameter`] for
+/// mismatched or invalid inputs or configuration; [`FdarError::ComputationFailed`]
+/// for a zero-length curve.
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{curve_shape_align_pair, CurveShapeConfig};
+/// use fdars_core::matrix::FdMatrix;
+/// let m = 40;
+/// let (c, s) = (1.0f64.cos(), 1.0f64.sin());
+/// let mut b1 = FdMatrix::zeros(2, m);
+/// let mut b2 = FdMatrix::zeros(2, m);
+/// for j in 0..m {
+///     let t = j as f64 / (m - 1) as f64;
+///     let (x, y) = (t, 0.3 * (6.0 * t).sin());
+///     b1[(0, j)] = x;
+///     b1[(1, j)] = y;
+///     // rotated by 1 rad, scaled by 3 and translated
+///     b2[(0, j)] = 3.0 * (c * x - s * y) + 5.0;
+///     b2[(1, j)] = 3.0 * (s * x + c * y) - 2.0;
+/// }
+/// let res = curve_shape_align_pair(&b1, &b2, &CurveShapeConfig::default()).unwrap();
+/// assert!(res.distance < 1e-6);
+/// assert!((res.rotation[(0, 0)] - c).abs() < 1e-6); // undoes the rotation
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn curve_shape_align_pair(
+    beta1: &FdMatrix,
+    beta2: &FdMatrix,
+    config: &CurveShapeConfig,
+) -> Result<CurveShapeAlignment, FdarError> {
+    validate_pair(beta1, beta2, config)?;
+    let grid = Grid::new(beta1.ncols());
+    let p1 = prepare(beta1, config, &grid)?;
+    let p2 = prepare(beta2, config, &grid)?;
+    let best = align_to_srvf(&p1.q, &p2.beta, config, &grid);
+    let distance = total_distance(best.distance, p1.length, p2.length, config);
+    Ok(CurveShapeAlignment {
+        beta1: p1.beta,
+        beta2_aligned: geometry::center(&best.beta, &grid),
+        q1: p1.q,
+        q2_aligned: best.q,
+        rotation: best.rotation,
+        gamma: best.gamma,
+        seed: best.seed,
+        length1: p1.length,
+        length2: p2.length,
+        distance,
+    })
+}
+
+/// Elastic shape distance between two `d × m` curves under the quotient set by
+/// `config` (see [`curve_shape_align_pair`]).
+///
+/// With `scale = true` this is the geodesic distance `arccos⟨q1, q2*⟩` on the
+/// pre-shape sphere (fdasrsf `elastic_distance_curve`, fdasrvf
+/// `calc_shape_dist`); with `scale = false` the L² distance `‖q1 − q2*‖`.
+///
+/// # Errors
+/// As [`curve_shape_align_pair`].
+///
+/// # Example
+/// ```
+/// use fdars_core::alignment::{curve_shape_distance, CurveShapeConfig};
+/// use fdars_core::matrix::FdMatrix;
+/// let m = 41;
+/// let ellipse = |a: f64, b: f64, phase: f64| {
+///     let mut e = FdMatrix::zeros(2, m);
+///     for j in 0..m {
+///         let th = 2.0 * std::f64::consts::PI * j as f64 / (m - 1) as f64 + phase;
+///         e[(0, j)] = a * th.cos();
+///         e[(1, j)] = b * th.sin();
+///     }
+///     e
+/// };
+/// let mut cfg = CurveShapeConfig::default();
+/// cfg.closed = true;
+/// cfg.reparam = false; // rigid: rotation + scale + seed only
+/// // same ellipse, twice as large, starting 7 samples later
+/// let shift = 2.0 * std::f64::consts::PI * 7.0 / (m - 1) as f64;
+/// let d = curve_shape_distance(&ellipse(1.5, 0.8, 0.0), &ellipse(3.0, 1.6, shift), &cfg).unwrap();
+/// assert!(d < 1e-8);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn curve_shape_distance(
+    beta1: &FdMatrix,
+    beta2: &FdMatrix,
+    config: &CurveShapeConfig,
+) -> Result<f64, FdarError> {
+    Ok(curve_shape_align_pair(beta1, beta2, config)?.distance)
+}
+
+/// Symmetric `n × n` matrix of pairwise shape distances between the curves of a
+/// set (curve `j` aligned to curve `i` for `i < j`, mirrored; zero diagonal).
+/// Pairs are computed in parallel with the `parallel` feature.
+///
+/// # Errors
+/// As [`curve_shape_align_pair`], plus [`FdarError::InvalidDimension`] for an
+/// empty set.
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn curve_shape_self_distance_matrix(
+    curves: &FdCurveSet,
+    config: &CurveShapeConfig,
+) -> Result<FdMatrix, FdarError> {
+    let n = curves.ncurves();
+    if n == 0 || curves.ndim() == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "curves",
+            expected: "at least one curve with d >= 1".to_string(),
+            actual: format!("{n} curves, d = {}", curves.ndim()),
+        });
+    }
+    let list: Vec<FdMatrix> = (0..n)
+        .map(|i| curve_from_set(curves, i))
+        .collect::<Result<_, _>>()?;
+    // An FdCurveSet has a common shape, so validating each curve against itself
+    // checks the configuration, the sample count and finiteness.
+    for c in &list {
+        validate_pair(c, c, config)?;
+    }
+    let grid = Grid::new(curves.npoints());
+    let prepared: Vec<Prepared> = list
+        .iter()
+        .map(|c| prepare(c, config, &grid))
+        .collect::<Result<_, _>>()?;
+    let pairs: Vec<(usize, usize)> = (0..n)
+        .flat_map(|i| (i + 1..n).map(move |j| (i, j)))
+        .collect();
+    let dists: Vec<f64> = iter_maybe_parallel!(pairs.clone())
+        .map(|(i, j)| {
+            let c = align_to_srvf(&prepared[i].q, &prepared[j].beta, config, &grid);
+            total_distance(c.distance, prepared[i].length, prepared[j].length, config)
+        })
+        .collect();
+    let mut out = FdMatrix::zeros(n, n);
+    for (&(i, j), &dv) in pairs.iter().zip(&dists) {
+        out[(i, j)] = dv;
+        out[(j, i)] = dv;
+    }
+    Ok(out)
+}

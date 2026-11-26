@@ -16,12 +16,16 @@
 //!   with template re-estimation; [`landmark_shift_registration`] — landmark shift
 //! - [`continuous_registration`] — Ramsay–Li continuous registration (R `register.fd`,
 //!   least-squares and minimum-eigenvalue criteria) with monotone B-spline warps
+//! - [`curve_shape_align_pair`] / [`curve_shape_distance`] / [`curve_shape_karcher_mean`] /
+//!   [`curve_shape_pca`] — elastic shape analysis of R^d curves (open or closed) modulo
+//!   rotation, scale, reparametrisation and starting point ([`CurveShapeConfig`])
 
 mod bayesian;
 mod closed;
 mod clustering;
 mod constrained;
 mod continuous;
+mod curve_shape;
 mod diagnostics;
 mod differentiable;
 mod elastic_depth;
@@ -71,6 +75,13 @@ pub use constrained::{
 pub use continuous::{
     continuous_registration, ContinuousRegistrationConfig, ContinuousRegistrationCriterion,
     ContinuousRegistrationResult,
+};
+pub use curve_shape::{
+    closure_residual, curve_from_set, curve_shape_align_pair, curve_shape_distance,
+    curve_shape_karcher_covariance, curve_shape_karcher_mean, curve_shape_pca,
+    curve_shape_self_distance_matrix, curve_srvf, curves_to_set, optimal_rotation,
+    project_closed_srvf, srvf_to_curve, CurveShapeAlignment, CurveShapeConfig,
+    CurveShapeKarcherResult, CurveShapePcaResult,
 };
 pub use diagnostics::{
     diagnose_alignment, diagnose_pairwise, AlignmentDiagnostic, AlignmentDiagnosticSummary,
