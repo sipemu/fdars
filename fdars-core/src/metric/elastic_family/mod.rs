@@ -773,7 +773,7 @@ macro_rules! elastic_family_fns {
         #[doc = concat!($label, " distance between two multivariate series (aeon `", stringify!($dist), "` on `(n_channels, n_timepoints)` arrays).")]
         ///
         /// `x` (`d × n`) and `y` (`d × m`) hold one channel per row and one time
-        /// point per column; see the [module docs](self) for aeon's multichannel
+        /// point per column; see the [module docs](crate::metric::elastic_family) for aeon's multichannel
         /// semantics. With `d = 1` the result is bit-identical to the univariate
         #[doc = concat!("[`", stringify!($dist), "`].")]
         ///

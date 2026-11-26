@@ -5,7 +5,7 @@
 //! 2011) averages a set of series under hard DTW. Each iteration
 //!
 //! 1. aligns the current barycenter `b` to every series `x_k` with an optimal
-//!    DTW warping path ([`dtw_path`], squared local cost, optional
+//!    DTW warping path ([`dtw_path`](super::dtw::dtw_path), squared local cost, optional
 //!    [`DtwWindow`]), and
 //! 2. replaces every barycenter sample by the weighted mean of all series
 //!    samples aligned to it:
@@ -123,7 +123,7 @@ pub struct DbaResult {
     pub barycenter: Vec<f64>,
     /// Weighted DTW inertia of the returned barycenter,
     /// `Σ_k w_k · DTW²(barycenter, x_k) / Σ_k w_k`, where `DTW²` is the
-    /// accumulated squared cost (the value of [`dtw_distance_windowed`] with
+    /// accumulated squared cost (the value of [`dtw_distance_windowed`](super::dtw::dtw_distance_windowed) with
     /// `p = 2`, no root). tslearn's internal loss is the same quantity
     /// evaluated *before* the last update.
     pub cost: f64,
