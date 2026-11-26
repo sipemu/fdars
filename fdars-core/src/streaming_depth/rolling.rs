@@ -5,6 +5,35 @@ use std::collections::VecDeque;
 use super::c2;
 use super::sorted_ref::SortedReferenceState;
 
+/// Remove one occurrence of `old_val` from the ascending-sorted `col`.
+///
+/// Scans forward from the `partition_point` for an exact (`==`) match; if
+/// none is found, falls back to scanning backwards from that position
+/// (floating-point edge cases). No-op if the value is absent.
+fn remove_sorted_value(col: &mut Vec<f64>, old_val: f64) {
+    let pos = col.partition_point(|&v| v < old_val);
+    // Find exact match (handles duplicates by scanning nearby)
+    for idx in pos..col.len() {
+        if col[idx] == old_val {
+            col.remove(idx);
+            return;
+        }
+        if col[idx] > old_val {
+            break;
+        }
+    }
+    // Fallback: scan from pos backwards for floating-point edge cases
+    for idx in (0..pos).rev() {
+        if col[idx] == old_val {
+            col.remove(idx);
+            return;
+        }
+        if col[idx] < old_val {
+            return;
+        }
+    }
+}
+
 /// Sliding window of reference curves with incrementally maintained sorted columns.
 ///
 /// When a new curve is pushed and the window is at capacity, the oldest curve
@@ -56,34 +85,8 @@ impl RollingReference {
                 .pop_front()
                 .expect("capacity invariant: deque is non-empty");
             // Remove old values from sorted columns
-            for t in 0..self.n_points {
-                let col = &mut self.sorted_columns[t];
-                let old_val = old[t];
-                let pos = col.partition_point(|&v| v < old_val);
-                // Find exact match (handles duplicates by scanning nearby)
-                let mut found = false;
-                for idx in pos..col.len() {
-                    if col[idx] == old_val {
-                        col.remove(idx);
-                        found = true;
-                        break;
-                    }
-                    if col[idx] > old_val {
-                        break;
-                    }
-                }
-                if !found {
-                    // Fallback: scan from pos backwards for floating-point edge cases
-                    for idx in (0..pos).rev() {
-                        if col[idx] == old_val {
-                            col.remove(idx);
-                            break;
-                        }
-                        if col[idx] < old_val {
-                            break;
-                        }
-                    }
-                }
+            for (col, &old_val) in self.sorted_columns.iter_mut().zip(old.iter()) {
+                remove_sorted_value(col, old_val);
             }
             Some(old)
         } else {
@@ -92,9 +95,7 @@ impl RollingReference {
 
         // Insert new values into sorted columns
         let new_curve: Vec<f64> = curve.to_vec();
-        for t in 0..self.n_points {
-            let col = &mut self.sorted_columns[t];
-            let val = new_curve[t];
+        for (col, &val) in self.sorted_columns.iter_mut().zip(new_curve.iter()) {
             let pos = col.partition_point(|&v| v < val);
             col.insert(pos, val);
         }

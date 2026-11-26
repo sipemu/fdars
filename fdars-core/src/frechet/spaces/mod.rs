@@ -20,3 +20,39 @@ pub use network::NetworkSpace;
 pub use point_process::PointProcessSpace;
 pub use spd::{SpdMatrixSpace, SpdMetric};
 pub use spherical::SphericalSpace;
+
+use crate::error::FdarError;
+
+/// Shared `weighted_frechet_mean` input validation for flat-vector backends:
+/// non-empty `objects`, `weights.len() == objects.len()`, and every object of
+/// length `len`.
+pub(super) fn check_mean_inputs(
+    objects: &[Vec<f64>],
+    weights: &[f64],
+    len: usize,
+) -> Result<(), FdarError> {
+    if objects.is_empty() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "objects",
+            expected: "at least 1 object".to_string(),
+            actual: "0 objects".to_string(),
+        });
+    }
+    if weights.len() != objects.len() {
+        return Err(FdarError::InvalidDimension {
+            parameter: "weights",
+            expected: format!("{} weights (matching objects)", objects.len()),
+            actual: format!("{} weights", weights.len()),
+        });
+    }
+    for (i, o) in objects.iter().enumerate() {
+        if o.len() != len {
+            return Err(FdarError::InvalidDimension {
+                parameter: "objects",
+                expected: format!("each object has {len} elements"),
+                actual: format!("object {i} has {} elements", o.len()),
+            });
+        }
+    }
+    Ok(())
+}

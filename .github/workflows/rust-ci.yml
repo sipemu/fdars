@@ -141,23 +141,27 @@ jobs:
             ~/.cargo/git/db/
             fdars-core/target/
           # pmat version is in the key so a bump busts the cache and reinstalls.
-          key: ${{ runner.os }}-cargo-pmat-3.18.0-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-pmat-3.45.1-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install pmat 3.18.0 (dev/CI tool — never a crate dependency)
+      - name: Install pmat 3.45.1 (dev/CI tool — never a crate dependency)
         # pmat is an external quality tool installed in CI only; it is deliberately
-        # NOT in Cargo.toml. Pinned to 3.18.0 so the gate's thresholds match what
-        # the codebase was validated against.
-        run: command -v pmat >/dev/null 2>&1 && [ "$(pmat --version)" = "pmat 3.18.0" ] || cargo install pmat --version 3.18.0 --locked
+        # NOT in Cargo.toml. Pinned to 3.45.1 so CI and local runs agree (#75: the
+        # old 3.18.0 pin passed cognitive-complexity violations that 3.45 flags).
+        # `pmat --version` prints extra build-metadata lines since 3.4x, so only
+        # the first line is compared.
+        run: command -v pmat >/dev/null 2>&1 && [ "$(pmat --version | head -n1)" = "pmat 3.45.1" ] || cargo install pmat --version 3.45.1 --locked
 
       # The CURATED quality gate. The stochastic `entropy` analyzer is intentionally
-      # excluded from --checks: pmat 3.18.0's entropy sampler is non-deterministic
+      # excluded from --checks: pmat's entropy sampler is non-deterministic
       # (different violation count each run) and would make this gate flaky. The
       # deterministic checks (complexity, satd, dead-code, duplicates) are enforced.
+      # Since pmat 3.32.0 blocking violations exit non-zero by default, so the old
+      # `--fail-on-violation` flag is a no-op and has been dropped.
       #
       # Reproduce locally from the fdars-core/ directory:
-      #   pmat quality-gate --checks complexity,satd,dead-code,duplicates --fail-on-violation
+      #   pmat quality-gate --checks complexity,satd,dead-code,duplicates
       - name: Run pmat quality gate (complexity, satd, dead-code, duplicates)
-        run: pmat quality-gate --checks complexity,satd,dead-code,duplicates --fail-on-violation
+        run: pmat quality-gate --checks complexity,satd,dead-code,duplicates
 
   clippy:
     name: Clippy

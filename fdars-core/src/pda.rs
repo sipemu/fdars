@@ -168,10 +168,23 @@ impl Lfd {
     /// An `FdMatrix` of the same shape as `data`, containing the operator output.
     pub fn apply(&self, data: &FdMatrix, argvals: &[f64]) -> Result<FdMatrix, FdarError> {
         let (n, n_pts) = data.shape();
-        let m = self.coefs.len(); // operator order
+        self.validate_apply(n_pts, argvals)?;
+        let mut out = FdMatrix::zeros(n, n_pts);
+        for i in 0..n {
+            let curve: Vec<f64> = (0..n_pts).map(|j| data[(i, j)]).collect();
+            let lx = self.apply_curve(curve, argvals);
+            for (j, &v) in lx.iter().enumerate() {
+                // Write into column-major output: element (i, j) at i + j*n.
+                out[(i, j)] = v;
+            }
+        }
+        Ok(out)
+    }
 
+    /// Input validation for [`Lfd::apply`] (see its `# Errors` section).
+    fn validate_apply(&self, n_pts: usize, argvals: &[f64]) -> Result<(), FdarError> {
         // Guard: empty coefs is not a valid operator (WR-02).
-        if m == 0 {
+        if self.coefs.is_empty() {
             return Err(FdarError::InvalidParameter {
                 parameter: "coefs",
                 message: "Lfd requires at least one weight function (coefs.len() >= 1); \
@@ -208,24 +221,25 @@ impl Lfd {
                 });
             }
         }
+        Ok(())
+    }
 
-        let mut out = FdMatrix::zeros(n, n_pts);
+    /// Apply the (validated) operator to one curve sampled at `argvals`.
+    fn apply_curve(&self, curve: Vec<f64>, argvals: &[f64]) -> Vec<f64> {
+        let m = self.coefs.len(); // operator order
+        let mut derivs: Vec<Vec<f64>> = Vec::with_capacity(m + 1);
+        derivs.push(curve);
 
-        for i in 0..n {
-            // Extract curve i as a Vec<f64>.
-            let mut derivs: Vec<Vec<f64>> = Vec::with_capacity(m + 1);
-            let curve: Vec<f64> = (0..n_pts).map(|j| data[(i, j)]).collect();
-            derivs.push(curve);
+        // Compute D¹x, D²x, …, D^m x by iterating gradient.
+        for _ in 0..m {
+            let prev = derivs.last().unwrap();
+            let d = crate::helpers::gradient(prev, argvals);
+            derivs.push(d);
+        }
 
-            // Compute D¹x, D²x, …, D^m x by iterating gradient.
-            for _ in 0..m {
-                let prev = derivs.last().unwrap();
-                let d = crate::helpers::gradient(prev, argvals);
-                derivs.push(d);
-            }
-
-            // Lx_i(t_j) = D^m x_i(t_j) + Σ_{k=0}^{m-1} β_k(t_j) · D^k x_i(t_j)
-            for j in 0..n_pts {
+        // Lx(t_j) = D^m x(t_j) + Σ_{k=0}^{m-1} β_k(t_j) · D^k x(t_j)
+        (0..argvals.len())
+            .map(|j| {
                 let mut lx_j = derivs[m][j];
                 for k in 0..m {
                     // Broadcast length-1 coefficients (Pitfall 3).
@@ -236,12 +250,9 @@ impl Lfd {
                     };
                     lx_j += beta_k * derivs[k][j];
                 }
-                // Write into column-major output: element (i, j) at i + j*n.
-                out[(i, j)] = lx_j;
-            }
-        }
-
-        Ok(out)
+                lx_j
+            })
+            .collect()
     }
 }
 

@@ -97,25 +97,7 @@ impl MfpcaResult {
     /// Returns [`FdarError::InvalidDimension`] if the number of variables or
     /// their grid sizes do not match the training data.
     pub fn project(&self, new_data: &[&FdMatrix]) -> Result<FdMatrix, FdarError> {
-        if new_data.len() != self.means.len() {
-            return Err(FdarError::InvalidDimension {
-                parameter: "new_data",
-                expected: format!("{} variables", self.means.len()),
-                actual: format!("{} variables", new_data.len()),
-            });
-        }
-
-        // Early check: total columns across all variables must match the
-        // combined rotation matrix rows (i.e., the sum of training grid sizes).
-        let total_input_cols: usize = new_data.iter().map(|v| v.ncols()).sum();
-        let expected_total: usize = self.grid_sizes.iter().sum();
-        if total_input_cols != expected_total {
-            return Err(FdarError::InvalidDimension {
-                parameter: "new_data",
-                expected: format!("{expected_total} total columns across all variables"),
-                actual: format!("{total_input_cols} total columns"),
-            });
-        }
+        self.validate_project(new_data)?;
 
         let n_new = new_data[0].nrows();
         let ncomp = self.scores.ncols();
@@ -126,20 +108,6 @@ impl MfpcaResult {
         let mut col_offset = 0;
         for (p, &var) in new_data.iter().enumerate() {
             let m_p = self.grid_sizes[p];
-            if var.ncols() != m_p {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "new_data",
-                    expected: format!("{m_p} columns for variable {p}"),
-                    actual: format!("{} columns", var.ncols()),
-                });
-            }
-            if var.nrows() != n_new {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "new_data",
-                    expected: format!("{n_new} rows for all variables"),
-                    actual: format!("{} rows for variable {p}", var.nrows()),
-                });
-            }
             let scale = if self.scales[p] >= self.scale_threshold {
                 self.scales[p]
             } else {
@@ -166,6 +134,50 @@ impl MfpcaResult {
             }
         }
         Ok(scores)
+    }
+
+    /// Shape validation for [`MfpcaResult::project`] (variable count, total
+    /// columns, then per-variable columns/rows in variable order).
+    fn validate_project(&self, new_data: &[&FdMatrix]) -> Result<(), FdarError> {
+        if new_data.len() != self.means.len() {
+            return Err(FdarError::InvalidDimension {
+                parameter: "new_data",
+                expected: format!("{} variables", self.means.len()),
+                actual: format!("{} variables", new_data.len()),
+            });
+        }
+
+        // Early check: total columns across all variables must match the
+        // combined rotation matrix rows (i.e., the sum of training grid sizes).
+        let total_input_cols: usize = new_data.iter().map(|v| v.ncols()).sum();
+        let expected_total: usize = self.grid_sizes.iter().sum();
+        if total_input_cols != expected_total {
+            return Err(FdarError::InvalidDimension {
+                parameter: "new_data",
+                expected: format!("{expected_total} total columns across all variables"),
+                actual: format!("{total_input_cols} total columns"),
+            });
+        }
+
+        let n_new = new_data[0].nrows();
+        for (p, &var) in new_data.iter().enumerate() {
+            let m_p = self.grid_sizes[p];
+            if var.ncols() != m_p {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "new_data",
+                    expected: format!("{m_p} columns for variable {p}"),
+                    actual: format!("{} columns", var.ncols()),
+                });
+            }
+            if var.nrows() != n_new {
+                return Err(FdarError::InvalidDimension {
+                    parameter: "new_data",
+                    expected: format!("{n_new} rows for all variables"),
+                    actual: format!("{} rows for variable {p}", var.nrows()),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Reconstruct multivariate functional data from scores.

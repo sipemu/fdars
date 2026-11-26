@@ -15,6 +15,7 @@
 //! averaged diagonal entries — a non-positive diagonal returns an error rather
 //! than producing an invalid correlation matrix.
 
+use super::check_mean_inputs;
 use crate::error::FdarError;
 use crate::frechet::MetricSpace;
 use crate::helpers::NUMERICAL_EPS;
@@ -55,6 +56,29 @@ impl CorrelationMatrixSpace {
     }
 }
 
+/// Rescale a flat column-major `d×d` matrix `m` to unit diagonal,
+/// `r_ij = m_ij / sqrt(m_ii m_jj)`; errors if any diagonal entry is `<= 0`.
+fn renormalize_unit_diagonal(m: &[f64], d: usize) -> Result<Vec<f64>, FdarError> {
+    for i in 0..d {
+        if m[i + i * d] <= 0.0 {
+            return Err(FdarError::ComputationFailed {
+                operation: "CorrelationMatrixSpace::weighted_frechet_mean",
+                detail: format!(
+                    "averaged diagonal entry {i} is non-positive ({}); cannot renormalize to a correlation matrix",
+                    m[i + i * d]
+                ),
+            });
+        }
+    }
+    let mut result = vec![0.0f64; d * d];
+    for i in 0..d {
+        for j in 0..d {
+            result[i + j * d] = m[i + j * d] / (m[i + i * d] * m[j + j * d]).sqrt();
+        }
+    }
+    Ok(result)
+}
+
 impl MetricSpace for CorrelationMatrixSpace {
     type Object = Vec<f64>;
 
@@ -73,30 +97,8 @@ impl MetricSpace for CorrelationMatrixSpace {
         objects: &[Self::Object],
         weights: &[f64],
     ) -> Result<Self::Object, FdarError> {
-        if objects.is_empty() {
-            return Err(FdarError::InvalidDimension {
-                parameter: "objects",
-                expected: "at least 1 object".to_string(),
-                actual: "0 objects".to_string(),
-            });
-        }
-        if weights.len() != objects.len() {
-            return Err(FdarError::InvalidDimension {
-                parameter: "weights",
-                expected: format!("{} weights (matching objects)", objects.len()),
-                actual: format!("{} weights", weights.len()),
-            });
-        }
         let dd = self.d * self.d;
-        for (i, o) in objects.iter().enumerate() {
-            if o.len() != dd {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "objects",
-                    expected: format!("each object has {dd} elements"),
-                    actual: format!("object {i} has {} elements", o.len()),
-                });
-            }
-        }
+        check_mean_inputs(objects, weights, dd)?;
         let sw: f64 = weights.iter().sum();
         if sw.abs() < NUMERICAL_EPS {
             return Err(FdarError::ComputationFailed {
@@ -115,24 +117,7 @@ impl MetricSpace for CorrelationMatrixSpace {
             *x /= sw;
         }
         // Renormalize to unit diagonal; guard positive diagonal entries.
-        let d = self.d;
-        for i in 0..d {
-            if m[i + i * d] <= 0.0 {
-                return Err(FdarError::ComputationFailed {
-                    operation: "CorrelationMatrixSpace::weighted_frechet_mean",
-                    detail: format!(
-                        "averaged diagonal entry {i} is non-positive ({}); cannot renormalize to a correlation matrix",
-                        m[i + i * d]
-                    ),
-                });
-            }
-        }
-        let mut result = vec![0.0f64; dd];
-        for i in 0..d {
-            for j in 0..d {
-                result[i + j * d] = m[i + j * d] / (m[i + i * d] * m[j + j * d]).sqrt();
-            }
-        }
+        let result = renormalize_unit_diagonal(&m, self.d)?;
         Ok(result)
     }
 }
