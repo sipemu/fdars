@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T12:42:00.444Z"
+last_updated: "2026-11-26T13:13:45.426Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 2fc65ed46454c5f37eae3ca785899e4fcca4cb2b
+state_head: 4dbb5a88ef43ab732a55b50e1bd51a3122d71ced
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-ic6: ALN-CAV elastic DP residual floor diagnosis + RBFGS/DP2 warp options for curve shapes (closes #65)
+Last activity: 2026-11-26 - Completed quick task 261126-j5n: ALN-CAV RBFGS + DP options for N-d, landmarks, robust Karcher, align_to_target, closed Karcher; band + λ-scale semantics (closes #67)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -202,6 +202,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-cxk | Fix rustdoc -Dwarnings errors so CI Documentation job passes | 2026-11-26 | fef69806 | [261126-cxk-fix-rustdoc-dwarnings-errors-so-ci-docum](./quick/261126-cxk-fix-rustdoc-dwarnings-errors-so-ci-docum/) |
 | 261126-hye | ALN-CAV enable exact DP pruning by default (#66) | 2026-11-26 | 18487a68 | [261126-hye-aln-cav-enable-exact-dp-pruning-by-defau](./quick/261126-hye-aln-cav-enable-exact-dp-pruning-by-defau/) |
 | 261126-ic6 | ALN-CAV elastic DP residual floor: RBFGS + DP options for curve shape (#65) | 2026-11-26 | 2fc65ed4 | [261126-ic6-aln-cav-elastic-dp-residual-floor-rbfgs-](./quick/261126-ic6-aln-cav-elastic-dp-residual-floor-rbfgs-/) |
+| 261126-j5n | ALN-CAV RBFGS coverage gaps: N-d, landmarks, robust Karcher, band, lambda scale (#67) | 2026-11-26 | 4dbb5a88 | [261126-j5n-aln-cav-rbfgs-coverage-gaps-n-d-landmark](./quick/261126-j5n-aln-cav-rbfgs-coverage-gaps-n-d-landmark/) |
 
 ## Deferred Items
 
