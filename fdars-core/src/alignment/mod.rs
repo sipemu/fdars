@@ -4,6 +4,8 @@
 //! the elastic framework. Key capabilities:
 //!
 //! - [`srsf_transform`] / [`srsf_inverse`] — SRSF representation and reconstruction
+//! - [`srsf_transform_smoothed`] / [`srsf_presmooth`] — optional pre-smoothing
+//!   before the SRSF (fdasrvf `smooth.data` / `f_to_srvf(smooth = TRUE)`)
 //! - [`elastic_align_pair`] — Pairwise curve alignment via dynamic programming
 //! - [`elastic_distance`] — Elastic (Fisher-Rao) distance between curves
 //! - [`align_to_target`] — Align a set of curves to a common target
@@ -55,6 +57,7 @@ mod shape_ci;
 mod shift;
 mod shift_iterative;
 mod srsf;
+mod srsf_smoothing;
 mod transfer;
 mod tsrvf;
 mod warp_stats;
@@ -160,6 +163,7 @@ pub use srsf::{
     compose_warps, invert_warp, reparameterize_curve, srsf_inverse, srsf_transform,
     warp_inverse_error,
 };
+pub use srsf_smoothing::{srsf_presmooth, srsf_transform_smoothed, SrsfSmoothing};
 pub use transfer::{transfer_alignment, TransferAlignConfig, TransferAlignResult};
 pub use tsrvf::{
     tsrvf_from_alignment, tsrvf_from_alignment_with_method, tsrvf_inverse, tsrvf_transform,
