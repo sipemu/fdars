@@ -1410,6 +1410,21 @@ mod differentiable_tests {
         grad
     }
 
+    /// Refactor pin (#75): the oracle's outputs stay bit-identical to values
+    /// recorded on the pre-refactor (monolithic) helper.
+    #[test]
+    fn corrected_oracle_gradient_bit_identity_pin() {
+        use crate::test_helpers::{bits_fingerprint, lcg_values};
+        let mut all = corrected_oracle_gradient(&X, &Y, 1.0);
+        for (k, &gamma) in [0.1, 1.0, 10.0].iter().enumerate() {
+            let a = lcg_values(9, 500 + k as u64);
+            let b = lcg_values(6, 600 + k as u64);
+            all.extend(corrected_oracle_gradient(&a, &b, gamma));
+        }
+        let fp = bits_fingerprint(&all);
+        assert_eq!(fp, 2_876_726_033_181_513_223);
+    }
+
     #[test]
     fn dual_gradient_vs_oracle() {
         // SC #1: forward-mode Dual gradient must match the (corrected) hand-

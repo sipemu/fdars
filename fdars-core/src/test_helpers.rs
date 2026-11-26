@@ -195,3 +195,34 @@ mod tests {
         );
     }
 }
+
+/// FNV-1a fingerprint over the exact IEEE-754 bit patterns of `xs`.
+///
+/// Used by refactor bit-identity pins: any change in any output bit
+/// (including sign of zero or NaN payload) changes the fingerprint.
+pub fn bits_fingerprint(xs: &[f64]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for x in xs {
+        for b in x.to_bits().to_le_bytes() {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+    h
+}
+
+/// Deterministic pseudo-random values in \[-1, 1) from a 64-bit LCG.
+///
+/// Platform-independent (integer arithmetic + one exact division), so pins
+/// built from it are portable.
+pub fn lcg_values(n: usize, seed: u64) -> Vec<f64> {
+    let mut s = seed;
+    (0..n)
+        .map(|_| {
+            s = s
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            ((s >> 11) as f64 / (1u64 << 53) as f64) * 2.0 - 1.0
+        })
+        .collect()
+}

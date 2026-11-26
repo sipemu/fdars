@@ -202,4 +202,26 @@ mod tests {
             Err(FdarError::InvalidDimension { .. })
         ));
     }
+
+    /// Refactor pin (#75): weighted means on pseudo-random 3×3 inputs stay
+    /// bit-identical to values recorded on the pre-refactor code.
+    #[test]
+    fn correlation_mean_bit_identity_pin() {
+        use crate::test_helpers::{bits_fingerprint, lcg_values};
+        let s = CorrelationMatrixSpace::new(3).unwrap();
+        let objs: Vec<Vec<f64>> = (0..6)
+            .map(|k| {
+                let r = lcg_values(3, 40 + k);
+                let (a, b, c) = (0.5 * r[0], 0.5 * r[1], 0.5 * r[2]);
+                vec![1.0, a, b, a, 1.0, c, b, c, 1.0]
+            })
+            .collect();
+        let mut all = Vec::new();
+        for seed in 0..5u64 {
+            let w: Vec<f64> = lcg_values(6, 70 + seed).iter().map(|v| v + 1.5).collect();
+            all.extend(s.weighted_frechet_mean(&objs, &w).unwrap());
+        }
+        let fp = bits_fingerprint(&all);
+        assert_eq!(fp, 11_629_608_216_153_360_776);
+    }
 }

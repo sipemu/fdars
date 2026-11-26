@@ -266,4 +266,30 @@ mod tests {
             Err(FdarError::InvalidDimension { .. })
         ));
     }
+
+    /// Refactor pin (#75): Karcher means on pseudo-random clustered S^2 data
+    /// stay bit-identical to values recorded on the pre-refactor code.
+    #[test]
+    fn spherical_karcher_bit_identity_pin() {
+        use crate::test_helpers::{bits_fingerprint, lcg_values};
+        let s = SphericalSpace::new(3).unwrap();
+        let objs: Vec<Vec<f64>> = (0..7)
+            .map(|k| {
+                let r = lcg_values(3, 200 + k);
+                let raw = [1.0 + 0.3 * r[0], 0.3 * r[1], 0.3 * r[2]];
+                let n = raw.iter().map(|x| x * x).sum::<f64>().sqrt();
+                raw.iter().map(|x| x / n).collect()
+            })
+            .collect();
+        let mut all = Vec::new();
+        for seed in 0..5u64 {
+            let w: Vec<f64> = lcg_values(7, 300 + seed)
+                .iter()
+                .map(|v| (v + 1.5) / 7.0)
+                .collect();
+            all.extend(s.weighted_frechet_mean(&objs, &w).unwrap());
+        }
+        let fp = bits_fingerprint(&all);
+        assert_eq!(fp, 12_241_966_407_315_560_618);
+    }
 }

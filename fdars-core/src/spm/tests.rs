@@ -3818,4 +3818,43 @@ mod spm_tests {
         )
         .is_err());
     }
+
+    /// Refactor pin (#75): `MfpcaResult::project` on a hand-built result
+    /// (one variable below the scale threshold) stays bit-identical to the
+    /// pre-refactor values, and validation errors keep their order/content.
+    #[test]
+    fn mfpca_project_bit_identity_pin() {
+        use crate::spm::mfpca::MfpcaResult;
+        use crate::test_helpers::{bits_fingerprint, lcg_values};
+        let (m1, m2, ncomp) = (4usize, 6usize, 3usize);
+        let res = MfpcaResult {
+            scores: FdMatrix::zeros(2, ncomp),
+            eigenfunctions: vec![],
+            eigenvalues: vec![1.0; ncomp],
+            means: vec![lcg_values(m1, 1), lcg_values(m2, 2)],
+            scales: vec![0.7, 1e-14],
+            grid_sizes: vec![m1, m2],
+            combined_rotation: FdMatrix::from_column_major(
+                lcg_values((m1 + m2) * ncomp, 3),
+                m1 + m2,
+                ncomp,
+            )
+            .unwrap(),
+            scale_threshold: 1e-10,
+        };
+        let v1 = FdMatrix::from_column_major(lcg_values(5 * m1, 4), 5, m1).unwrap();
+        let v2 = FdMatrix::from_column_major(lcg_values(5 * m2, 5), 5, m2).unwrap();
+        let fp = bits_fingerprint(res.project(&[&v1, &v2]).unwrap().as_slice());
+        assert_eq!(fp, 17_662_418_227_222_774_266);
+        // Error ordering: swapped grids → first per-variable error is variable 0's columns.
+        let e = format!("{:?}", res.project(&[&v2, &v1]).unwrap_err());
+        assert!(e.contains("4 columns for variable 0"), "{e}");
+        // Row mismatch on variable 1.
+        let v2_short = FdMatrix::from_column_major(lcg_values(3 * m2, 6), 3, m2).unwrap();
+        let e = format!("{:?}", res.project(&[&v1, &v2_short]).unwrap_err());
+        assert!(
+            e.contains("5 rows for all variables") && e.contains("variable 1"),
+            "{e}"
+        );
+    }
 }

@@ -388,6 +388,46 @@ mod tests {
 
     // ── Lfd tests ────────────────────────────────────────────────────────────
 
+    /// Refactor pin (#75): `Lfd::apply` outputs (orders 1–3, constant and
+    /// grid-sampled coefficients, uniform and non-uniform grids) stay
+    /// bit-identical to values recorded on the pre-refactor code.
+    #[test]
+    fn lfd_apply_bit_identity_pin() {
+        use crate::test_helpers::{bits_fingerprint, lcg_values};
+        let n_pts = 15;
+        let uni = crate::test_helpers::uniform_grid(n_pts);
+        let nonuni: Vec<f64> = (0..n_pts).map(|j| (j as f64 / 14.0).powi(2)).collect();
+        let data = FdMatrix::from_column_major(lcg_values(4 * n_pts, 7), 4, n_pts).unwrap();
+        let ops = [
+            Lfd {
+                coefs: vec![vec![-2.5]],
+            },
+            Lfd {
+                coefs: vec![lcg_values(n_pts, 8), vec![0.75]],
+            },
+            Lfd {
+                coefs: vec![vec![1.0], lcg_values(n_pts, 9), lcg_values(n_pts, 10)],
+            },
+        ];
+        let mut fps = Vec::new();
+        for grid in [&uni, &nonuni] {
+            for op in &ops {
+                fps.push(bits_fingerprint(op.apply(&data, grid).unwrap().as_slice()));
+            }
+        }
+        assert_eq!(
+            fps,
+            [
+                1_111_133_989_539_569_986,
+                14_637_672_746_448_079_742,
+                3_487_226_070_837_172_018,
+                16_515_779_974_839_551_085,
+                10_476_013_647_544_150_382,
+                10_523_819_961_418_114_908,
+            ]
+        );
+    }
+
     /// WR-02: empty coefs returns Err(InvalidParameter).
     #[test]
     fn lfd_empty_coefs_returns_err() {
