@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T15:34:13.465Z"
+last_updated: "2026-11-26T16:49:15.024Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 2cf3defc963e32a9481dbc24f78230caee15b5e4
+state_head: 6147fdf425fa8b73ab3f44bbc2e128babd73bdba
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-mun: ALN-CAV regenerate fdasrvf goldens with CRAN fdasrvf 2.6.0 — depth/boxplot (#54) + SRSF smoothing (#56), tolerances tightened (closes #74)
+Last activity: 2026-11-26 - Completed quick task 261126-nrt: Fix CI — rustdoc intra-doc links (#73) + libm-portable value pins replacing cross-machine bit-hash pins (12 tests)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -211,6 +211,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-mbw | ALN-CAV (GH #71) fdasrvf-compatible model-based shape CI | 2026-11-26 | 9f844272 | [261126-mbw-aln-cav-fdasrvf-compatible-model-based-s](./quick/261126-mbw-aln-cav-fdasrvf-compatible-model-based-s/) |
 | 261126-mka | ALN-CAV (GH #75) pmat 3.45 complexity drift: decompose 9 fns (bit-identical), CI pin 3.18 -> 3.45.1 | 2026-11-26 | 77ba1f50 | [261126-mka-aln-cav-pmat-version-drift-decompose-9-c](./quick/261126-mka-aln-cav-pmat-version-drift-decompose-9-c/) |
 | 261126-mun | ALN-CAV regenerate fdasrvf goldens with 2.6.0 (#74) | 2026-11-26 | 2cf3defc | [261126-mun-aln-cav-regenerate-fdasrvf-goldens-with-](./quick/261126-mun-aln-cav-regenerate-fdasrvf-goldens-with-/) |
+| 261126-nrt | Fix CI: portable bit-identity pins + rustdoc errors | 2026-11-26 | 6147fdf4 | [261126-nrt-fix-ci-portable-bit-identity-pins-rustdo](./quick/261126-nrt-fix-ci-portable-bit-identity-pins-rustdo/) |
 
 ## Deferred Items
 
