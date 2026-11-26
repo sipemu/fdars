@@ -13,6 +13,33 @@ Changed below).
 
 ## [Unreleased]
 
+**Elastic box plots and DP-means (GH #55 ALN-BOX).** Additive and non-breaking: existing
+functions return identical values (`PhaseBoxplot` gains two fields); no new crate dependency.
+
+### Added
+
+- `alignment::amplitude_boxplot_from_aligned` → `AmplitudeBoxplot` and
+  `alignment::elastic_phase_boxplot` → `ElasticPhaseBoxplot`: ports of fdasrsf 2.7.5
+  `ampbox` / `phbox` (median, quartile and `(1-alpha)` quantile functions chosen by the
+  distance-to-median energy criterion, whisker distance `k_a · IQR`, outliers, extremes;
+  phase median by the `SqrtMedian` Weiszfeld iteration on the Hilbert sphere). Configured
+  by `ElasticBoxplotConfig { alpha = 0.05, k_a = 1.0 }`. Golden-matched to fdasrsf 2.7.5
+  (distances, radii, quartile/outlier indices to 1e-10..1e-12).
+- New-function classification (fdasrsf `ampbox.classify` / `phbox.classify`):
+  `AmplitudeBoxplot::classify_srsfs`, `ElasticPhaseBoxplot::classify_warps` →
+  `BoxplotClassification { distances, regions: Vec<BoxplotRegion>, sides: Vec<BoxplotSide> }`
+  (`Central50` / `CentralAlpha` / `WithinWhiskers` / `Outlier`, Q1/Q3 side).
+- `alignment::elastic_boxplots(data, argvals, lambda, &cfg)` → `ElasticBoxplots`: Karcher
+  median alignment then both box plots; `ElasticBoxplots::classify(new_data, argvals)` aligns
+  new functions to the fitted template and classifies them in both box plots.
+- `PhaseBoxplot::classify_warps` for the band-depth phase box plot, plus the new
+  `PhaseBoxplot::fence_lower` / `fence_upper` fields it uses (training warps are flagged
+  exactly as in `outlier_indices`).
+- `alignment::elastic_dpmeans(data, argvals, &DpMeansConfig)` → `DpMeansResult`: elastic
+  DP-means clustering with alignment (fdasrsf 2.7.5 / fdasrvf 2.6.0 `dpmeans_align`), the
+  number of clusters learned through the penalty `λ` (`penalty: None` = seeded k-means++
+  heuristic). Cluster counts and labels match fdasrsf on a λ grid from 0 to 100.
+
 **Alignment hygiene (GH #56 ALN-HYGIENE).** Additive and non-breaking; all defaults are
 bit-identical (proven with pre-change FNV-1a bit-pattern hashes); no new crate dependency.
 

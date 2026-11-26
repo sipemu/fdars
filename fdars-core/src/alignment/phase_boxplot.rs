@@ -11,6 +11,7 @@
 //!   functional data. *Journal of the American Statistical Association*,
 //!   104(486), 718-734.
 
+use super::elastic_boxplot::BoxplotRegion;
 use crate::depth::modified_band_1d;
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -40,6 +41,71 @@ pub struct PhaseBoxplot {
     pub outlier_indices: Vec<usize>,
     /// Whisker factor used (analogous to 1.5 in classical box plots).
     pub factor: f64,
+    /// Lower outlier fence `max(central_lower − factor·IQR, domain_lo)`
+    /// (a warp below it anywhere is an outlier).
+    pub fence_lower: Vec<f64>,
+    /// Upper outlier fence `min(central_upper + factor·IQR, domain_hi)`.
+    pub fence_upper: Vec<f64>,
+}
+
+impl PhaseBoxplot {
+    /// Classify new warping functions against the fitted box plot.
+    ///
+    /// Uses the same pointwise rules as the fit: a warp is an
+    /// [`Outlier`](BoxplotRegion::Outlier) if it leaves the fences at any
+    /// grid point, [`Central50`](BoxplotRegion::Central50) if it lies inside
+    /// the 50% central envelope everywhere, and
+    /// [`WithinWhiskers`](BoxplotRegion::WithinWhiskers) otherwise. (This
+    /// band-depth box plot has no `(1-alpha)` region.) Classifying the
+    /// training warps flags exactly `outlier_indices` as outliers.
+    ///
+    /// # Errors
+    /// Returns [`FdarError::InvalidDimension`] if the column count differs
+    /// from the fitted grid.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fdars_core::matrix::FdMatrix;
+    /// use fdars_core::alignment::{phase_boxplot, BoxplotRegion};
+    ///
+    /// let m = 20;
+    /// let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+    /// let mut g = FdMatrix::zeros(6, m);
+    /// for i in 0..6 {
+    ///     for j in 0..m {
+    ///         g[(i, j)] = t[j] + 0.02 * (i as f64 - 2.5) * t[j] * (1.0 - t[j]);
+    ///     }
+    /// }
+    /// let bp = phase_boxplot(&g, &t, 1.5).unwrap();
+    /// let extreme: Vec<f64> = t.iter().map(|&x| x * x).collect();
+    /// let new = FdMatrix::from_slice(&extreme, 1, m).unwrap();
+    /// assert_eq!(bp.classify_warps(&new).unwrap()[0], BoxplotRegion::Outlier);
+    /// ```
+    pub fn classify_warps(&self, gammas: &FdMatrix) -> Result<Vec<BoxplotRegion>, FdarError> {
+        let m = self.median.len();
+        if gammas.ncols() != m {
+            return Err(FdarError::InvalidDimension {
+                parameter: "gammas",
+                expected: format!("{m} columns"),
+                actual: format!("{} columns", gammas.ncols()),
+            });
+        }
+        let inside = |i: usize, lo: &[f64], hi: &[f64]| {
+            (0..m).all(|j| gammas[(i, j)] >= lo[j] && gammas[(i, j)] <= hi[j])
+        };
+        Ok((0..gammas.nrows())
+            .map(|i| {
+                if !inside(i, &self.fence_lower, &self.fence_upper) {
+                    BoxplotRegion::Outlier
+                } else if inside(i, &self.central_lower, &self.central_upper) {
+                    BoxplotRegion::Central50
+                } else {
+                    BoxplotRegion::WithinWhiskers
+                }
+            })
+            .collect())
+    }
 }
 
 /// Compute a phase box plot from a set of warping functions.
@@ -145,8 +211,14 @@ pub fn phase_boxplot(
     let outlier_indices = find_outliers(gammas, n, m, &fence_lower, &fence_upper);
 
     // Step 7: Trim whiskers to actual non-outlier envelope.
-    let (whisker_lower, whisker_upper) =
-        trim_whiskers(gammas, n, m, &outlier_indices, fence_lower, fence_upper);
+    let (whisker_lower, whisker_upper) = trim_whiskers(
+        gammas,
+        n,
+        m,
+        &outlier_indices,
+        fence_lower.clone(),
+        fence_upper.clone(),
+    );
 
     Ok(PhaseBoxplot {
         median,
@@ -158,6 +230,8 @@ pub fn phase_boxplot(
         depths,
         outlier_indices,
         factor,
+        fence_lower,
+        fence_upper,
     })
 }
 
@@ -433,6 +507,50 @@ mod tests {
             "extreme warp (index 4) should be an outlier, got {:?}",
             bp.outlier_indices
         );
+    }
+
+    #[test]
+    fn classify_training_warps_matches_fit() {
+        let m = 20;
+        let argvals = uniform_grid(m);
+        let n = 9;
+        let mut data = vec![0.0; n * m];
+        for i in 0..n {
+            let shift = 0.01 * (i as f64 - 3.5);
+            for j in 0..m {
+                let t = argvals[j];
+                data[j * n + i] = if i == n - 1 {
+                    t * t
+                } else {
+                    (t + shift * t * (1.0 - t)).clamp(0.0, 1.0)
+                };
+            }
+        }
+        let gammas = FdMatrix::from_column_major(data, n, m).unwrap();
+        let bp = phase_boxplot(&gammas, &argvals, 1.5).unwrap();
+        let regions = bp.classify_warps(&gammas).unwrap();
+        for i in 0..n {
+            assert_eq!(
+                regions[i] == BoxplotRegion::Outlier,
+                bp.outlier_indices.contains(&i),
+                "warp {i}"
+            );
+        }
+        assert!(bp.outlier_indices.contains(&(n - 1)));
+        // the median warp is inside the central envelope by construction
+        assert_eq!(regions[bp.median_index], BoxplotRegion::Central50);
+        // the ceil(n/2) deepest warps define the envelope, so all lie inside it
+        let n_central = regions
+            .iter()
+            .filter(|r| **r == BoxplotRegion::Central50)
+            .count();
+        assert!(n_central >= n.div_ceil(2));
+        // fences contain the whiskers
+        for j in 0..m {
+            assert!(bp.fence_lower[j] <= bp.whisker_lower[j] + 1e-12);
+            assert!(bp.fence_upper[j] >= bp.whisker_upper[j] - 1e-12);
+        }
+        assert!(bp.classify_warps(&FdMatrix::zeros(1, 5)).is_err());
     }
 
     #[test]

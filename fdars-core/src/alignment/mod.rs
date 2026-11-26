@@ -33,6 +33,8 @@ mod continuous;
 mod curve_shape;
 mod diagnostics;
 mod differentiable;
+mod dpmeans;
+mod elastic_boxplot;
 mod elastic_depth;
 mod fpns;
 mod generative;
@@ -104,6 +106,12 @@ pub use diagnostics::{
     DiagnosticConfig,
 };
 pub use differentiable::amplitude_distance_at_warp_generic;
+pub use dpmeans::{elastic_dpmeans, DpMeansConfig, DpMeansResult};
+pub use elastic_boxplot::{
+    amplitude_boxplot_from_aligned, elastic_boxplots, elastic_phase_boxplot, AmplitudeBoxplot,
+    BoxplotClassification, BoxplotRegion, BoxplotSide, ElasticBoxplotClassification,
+    ElasticBoxplotConfig, ElasticBoxplots, ElasticPhaseBoxplot,
+};
 pub use elastic_depth::{elastic_depth, ElasticDepthResult};
 pub use fpns::{horiz_fpns, FpnsResult};
 pub use generative::{gauss_model, joint_gauss_model, GenerativeModelResult};
