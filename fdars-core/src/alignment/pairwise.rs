@@ -303,6 +303,20 @@ pub fn elastic_cross_distance_matrix_with_config(
 
 // ─── Internal Helpers with Pre-computed SRSFs ────────────────────────────────
 
+/// [`elastic_align_pair_with_config`] without input validation (`cfg` and
+/// the grid already checked by the caller). The classic DP config is
+/// identical to [`elastic_align_pair`].
+pub(super) fn align_pair_cfg(
+    f1: &[f64],
+    f2: &[f64],
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+) -> AlignmentResult {
+    let q1 = srsf_single(f1, argvals);
+    let q2 = srsf_single(f2, argvals);
+    elastic_align_pair_from_srsf(f2, &q1, &q2, argvals, None, cfg)
+}
+
 /// Align curve f2 to curve f1 given their pre-computed SRSFs.
 ///
 /// This avoids redundant SRSF computation when calling from distance matrix

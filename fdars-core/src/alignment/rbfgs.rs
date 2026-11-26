@@ -25,9 +25,10 @@
 //! are resampled to the coarse grid with a natural cubic spline (scipy's
 //! default `CubicSpline` is not-a-knot).
 
-use super::optim::WarpObjectivePenalty;
+use super::optim::{DpSeed, WarpObjectivePenalty, WarpOptimConfig};
 use super::{
-    dp_alignment_core_banded, dp_alignment_core_with_penalty, dp_l2psi_penalty, dp_prune_is_exact,
+    coprime_nbhd, dp_alignment_core_banded, dp_alignment_core_opts, dp_alignment_core_with_penalty,
+    dp_l2psi_penalty, dp_lambda_penalty, dp_prune_is_exact, DpEngineOptions, DpMoves,
 };
 use crate::helpers::linear_interp;
 use crate::metric::soft_dtw::{lbfgs_dot, lbfgs_hessian_scale, two_loop_lbfgs};
@@ -216,6 +217,10 @@ pub(super) struct RbfgsProblem {
     q2spline: Vec<NaturalSpline>,
     lam: f64,
     penalty: WarpObjectivePenalty,
+    /// Slope factor `κ` of the pointwise penalties: `L2Gam` is `∫(κγ̇ − 1)²`,
+    /// `L2Psi` `∫(√(κγ̇) − 1)²` (`κ = 1` is the standard penalty; landmark
+    /// segments use `κ = L_r/L_c`).
+    pen_slope: f64,
 }
 
 /// Solver hyper-parameters (fdasrsf 2.7.5 values).
@@ -240,18 +245,22 @@ impl RbfgsProblem {
         lam: f64,
         penalty: WarpObjectivePenalty,
     ) -> Self {
-        Self::new_multi(&[q1], &[q2], t, lam, penalty)
+        Self::new_multi(&[q1], &[q2], t, lam, penalty, None)
     }
 
     /// Multi-channel problem: `q1[c]`, `q2[c]` are channel `c` of the SRSFs
     /// (equal channel counts, each of length `t.len()`). With one channel this
     /// is the classic 1-D problem (same arithmetic, bit-identical).
+    /// `euclid = Some((e1, e2))` replaces the Euclidean norms in fdasrsf's
+    /// `lamScale` (landmark segments weigh their penalty by the norms of the
+    /// whole curves).
     pub(super) fn new_multi(
         q1: &[&[f64]],
         q2: &[&[f64]],
         t: &[f64],
         lam: f64,
         penalty: WarpObjectivePenalty,
+        euclid: Option<(f64, f64)>,
     ) -> Self {
         let w = trapz_weights(t);
         let sqrtw: Vec<f64> = w.iter().map(|v| v.sqrt()).collect();
@@ -261,12 +270,14 @@ impl RbfgsProblem {
                 .sum::<f64>()
                 .sqrt()
         };
-        let euclid =
+        let euclid_of =
             |chs: &[&[f64]]| -> f64 { chs.iter().map(|f| lbfgs_dot(f, f)).sum::<f64>().sqrt() };
         let n1 = norm_l2(q1).max(1e-300);
         let n2 = norm_l2(q2).max(1e-300);
-        let e1 = euclid(q1).max(1e-300);
-        let e2 = euclid(q2).max(1e-300);
+        let (e1, e2) = match euclid {
+            Some((a, b)) => (a.max(1e-300), b.max(1e-300)),
+            None => (euclid_of(q1).max(1e-300), euclid_of(q2).max(1e-300)),
+        };
         // normL2(q/‖q‖) = normL2(q)/‖q‖
         let lam_scale = 1.0 / ((n1 / e1) * (n2 / e2));
         let q1n: Vec<Vec<f64>> = q1
@@ -288,6 +299,7 @@ impl RbfgsProblem {
             q2spline,
             lam: lam * lam_scale,
             penalty,
+            pen_slope: 1.0,
         }
     }
 
@@ -304,6 +316,20 @@ impl RbfgsProblem {
                 let h2: Vec<f64> = h.iter().map(|v| v * v).collect();
                 let hd = np_gradient_uniform(&h2, binsize);
                 hd.iter().zip(w).map(|(d, wi)| wi * d * d).sum()
+            }
+            WarpObjectivePenalty::L2Gam if self.pen_slope != 1.0 => {
+                let k = self.pen_slope;
+                h.iter()
+                    .zip(w)
+                    .map(|(v, wi)| wi * (k * v * v - 1.0).powi(2))
+                    .sum()
+            }
+            WarpObjectivePenalty::L2Psi if self.pen_slope != 1.0 => {
+                let rk = self.pen_slope.sqrt();
+                h.iter()
+                    .zip(w)
+                    .map(|(v, wi)| wi * (rk * v - 1.0).powi(2))
+                    .sum()
             }
             WarpObjectivePenalty::L2Gam => h
                 .iter()
@@ -331,6 +357,20 @@ impl RbfgsProblem {
                 let y: Vec<f64> = hd.iter().zip(w).map(|(d, wi)| 2.0 * wi * d).collect();
                 let adj = np_gradient_adjoint(&y, binsize);
                 h.iter().zip(&adj).map(|(v, a)| 2.0 * v * a).collect()
+            }
+            WarpObjectivePenalty::L2Gam if self.pen_slope != 1.0 => {
+                let k = self.pen_slope;
+                h.iter()
+                    .zip(w)
+                    .map(|(v, wi)| 4.0 * k * v * (k * v * v - 1.0) * wi)
+                    .collect()
+            }
+            WarpObjectivePenalty::L2Psi if self.pen_slope != 1.0 => {
+                let rk = self.pen_slope.sqrt();
+                h.iter()
+                    .zip(w)
+                    .map(|(v, wi)| 2.0 * rk * (rk * v - 1.0) * wi)
+                    .collect()
             }
             WarpObjectivePenalty::L2Gam => h
                 .iter()
@@ -435,6 +475,11 @@ impl RbfgsProblem {
             .map(|(di, s)| di.max(1e-6).sqrt() * s)
             .collect();
         normalized(x)
+    }
+
+    /// Objective (data term + λ·penalty, no barrier) of a warp sampled on `t`.
+    pub(super) fn warp_cost(&self, gam: &[f64]) -> f64 {
+        self.costgrad(&self.l_from_x(&self.x_of_warp(gam))).fixed
     }
 
     fn eval_x(&self, x: &[f64]) -> Option<CostGrad> {
@@ -664,25 +709,83 @@ fn transp(x: &[f64], xnew: &[f64], v: &[f64]) -> Vec<f64> {
 /// Parameters of one RBFGS warp optimisation.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct RbfgsParams {
+    /// Penalty weight (fdasrsf RBFGS convention).
     pub lambda: f64,
     pub penalty: WarpObjectivePenalty,
     pub max_iter: usize,
     pub scl: usize,
+    /// Sakoe–Chiba index radius on the input grid (see
+    /// [`WarpOptimConfig::band_frac`]).
+    pub band: Option<usize>,
+    /// DP options of the coarse-DP seed.
+    pub seed: DpSeed,
+    /// Penalty weight of the coarse-DP seed (fdasrsf `pen_start`: the same
+    /// `lambda`, unless the DP ↔ RBFGS λ conversion is active).
+    pub seed_lambda: f64,
+    /// Penalty slope factor `κ` (see [`RbfgsProblem`]).
+    pub pen_slope: f64,
+    /// Euclidean norms replacing the problem's own in `lamScale`.
+    pub lam_euclid: Option<(f64, f64)>,
 }
 
-/// Classic 1-D DP on the coarse grid `tc`, honouring the DP-expressible
-/// penalties (fdasrsf `pen_start`).
-fn coarse_dp_1d(q1c: &[f64], q2c: &[f64], tc: &[f64], p: &RbfgsParams) -> Vec<f64> {
-    if p.lambda == 0.0 {
-        dp_alignment_core_banded(q1c, q2c, tc, 0.0, None)
-    } else if p.penalty == WarpObjectivePenalty::L2Gam {
-        dp_alignment_core_banded(q1c, q2c, tc, p.lambda, None)
-    } else {
-        let prune = dp_prune_is_exact(tc, p.lambda);
-        dp_alignment_core_with_penalty(q1c, q2c, tc, None, prune, |sc, tc_, sr, tr| {
-            dp_l2psi_penalty(tc, sc, tc_, sr, tr, p.lambda)
-        })
+impl RbfgsParams {
+    /// Parameters for `cfg` with penalty weight `lambda` (RBFGS convention)
+    /// and band radius `band`.
+    pub(super) fn from_cfg(cfg: &WarpOptimConfig, lambda: f64, band: Option<usize>) -> Self {
+        Self {
+            lambda,
+            penalty: cfg.penalty,
+            max_iter: cfg.max_iter,
+            scl: cfg.scl,
+            band,
+            seed: cfg.dp_seed(),
+            seed_lambda: lambda,
+            pen_slope: 1.0,
+            lam_euclid: None,
+        }
     }
+}
+
+/// 1-D DP on the coarse grid `tc`, honouring the DP-expressible penalties
+/// (fdasrsf `pen_start`) and the seed DP options / band. The classic options
+/// without a band run the original seed code (bit-identical).
+fn coarse_dp_1d(
+    q1c: &[f64],
+    q2c: &[f64],
+    tc: &[f64],
+    p: &RbfgsParams,
+    band: Option<usize>,
+) -> Vec<f64> {
+    let lam = p.seed_lambda;
+    if p.seed.is_classic() && band.is_none() {
+        return if lam == 0.0 {
+            dp_alignment_core_banded(q1c, q2c, tc, 0.0, None)
+        } else if p.penalty == WarpObjectivePenalty::L2Gam {
+            dp_alignment_core_banded(q1c, q2c, tc, lam, None)
+        } else {
+            let prune = dp_prune_is_exact(tc, lam);
+            dp_alignment_core_with_penalty(q1c, q2c, tc, None, prune, |sc, tc_, sr, tr| {
+                dp_l2psi_penalty(tc, sc, tc_, sr, tr, lam)
+            })
+        };
+    }
+    let nbhd = coprime_nbhd(p.seed.nbhd_dim);
+    let opts = DpEngineOptions {
+        moves: DpMoves {
+            nbhd: &nbhd,
+            prune: p.seed.dp_prune && dp_prune_is_exact(tc, lam),
+        },
+        scl: p.seed.dp_scl.max(1),
+        cost: p.seed.dp_cost,
+    };
+    let l2psi = lam > 0.0 && p.penalty != WarpObjectivePenalty::L2Gam;
+    dp_alignment_core_opts(q1c, q2c, tc, band, &opts, |sc, tc_, sr, tr| {
+        if l2psi {
+            dp_l2psi_penalty(tc, sc, tc_, sr, tr, lam)
+        } else {
+            dp_lambda_penalty(tc, sc, tc_, sr, tr, lam)
+        }
+    })
 }
 
 /// Coarse grid of ≤ 51 uniform points of `[0, 1]` and the SRSF channels
@@ -720,15 +823,47 @@ fn refine_grid(t1: &[f64], scl: usize) -> Vec<f64> {
 /// `optimum_reparam`). Returns γ in `argvals` units, boundary-exact and
 /// monotone.
 pub(super) fn rbfgs_warp(q1: &[f64], q2: &[f64], argvals: &[f64], p: &RbfgsParams) -> Vec<f64> {
-    rbfgs_warp_multi(&[q1], &[q2], argvals, p, |q1c, q2c, tc| {
-        coarse_dp_1d(&q1c[0], &q2c[0], tc, p)
+    rbfgs_warp_multi(&[q1], &[q2], argvals, p, |q1c, q2c, tc, band| {
+        coarse_dp_1d(&q1c[0], &q2c[0], tc, p, band)
     })
 }
 
+/// Pointwise projection of a warp on `t` onto the band `|γ(t) − t| ≤ b`.
+fn clamp_to_band(gam: &[f64], t: &[f64], b: f64) -> Vec<f64> {
+    gam.iter()
+        .zip(t)
+        .map(|(&g, &s)| g.max(s - b).min(s + b))
+        .collect()
+}
+
+/// Band projection of the RBFGS result `gam` (see
+/// [`WarpOptimConfig::band_frac`]): the better (RBFGS objective) of its
+/// pointwise projection onto the band and the projected banded-DP seed.
+fn project_to_band(
+    prob: &RbfgsProblem,
+    gam: Vec<f64>,
+    seed: Option<&[f64]>,
+    t: &[f64],
+    b: f64,
+) -> Vec<f64> {
+    let projected = clamp_to_band(&gam, t, b);
+    let start = match seed {
+        Some(g) => clamp_to_band(g, t, b),
+        None => t.to_vec(),
+    };
+    if prob.warp_cost(&projected) <= prob.warp_cost(&start) {
+        projected
+    } else {
+        start
+    }
+}
+
 /// Multi-channel RBFGS warp (the data term summed over the channels of an
-/// R^d SRVF). `coarse_dp(q1c, q2c, tc)` returns the DP starting warp on the
-/// coarse grid `tc ⊂ [0, 1]` for the spline-resampled channels. One channel
-/// with [`coarse_dp_1d`] is [`rbfgs_warp`].
+/// R^d SRVF). `coarse_dp(q1c, q2c, tc, band)` returns the DP starting warp on
+/// the coarse grid `tc ⊂ [0, 1]` for the spline-resampled channels; with a
+/// band (`p.band`) `tc` is the normalised input grid itself, the channels are
+/// the input SRSFs and `band` the input-grid radius. One channel with
+/// [`coarse_dp_1d`] is [`rbfgs_warp`].
 pub(super) fn rbfgs_warp_multi<F>(
     q1: &[&[f64]],
     q2: &[&[f64]],
@@ -737,7 +872,7 @@ pub(super) fn rbfgs_warp_multi<F>(
     coarse_dp: F,
 ) -> Vec<f64>
 where
-    F: FnOnce(&[Vec<f64>], &[Vec<f64>], &[f64]) -> Vec<f64>,
+    F: FnOnce(&[Vec<f64>], &[Vec<f64>], &[f64], Option<usize>) -> Vec<f64>,
 {
     let m = argvals.len();
     if m < 3 {
@@ -746,9 +881,23 @@ where
     let (a0, a1) = (argvals[0], argvals[m - 1]);
     let span = a1 - a0;
     let t1: Vec<f64> = argvals.iter().map(|&a| (a - a0) / span).collect();
-    let (tc, q1c) = coarse_resample(q1, &t1);
-    let (_, q2c) = coarse_resample(q2, &t1);
-    let gamc = coarse_dp(&q1c, &q2c, &tc);
+    // Band half-width in normalised time (R grid steps of the input grid).
+    let band_w = p
+        .band
+        .filter(|&r| r < m - 1)
+        .map(|r| r as f64 / (m - 1) as f64);
+    // With a band the seed is the banded DP on the input grid itself (cheap,
+    // O(m·R)), so the banded result is compared with it exactly; otherwise
+    // fdasrsf's coarse (≤ 51 point) start.
+    let (tc, q1c, q2c, cband) = if band_w.is_some() {
+        let own = |q: &[&[f64]]| -> Vec<Vec<f64>> { q.iter().map(|f| f.to_vec()).collect() };
+        (t1.clone(), own(q1), own(q2), p.band)
+    } else {
+        let (tc, q1c) = coarse_resample(q1, &t1);
+        let (_, q2c) = coarse_resample(q2, &t1);
+        (tc, q1c, q2c, None)
+    };
+    let gamc = coarse_dp(&q1c, &q2c, &tc, cband);
     let identity_start = gamc.iter().zip(&tc).all(|(g, t)| (g - t).abs() < 1e-12);
 
     let scl = p.scl.max(1);
@@ -756,7 +905,11 @@ where
     let gam0: Option<Vec<f64>> = if identity_start {
         None
     } else {
-        Some(tf.iter().map(|&t| linear_interp(&tc, &gamc, t)).collect())
+        let g: Vec<f64> = tf.iter().map(|&t| linear_interp(&tc, &gamc, t)).collect();
+        Some(match band_w {
+            Some(b) => clamp_to_band(&g, &tf, b),
+            None => g,
+        })
     };
     let fine = |q: &[&[f64]]| -> Vec<Vec<f64>> {
         q.iter()
@@ -768,13 +921,17 @@ where
     let q2r: Vec<&[f64]> = q2f.iter().map(Vec::as_slice).collect();
     // lam is divided by scl to weigh the penalty as it would on t1 (fdasrsf).
     let lamf = p.lambda / scl as f64;
-    let prob = RbfgsProblem::new_multi(&q1r, &q2r, &tf, lamf, p.penalty);
+    let mut prob = RbfgsProblem::new_multi(&q1r, &q2r, &tf, lamf, p.penalty, p.lam_euclid);
+    prob.pen_slope = p.pen_slope;
     let (mut gamf, cost) = prob.solve(gam0.as_deref(), p.max_iter);
     if lamf > 0.0 {
         let (gami, costi) = prob.solve(None, p.max_iter);
         if costi < cost {
             gamf = gami;
         }
+    }
+    if let Some(b) = band_w {
+        gamf = project_to_band(&prob, gamf, gam0.as_deref(), &tf, b);
     }
     let sub: Vec<f64> = gamf.iter().step_by(scl).copied().collect();
     let (gmin, gmax) = sub
@@ -795,18 +952,48 @@ where
 /// minimises, used to compare optimisers on equal terms. Test-only.
 #[cfg(test)]
 pub(super) fn rbfgs_data_cost(q1: &[f64], q2: &[f64], argvals: &[f64], gamma: &[f64]) -> f64 {
+    rbfgs_objective(
+        &[q1],
+        &[q2],
+        argvals,
+        gamma,
+        0.0,
+        WarpObjectivePenalty::L2Gam,
+        3,
+    )
+}
+
+/// Full discretised RBFGS objective (multi-channel data term + `λ`·penalty,
+/// fdasrsf `lamScale` and `1/scl` included, no barrier) of `gamma` on
+/// `argvals`, on the grid refined `scl` times — exactly the functional
+/// [`rbfgs_warp_multi`] minimises. Test-only.
+#[cfg(test)]
+pub(super) fn rbfgs_objective(
+    q1: &[&[f64]],
+    q2: &[&[f64]],
+    argvals: &[f64],
+    gamma: &[f64],
+    lambda: f64,
+    penalty: WarpObjectivePenalty,
+    scl: usize,
+) -> f64 {
     let m = argvals.len();
     let (a0, a1) = (argvals[0], argvals[m - 1]);
     let span = a1 - a0;
     let t1: Vec<f64> = argvals.iter().map(|&a| (a - a0) / span).collect();
     let g1: Vec<f64> = gamma.iter().map(|&g| (g - a0) / span).collect();
-    let tf = refine_grid(&t1, 3);
-    let q1f: Vec<f64> = tf.iter().map(|&t| linear_interp(&t1, q1, t)).collect();
-    let q2f: Vec<f64> = tf.iter().map(|&t| linear_interp(&t1, q2, t)).collect();
+    let tf = refine_grid(&t1, scl);
+    let fine = |q: &[&[f64]]| -> Vec<Vec<f64>> {
+        q.iter()
+            .map(|f| tf.iter().map(|&t| linear_interp(&t1, f, t)).collect())
+            .collect()
+    };
+    let (q1f, q2f) = (fine(q1), fine(q2));
+    let q1r: Vec<&[f64]> = q1f.iter().map(Vec::as_slice).collect();
+    let q2r: Vec<&[f64]> = q2f.iter().map(Vec::as_slice).collect();
     let gf: Vec<f64> = tf.iter().map(|&t| linear_interp(&t1, &g1, t)).collect();
-    let prob = RbfgsProblem::new(&q1f, &q2f, &tf, 0.0, WarpObjectivePenalty::L2Gam);
-    let x = prob.x_of_warp(&gf);
-    prob.costgrad(&prob.l_from_x(&x)).fixed
+    let prob = RbfgsProblem::new_multi(&q1r, &q2r, &tf, lambda / scl as f64, penalty, None);
+    prob.warp_cost(&gf)
 }
 
 #[cfg(test)]
@@ -896,6 +1083,26 @@ mod tests {
         }
         let (prob, l) = test_problem(0.0, WarpObjectivePenalty::L2Gam);
         fd_check(&prob, &l, true);
+        // Landmark-segment penalty slope κ ≠ 1.
+        for pen in [WarpObjectivePenalty::L2Gam, WarpObjectivePenalty::L2Psi] {
+            let (mut prob, l) = test_problem(0.7, pen);
+            prob.pen_slope = 1.7;
+            fd_check(&prob, &l, false);
+            // Value: Σ w (κ l² − 1)² / Σ w (√κ l − 1)².
+            let want: f64 = match pen {
+                WarpObjectivePenalty::L2Gam => l
+                    .iter()
+                    .zip(&prob.w)
+                    .map(|(v, w)| w * (1.7 * v * v - 1.0).powi(2))
+                    .sum(),
+                _ => l
+                    .iter()
+                    .zip(&prob.w)
+                    .map(|(v, w)| w * (1.7f64.sqrt() * v - 1.0).powi(2))
+                    .sum(),
+            };
+            assert!((prob.penalty_cost(&l) - want).abs() < 1e-14);
+        }
     }
 
     #[test]

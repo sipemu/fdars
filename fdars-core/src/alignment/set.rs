@@ -1,8 +1,10 @@
 //! Set-level alignment operations and elastic decomposition.
 
-use super::pairwise::elastic_align_pair;
+use super::optim::{check_grid, WarpOptimConfig};
+use super::pairwise::{align_pair_cfg, elastic_align_pair};
 use super::srsf::reparameterize_curve;
 use super::{AlignmentResult, AlignmentSetResult};
+use crate::error::FdarError;
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
 #[cfg(feature = "parallel")]
@@ -54,12 +56,74 @@ pub fn align_to_target(
     argvals: &[f64],
     lambda: f64,
 ) -> AlignmentSetResult {
+    let align = |fi: &[f64]| elastic_align_pair(target, fi, argvals, lambda);
+    collect_alignments(data, &align)
+}
+
+/// [`align_to_target`] with a configurable warp optimiser
+/// ([`WarpOptimConfig`]: RBFGS, the DP options, a Sakoe–Chiba band, the λ
+/// conversion). [`WarpOptimConfig::default`] with `lambda` set gives exactly
+/// [`align_to_target`]`(data, target, argvals, lambda)`.
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] if `target` or `data.ncols()` does not
+/// match `argvals` (or `m < 2`); [`FdarError::InvalidParameter`] for a
+/// non-increasing `argvals` or an invalid `cfg`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::{align_to_target_with_config, WarpOptimConfig, WarpOptimMethod};
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let t: Vec<f64> = (0..40).map(|i| i as f64 / 39.0).collect();
+/// let target: Vec<f64> = t.iter().map(|&s| (6.0 * s).sin()).collect();
+/// let mut data = FdMatrix::zeros(3, 40);
+/// for i in 0..3 {
+///     for j in 0..40 {
+///         data[(i, j)] = (6.0 * (t[j] + 0.03 * i as f64)).sin();
+///     }
+/// }
+/// let mut cfg = WarpOptimConfig::default();
+/// cfg.method = WarpOptimMethod::Rbfgs;
+/// let res = align_to_target_with_config(&data, &target, &t, &cfg).unwrap();
+/// assert_eq!(res.gammas.shape(), (3, 40));
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn align_to_target_with_config(
+    data: &FdMatrix,
+    target: &[f64],
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+) -> Result<AlignmentSetResult, FdarError> {
+    check_grid(argvals, data.ncols(), "data")?;
+    check_grid(argvals, target.len(), "target")?;
+    cfg.validate()?;
+    Ok(align_to_target_cfg(data, target, argvals, cfg))
+}
+
+/// [`align_to_target_with_config`] without validation.
+pub(super) fn align_to_target_cfg(
+    data: &FdMatrix,
+    target: &[f64],
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+) -> AlignmentSetResult {
+    let align = |fi: &[f64]| align_pair_cfg(target, fi, argvals, cfg);
+    collect_alignments(data, &align)
+}
+
+/// Align every row of `data` with `align` and collect the results.
+fn collect_alignments<A>(data: &FdMatrix, align: &A) -> AlignmentSetResult
+where
+    A: Fn(&[f64]) -> AlignmentResult + Sync,
+{
     let (n, m) = data.shape();
 
     let results: Vec<AlignmentResult> = iter_maybe_parallel!(0..n)
         .map(|i| {
             let fi = data.row(i);
-            elastic_align_pair(target, &fi, argvals, lambda)
+            align(&fi)
         })
         .collect();
 

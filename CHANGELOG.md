@@ -13,6 +13,35 @@ Changed below).
 
 ## [Unreleased]
 
+**RBFGS optimiser coverage: N-d, landmarks, robust Karcher, band semantics, λ scale (GH #67
+ALN-CAV).** Additive and non-breaking: defaults (and the default RBFGS path) are bit-identical
+(FNV-hash tests recorded before the change); no new crate dependency.
+
+### Added
+
+- `_with_config` entry points taking a `WarpOptimConfig` (RBFGS, the DP options `nbhd_dim` /
+  `dp_scl` / `dp_cost` / `dp_prune`, `L2Psi`, band, λ conversion):
+  `elastic_align_pair_nd_with_config`, `elastic_distance_nd_with_config`,
+  `karcher_mean_nd_with_config` (R^d shared warp; RBFGS data term summed over coordinates),
+  `elastic_align_pair_constrained_with_config` (landmarks: segmented DP, then per-segment RBFGS
+  on the affinely mapped segment with the global penalty restricted to it — landmarks hit exactly),
+  `karcher_median_with_config`, `robust_karcher_mean_with_config`, `align_to_target_with_config`,
+  `karcher_mean_closed_with_config`.
+- `WarpOptimConfig::band_frac` (default 0 = off): Sakoe–Chiba band for every `_with_config` entry
+  point. DP: index corridor (equals `*_banded`). RBFGS: banded input-grid DP seed, unconstrained
+  RBFGS, pointwise projection `|γ(t) − t| ≤ b` and the better of projected RBFGS / seed — always
+  within the band and never worse than the banded DP. Rejected by curve shapes and landmarks.
+- `WarpOptimConfig::lambda_scale: WarpLambdaScale` (`Native` default, `Dp`, `Fdasrsf`) and
+  `WarpOptimConfig::rbfgs_lambda_factor`: exact DP ↔ RBFGS λ conversion
+  `λ_rb = φ·λ_dp`, `φ = scl·‖q1‖‖q2‖/(‖q1ᶠ‖‖q2ᶠ‖)` for 1-D (`φ = 1 + O(1/m)`), `scl/(e1e2)` for
+  curve shapes, total-norm form for the R^d shared-warp DP; derivation in the `WarpLambdaScale`
+  docs.
+
+### Changed
+
+- The RBFGS coarse-DP seed honours `nbhd_dim` / `dp_scl` / `dp_cost` / `dp_prune` (1-D, R^d,
+  curve shapes); with the default options it is unchanged.
+
 **Elastic DP residual floor: diagnosis + refined warp optimisers for curve shapes (GH #65
 ALN-CAV).** Additive and non-breaking: defaults are bit-identical (FNV-hash tests recorded before
 the change); no new crate dependency.

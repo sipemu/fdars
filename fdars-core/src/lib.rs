@@ -332,6 +332,12 @@ pub use alignment::{
     WfdaResult,
 };
 pub use alignment::{
+    align_to_target_with_config, elastic_align_pair_constrained_with_config,
+    elastic_align_pair_nd_with_config, elastic_distance_nd_with_config,
+    karcher_mean_closed_with_config, karcher_mean_nd_with_config, karcher_median_with_config,
+    robust_karcher_mean_with_config, WarpLambdaScale,
+};
+pub use alignment::{
     elastic_phase_amplitude_test, AmplitudeMetric, PhaseAmplitudeTestConfig,
     PhaseAmplitudeTestResult,
 };

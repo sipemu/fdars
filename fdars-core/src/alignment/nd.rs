@@ -1,9 +1,13 @@
 //! Multidimensional (R^d) SRSF transforms and elastic alignment.
 
+use super::optim::{check_grid, lambda_factor, optimal_warp, WarpOptimConfig, WarpOptimMethod};
+use super::rbfgs::{rbfgs_warp_multi, RbfgsParams};
 use super::srsf::reparameterize_curve;
 use super::{
-    dp_alignment_core, dp_edge_weight, dp_grid_solve, dp_lambda_penalty, dp_path_to_gamma,
-    dp_prune_is_exact,
+    band_radius, coprime_nbhd, dp_alignment_core, dp_edge_rslope_span, dp_edge_weight,
+    dp_edge_weight_core, dp_edge_weight_linear_core, dp_grid_solve, dp_grid_solve_moves,
+    dp_l2psi_penalty, dp_lambda_penalty, dp_path_to_gamma, dp_prune_is_exact, refine_srsf_linear,
+    DpEdgeCost, DpMoves, WarpObjectivePenalty,
 };
 use crate::error::FdarError;
 use crate::helpers::{cumulative_trapz, l2_distance, simpsons_weights};
@@ -179,6 +183,130 @@ fn dp_alignment_core_nd(
     dp_path_to_gamma(&path, argvals)
 }
 
+/// DP options of the R^d shared-warp DP (the DP fields of
+/// [`WarpOptimConfig`] plus the effective penalty weight and band).
+#[derive(Clone, Copy)]
+struct NdDpOpts {
+    nbhd_dim: usize,
+    dp_scl: usize,
+    dp_cost: DpEdgeCost,
+    dp_prune: bool,
+    l2psi: bool,
+    lambda: f64,
+    band: Option<usize>,
+}
+
+/// R^d DP with the full option set: every coordinate's SRSF normalised to
+/// unit Euclidean norm (as [`dp_alignment_core_nd`]), the edge weight
+/// (piecewise-constant or -linear, optionally on `dp_scl`-refined SRSFs)
+/// summed over coordinates, plus the `L2Gam` / `L2Psi` edge penalty, within
+/// an optional Sakoe–Chiba band.
+fn dp_alignment_core_nd_opts(
+    q1: &[Vec<f64>],
+    q2: &[Vec<f64>],
+    argvals: &[f64],
+    o: &NdDpOpts,
+) -> Vec<f64> {
+    let m = argvals.len();
+    if m < 2 || q1.is_empty() {
+        return argvals.to_vec();
+    }
+    let s = o.dp_scl.max(1);
+    let prep = |q: &[Vec<f64>]| -> Vec<Vec<f64>> {
+        q.iter()
+            .map(|qk| {
+                let norm = qk.iter().map(|&v| v * v).sum::<f64>().sqrt().max(1e-10);
+                let qn: Vec<f64> = qk.iter().map(|&v| v / norm).collect();
+                if s > 1 {
+                    refine_srsf_linear(&qn, s)
+                } else {
+                    qn
+                }
+            })
+            .collect()
+    };
+    let (r1, r2) = (prep(q1), prep(q2));
+    let nbhd = coprime_nbhd(o.nbhd_dim);
+    let moves = DpMoves {
+        nbhd: &nbhd,
+        prune: o.dp_prune && dp_prune_is_exact(argvals, o.lambda),
+    };
+    let weight = match o.dp_cost {
+        DpEdgeCost::PiecewiseLinear => dp_edge_weight_linear_core,
+        _ => dp_edge_weight_core,
+    };
+    let path = dp_grid_solve_moves(m, m, o.band, moves, |sr, sc, tr, tc| {
+        let (rs, span) = dp_edge_rslope_span(argvals, sc, tc, sr, tr);
+        let data: f64 = r1
+            .iter()
+            .zip(&r2)
+            .map(|(a, b)| weight(a, b, sc * s, tc * s, sr * s, tr * s, rs, span))
+            .sum();
+        let pen = if o.l2psi {
+            dp_l2psi_penalty(argvals, sc, tc, sr, tr, o.lambda)
+        } else {
+            dp_lambda_penalty(argvals, sc, tc, sr, tr, o.lambda)
+        };
+        data + pen
+    });
+    dp_path_to_gamma(&path, argvals)
+}
+
+/// Optimal shared warp of the R^d SRSFs `q2` → `q1` under `cfg` (validated).
+///
+/// `d = 1` is the 1-D optimiser (as the classic R^d DP delegates to the 1-D
+/// DP). For `d > 1`: the classic DP options without band run the unchanged
+/// [`dp_alignment_core_nd`]; other DP options run
+/// [`dp_alignment_core_nd_opts`]; RBFGS runs the multi-channel solver (data
+/// term summed over coordinates) seeded by the R^d DP with `cfg`'s DP options
+/// on its coarse grid.
+fn optimal_warp_nd(
+    q1: &[Vec<f64>],
+    q2: &[Vec<f64>],
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+) -> Vec<f64> {
+    let d = q1.len();
+    if d == 1 {
+        return optimal_warp(&q1[0], &q2[0], argvals, cfg, None);
+    }
+    let band = band_radius(cfg.band_frac, argvals.len());
+    let c1: Vec<&[f64]> = q1.iter().map(Vec::as_slice).collect();
+    let c2: Vec<&[f64]> = q2.iter().map(Vec::as_slice).collect();
+    let phi = || lambda_factor(&c1, &c2, cfg.scl, d as f64);
+    let lambda = cfg.native_lambda(cfg.method, phi);
+    let dp_opts = |lambda: f64, band: Option<usize>| NdDpOpts {
+        nbhd_dim: cfg.nbhd_dim,
+        dp_scl: cfg.dp_scl,
+        dp_cost: cfg.dp_cost,
+        dp_prune: cfg.dp_prune,
+        l2psi: lambda > 0.0 && cfg.penalty != WarpObjectivePenalty::L2Gam,
+        lambda,
+        band,
+    };
+    match cfg.method {
+        WarpOptimMethod::Dp => {
+            let classic = cfg.dp_seed().is_classic() && band.is_none();
+            if classic && (lambda == 0.0 || cfg.penalty == WarpObjectivePenalty::L2Gam) {
+                dp_alignment_core_nd(q1, q2, argvals, lambda)
+            } else {
+                dp_alignment_core_nd_opts(q1, q2, argvals, &dp_opts(lambda, band))
+            }
+        }
+        WarpOptimMethod::Rbfgs => {
+            let mut p = RbfgsParams::from_cfg(cfg, lambda, band);
+            if cfg.lambda_scale != super::WarpLambdaScale::Native {
+                // The seed DP reads the weight in the DP convention.
+                p.seed_lambda = cfg.native_lambda(WarpOptimMethod::Dp, phi);
+            }
+            let seed_lambda = p.seed_lambda;
+            rbfgs_warp_multi(&c1, &c2, argvals, &p, |q1c, q2c, tc, cband| {
+                dp_alignment_core_nd_opts(q1c, q2c, tc, &dp_opts(seed_lambda, cband))
+            })
+        }
+    }
+}
+
 /// Align an R^d curve f2 to f1 using the elastic framework.
 ///
 /// Finds the optimal warping γ (shared across all dimensions) such that
@@ -195,6 +323,121 @@ pub fn elastic_align_pair_nd(
     argvals: &[f64],
     lambda: f64,
 ) -> AlignmentResultNd {
+    align_pair_nd_impl(f1, f2, argvals, |q1, q2| {
+        dp_alignment_core_nd(q1, q2, argvals, lambda)
+    })
+}
+
+/// [`elastic_align_pair_nd`] with a configurable warp optimiser
+/// ([`WarpOptimConfig`]): Riemannian L-BFGS (data term summed over the
+/// coordinates, started from the R^d DP on a coarse grid), the DP options
+/// `nbhd_dim` / `dp_scl` / `dp_cost` / `dp_prune`, the `L2Psi` penalty, a
+/// Sakoe–Chiba band ([`WarpOptimConfig::band_frac`]) and the λ conversion
+/// ([`WarpOptimConfig::lambda_scale`]). The warp is shared by all `d`
+/// coordinates; only the first curve of each set is aligned (as
+/// [`elastic_align_pair_nd`]).
+///
+/// [`WarpOptimConfig::default`] with `lambda` set gives exactly
+/// [`elastic_align_pair_nd`]`(f1, f2, argvals, lambda)`.
+///
+/// # Errors
+/// [`FdarError::InvalidDimension`] if the sets differ in dimension or number
+/// of points, are empty, or `argvals` does not match (or has < 2 points);
+/// [`FdarError::InvalidParameter`] for a non-increasing `argvals` or an
+/// invalid `cfg` ([`WarpOptimConfig::validate`]).
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::{
+///     elastic_align_pair_nd, elastic_align_pair_nd_with_config, WarpOptimConfig,
+///     WarpOptimMethod,
+/// };
+/// use fdars_core::matrix::{FdCurveSet, FdMatrix};
+///
+/// let m = 60;
+/// let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+/// let curve = |g: &dyn Fn(f64) -> f64| {
+///     let x: Vec<f64> = t.iter().map(|&s| (6.0 * g(s)).sin()).collect();
+///     let y: Vec<f64> = t.iter().map(|&s| (4.0 * g(s)).cos() + g(s)).collect();
+///     FdCurveSet::from_dims(vec![
+///         FdMatrix::from_slice(&x, 1, m).unwrap(),
+///         FdMatrix::from_slice(&y, 1, m).unwrap(),
+///     ])
+///     .unwrap()
+/// };
+/// let f1 = curve(&|s| s);
+/// let f2 = curve(&|s| s + 0.15 * s * (1.0 - s)); // same curve, warped
+///
+/// let dp = elastic_align_pair_nd_with_config(&f1, &f2, &t, &WarpOptimConfig::default()).unwrap();
+/// assert_eq!(dp, elastic_align_pair_nd(&f1, &f2, &t, 0.0));
+///
+/// let mut cfg = WarpOptimConfig::default();
+/// cfg.method = WarpOptimMethod::Rbfgs;
+/// let rb = elastic_align_pair_nd_with_config(&f1, &f2, &t, &cfg).unwrap();
+/// assert!(rb.gamma.windows(2).all(|w| w[1] >= w[0]));
+/// assert!(rb.distance < dp.distance);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_align_pair_nd_with_config(
+    f1: &FdCurveSet,
+    f2: &FdCurveSet,
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+) -> Result<AlignmentResultNd, FdarError> {
+    check_nd_pair(f1, f2, argvals)?;
+    cfg.validate()?;
+    Ok(align_pair_nd_impl(f1, f2, argvals, |q1, q2| {
+        optimal_warp_nd(q1, q2, argvals, cfg)
+    }))
+}
+
+/// Elastic distance between two R^d curves under a [`WarpOptimConfig`]
+/// (see [`elastic_align_pair_nd_with_config`]).
+///
+/// # Errors
+/// As [`elastic_align_pair_nd_with_config`].
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn elastic_distance_nd_with_config(
+    f1: &FdCurveSet,
+    f2: &FdCurveSet,
+    argvals: &[f64],
+    cfg: &WarpOptimConfig,
+) -> Result<f64, FdarError> {
+    elastic_align_pair_nd_with_config(f1, f2, argvals, cfg).map(|r| r.distance)
+}
+
+/// Shape checks of an R^d curve pair for the `*_with_config` entry points.
+fn check_nd_pair(f1: &FdCurveSet, f2: &FdCurveSet, argvals: &[f64]) -> Result<(), FdarError> {
+    let (d, m) = (f1.ndim(), f1.npoints());
+    if d == 0 || f1.ncurves() == 0 || f2.ncurves() == 0 {
+        return Err(FdarError::InvalidDimension {
+            parameter: "f1/f2",
+            expected: "at least one dimension and one curve".to_string(),
+            actual: format!("d={d}, n1={}, n2={}", f1.ncurves(), f2.ncurves()),
+        });
+    }
+    if f2.ndim() != d || f2.npoints() != m {
+        return Err(FdarError::InvalidDimension {
+            parameter: "f2",
+            expected: format!("d={d}, m={m}"),
+            actual: format!("d={}, m={}", f2.ndim(), f2.npoints()),
+        });
+    }
+    check_grid(argvals, m, "f1")
+}
+
+/// Shared body of the R^d pair alignment: SRSFs, the warp from
+/// `warp(q1, q2)`, the warped curve and the post-alignment distance.
+fn align_pair_nd_impl<W>(
+    f1: &FdCurveSet,
+    f2: &FdCurveSet,
+    argvals: &[f64],
+    warp: W,
+) -> AlignmentResultNd
+where
+    W: Fn(&[Vec<f64>], &[Vec<f64>]) -> Vec<f64>,
+{
     let d = f1.ndim();
     let m = f1.npoints();
 
@@ -206,8 +449,8 @@ pub fn elastic_align_pair_nd(
     let q1: Vec<Vec<f64>> = q1_set.dims.iter().map(|dm| dm.row(0)).collect();
     let q2: Vec<Vec<f64>> = q2_set.dims.iter().map(|dm| dm.row(0)).collect();
 
-    // DP alignment using summed cost over dimensions
-    let gamma = dp_alignment_core_nd(&q1, &q2, argvals, lambda);
+    // Shared warp (classic: DP with the cost summed over dimensions)
+    let gamma = warp(&q1, &q2);
 
     // Apply warping to f2 in each dimension
     let f_aligned: Vec<Vec<f64>> = f2
@@ -393,15 +636,18 @@ fn karcher_mean_nd_validate(
 /// Align all curves to current mean and accumulate mean SRSF.
 ///
 /// Returns per-curve (gamma, f_aligned) pairs and the accumulated new mean SRSF.
-fn karcher_mean_nd_align_step(
+fn karcher_mean_nd_align_step<A>(
     curves: &[Vec<Vec<f64>>],
     mu_f: &[Vec<f64>],
     argvals: &[f64],
-    lambda: f64,
+    align: &A,
     n: usize,
     d: usize,
     m: usize,
-) -> (Vec<(Vec<f64>, Vec<Vec<f64>>)>, Vec<Vec<f64>>) {
+) -> (Vec<(Vec<f64>, Vec<Vec<f64>>)>, Vec<Vec<f64>>)
+where
+    A: Fn(&FdCurveSet, &FdCurveSet) -> AlignmentResultNd + Sync,
+{
     let align_results: Vec<(Vec<f64>, Vec<Vec<f64>>)> = iter_maybe_parallel!(0..n)
         .map(|i| {
             let mean_cs = {
@@ -424,7 +670,7 @@ fn karcher_mean_nd_align_step(
                     .collect();
                 FdCurveSet { dims }
             };
-            let result = elastic_align_pair_nd(&mean_cs, &curve_cs, argvals, lambda);
+            let result = align(&mean_cs, &curve_cs);
             (result.gamma, result.f_aligned)
         })
         .collect();
@@ -515,8 +761,82 @@ pub fn karcher_mean_nd(
     tol: f64,
     lambda: f64,
 ) -> Result<KarcherMeanResultNd, FdarError> {
-    let (n, d, m) = karcher_mean_nd_validate(data, argvals)?;
+    let dims = karcher_mean_nd_validate(data, argvals)?;
+    let align = |a: &FdCurveSet, b: &FdCurveSet| elastic_align_pair_nd(a, b, argvals, lambda);
+    Ok(karcher_mean_nd_impl(
+        data, argvals, max_iter, tol, &align, dims,
+    ))
+}
 
+/// [`karcher_mean_nd`] with a configurable warp optimiser: every
+/// curve-to-mean alignment uses [`elastic_align_pair_nd_with_config`]'s
+/// optimiser (RBFGS, DP options, band, λ conversion). With
+/// [`WarpOptimConfig::default`] and `lambda` set this is exactly
+/// [`karcher_mean_nd`]`(data, argvals, max_iter, tol, lambda)`.
+///
+/// # Errors
+/// As [`karcher_mean_nd`], plus [`FdarError::InvalidParameter`] for a
+/// non-increasing `argvals` or an invalid `cfg`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::{karcher_mean_nd_with_config, WarpOptimConfig, WarpOptimMethod};
+/// use fdars_core::matrix::{FdCurveSet, FdMatrix};
+///
+/// let m = 40;
+/// let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+/// let set: Vec<FdCurveSet> = (0..4)
+///     .map(|i| {
+///         let c = 0.05 * i as f64;
+///         let x: Vec<f64> = t.iter().map(|&s| (6.0 * (s - c)).sin()).collect();
+///         let y: Vec<f64> = t.iter().map(|&s| s + 0.2 * (3.0 * s).cos()).collect();
+///         FdCurveSet::from_dims(vec![
+///             FdMatrix::from_slice(&x, 1, m).unwrap(),
+///             FdMatrix::from_slice(&y, 1, m).unwrap(),
+///         ])
+///         .unwrap()
+///     })
+///     .collect();
+/// let mut cfg = WarpOptimConfig::default();
+/// cfg.method = WarpOptimMethod::Rbfgs;
+/// let km = karcher_mean_nd_with_config(&set, &t, 5, 1e-3, &cfg).unwrap();
+/// assert_eq!(km.mean.len(), 2);
+/// assert_eq!(km.gammas.shape(), (4, m));
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn karcher_mean_nd_with_config(
+    data: &[FdCurveSet],
+    argvals: &[f64],
+    max_iter: usize,
+    tol: f64,
+    cfg: &WarpOptimConfig,
+) -> Result<KarcherMeanResultNd, FdarError> {
+    let dims = karcher_mean_nd_validate(data, argvals)?;
+    check_grid(argvals, dims.2, "data")?;
+    cfg.validate()?;
+    let align = |a: &FdCurveSet, b: &FdCurveSet| {
+        align_pair_nd_impl(a, b, argvals, |q1, q2| {
+            optimal_warp_nd(q1, q2, argvals, cfg)
+        })
+    };
+    Ok(karcher_mean_nd_impl(
+        data, argvals, max_iter, tol, &align, dims,
+    ))
+}
+
+/// Shared body of the R^d Karcher mean with the pair aligner `align`.
+fn karcher_mean_nd_impl<A>(
+    data: &[FdCurveSet],
+    argvals: &[f64],
+    max_iter: usize,
+    tol: f64,
+    align: &A,
+    (n, d, m): (usize, usize, usize),
+) -> KarcherMeanResultNd
+where
+    A: Fn(&FdCurveSet, &FdCurveSet) -> AlignmentResultNd + Sync,
+{
     // Extract curves as Vec<Vec<f64>> (d vectors) per observation
     let curves: Vec<Vec<Vec<f64>>> = (0..n)
         .map(|i| data[i].dims.iter().map(|dm| dm.row(0)).collect())
@@ -539,7 +859,7 @@ pub fn karcher_mean_nd(
         n_iter = iter + 1;
 
         let (align_results, new_mu_q) =
-            karcher_mean_nd_align_step(&curves, &mu_f, argvals, lambda, n, d, m);
+            karcher_mean_nd_align_step(&curves, &mu_f, argvals, align, n, d, m);
 
         karcher_mean_nd_store_gammas(&mut gammas, &align_results, m);
 
@@ -573,14 +893,14 @@ pub fn karcher_mean_nd(
     // Recompute mean SRSF
     let mean_srsf = srsf_single_nd(&mean, argvals);
 
-    Ok(KarcherMeanResultNd {
+    KarcherMeanResultNd {
         mean,
         mean_srsf,
         gammas,
         aligned_data,
         n_iter,
         converged,
-    })
+    }
 }
 
 /// Build and center the stacked (n x d*m) matrix from aligned data.

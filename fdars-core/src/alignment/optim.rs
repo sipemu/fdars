@@ -6,13 +6,17 @@
 //! [`elastic_distance_with_config`](super::elastic_distance_with_config),
 //! [`elastic_self_distance_matrix_with_config`](super::elastic_self_distance_matrix_with_config),
 //! [`elastic_cross_distance_matrix_with_config`](super::elastic_cross_distance_matrix_with_config),
-//! [`karcher_mean_with_config`](super::karcher_mean_with_config)). Its default
-//! (`Dp` + `L2Gam`) reproduces the classic functions bit-for-bit.
+//! [`karcher_mean_with_config`](super::karcher_mean_with_config), the closed,
+//! R^d, landmark-constrained, robust-Karcher and `align_to_target` variants
+//! such as [`elastic_align_pair_nd_with_config`](super::elastic_align_pair_nd_with_config)
+//! and [`elastic_align_pair_constrained_with_config`](super::elastic_align_pair_constrained_with_config)).
+//! Its default (`Dp` + `L2Gam`, no band, native λ) reproduces the classic
+//! functions bit-for-bit.
 
 use super::rbfgs::{rbfgs_warp, RbfgsParams};
 use super::{
-    coprime_nbhd, dp_alignment_core_opts, dp_l2psi_penalty, dp_lambda_penalty, dp_prune_is_exact,
-    DpEngineOptions, DpMoves,
+    band_radius, coprime_nbhd, dp_alignment_core_opts, dp_l2psi_penalty, dp_lambda_penalty,
+    dp_prune_is_exact, refine_srsf_linear, DpEngineOptions, DpMoves,
 };
 use crate::error::FdarError;
 
@@ -61,7 +65,10 @@ pub enum WarpOptimMethod {
 /// `λ·(slope − 1)²·dt` edge penalty of [`elastic_align_pair`](super::elastic_align_pair)
 /// (in `argvals` units, on unit-Euclidean-norm SRSFs) and `L2Psi` uses the same
 /// convention; for RBFGS `lambda` has fdasrsf's `optimum_reparam(method="RBFGS",
-/// lam=…)` semantics. The two scales are not interchangeable.
+/// lam=…)` semantics. For 1-D curves the two differ by a data-dependent factor
+/// `φ = 1 + O(1/m)` (see [`WarpLambdaScale`] for the derivation); for R^d curve
+/// shapes by `≈ 1/(m·‖q1‖‖q2‖)`. Set [`WarpOptimConfig::lambda_scale`] to make
+/// one `λ` mean the same penalty strength under both optimisers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -98,6 +105,55 @@ pub enum DpEdgeCost {
     /// the sub-interval split uses the same index-space approximation as the
     /// piecewise-constant model.
     PiecewiseLinear,
+}
+
+/// Which optimiser's convention [`WarpOptimConfig::lambda`] is expressed in
+/// ([`WarpOptimConfig::lambda_scale`]).
+///
+/// # The two conventions
+///
+/// With `l = √γ̇`, `s ∈ [0, 1]` the normalised time and `P(γ) = ∫₀¹ pen(γ̇) ds`
+/// the `L2Gam` (`(γ̇ − 1)²`) or `L2Psi` (`(√γ̇ − 1)²`) penalty:
+///
+/// * **DP** (fdars) aligns the SRSFs divided by their Euclidean norms
+///   `E_i = ‖q_i‖₂` over the `m` input samples, with the edge costs integrated
+///   in `argvals` units (span `S`):
+///   `E_dp(γ) = S·[∫₀¹ (q1/E1 − (q2∘γ)·l/E2)² ds + λ_dp·P(γ)]`.
+/// * **RBFGS** (fdasrsf 2.7.5) resamples the SRSFs `scl` times finer
+///   (Euclidean norms `e_i` over the refined samples, `L²` norms `n_i`),
+///   divides them by `n_i` and weighs the penalty by fdasrsf's
+///   `lamScale = e1·e2/(n1·n2)` and `1/scl`:
+///   `E_rb(γ) = ∫₀¹ (q1/n1 − (q2∘γ)·l/n2)² ds + (λ_rb/scl)·e1e2/(n1n2)·P(γ)`.
+///
+/// Because `γ ↦ (q2∘γ)·l` is an isometry, `∫(a·x − b·y)² = (a − b)² + a·b·∫(x − y)²`
+/// for unit-norm `x`, `y`; with `a = n1/E1`, `b = n2/E2`:
+///
+/// `E_dp(γ) = S·[(a − b)² + a·b·(D_rb(γ) + λ_dp/(a·b)·P(γ))]`,
+///
+/// so DP and RBFGS minimise the same functional exactly when
+///
+/// `λ_rb = φ·λ_dp`, `φ = scl·E1·E2 / (e1·e2)`
+///
+/// ([`WarpOptimConfig::rbfgs_lambda_factor`]). As `e_i² ≈ scl·E_i²`, `φ = 1 +
+/// O(1/m)`: the conventions nearly coincide for 1-D curves, and `Native`
+/// differs from the converted scales only at the discretisation level. The
+/// R^d curve-shape DP works on the raw (unnormalised) SRVFs instead, giving
+/// `φ = scl/(e1·e2)`; the R^d shared-warp DP normalises every coordinate
+/// separately, for which `φ = scl·E1·E2/(d·e1·e2)` (total norms) is exact when
+/// the coordinates have equal norms. `Roughness` / `Geodesic` exist under
+/// RBFGS only and are never converted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum WarpLambdaScale {
+    /// Each optimiser reads `lambda` in its own convention (default; the
+    /// behaviour of every earlier release).
+    #[default]
+    Native,
+    /// `lambda` is in the DP (fdars) convention; RBFGS uses `φ·lambda`.
+    Dp,
+    /// `lambda` is in fdasrsf's RBFGS convention; DP uses `lambda/φ`.
+    Fdasrsf,
 }
 
 /// Options for warp optimisation in elastic alignment.
@@ -185,8 +241,37 @@ pub struct WarpOptimConfig {
     /// otherwise. Default `true` (≈ 1.6× faster DP; the classic functions
     /// such as [`elastic_align_pair`](super::elastic_align_pair) and
     /// [`karcher_mean`](super::karcher_mean) prune under the same condition).
-    /// Set `false` to run the unpruned reference fill. DP only.
+    /// Set `false` to run the unpruned reference fill. DP only (and the RBFGS
+    /// coarse-DP seed).
     pub dp_prune: bool,
+    /// Sakoe–Chiba band as a fraction of the grid (default `0.0` = off; values
+    /// `≥ 1` are also off), applied by every `*_with_config` entry point —
+    /// the same convention as [`karcher_mean_banded`](super::karcher_mean_banded):
+    /// the index radius is `R = ⌈band_frac·m⌉` (≥ 1), i.e. `|γ(t) − t| ≤ R·h`
+    /// on a uniform grid of spacing `h`.
+    ///
+    /// * **DP** confines the path to the corridor `|row − col| ≤ R` (exact
+    ///   within the band, ≈ `O(m·R)` instead of `O(m²)`).
+    /// * **RBFGS** starts from the banded DP on the input grid (with the DP
+    ///   options; `O(m·R)`, replacing the unbanded coarse start), runs the
+    ///   unconstrained Riemannian L-BFGS, then *projects* the warp onto the
+    ///   band by the pointwise clamp `γ ← min(max(γ, t − b), t + b)`,
+    ///   `b = R/(m − 1)` of the normalised domain (a clamp between two
+    ///   increasing bounds keeps γ monotone and boundary-exact), and returns
+    ///   the better — in the RBFGS objective — of the projected RBFGS warp and
+    ///   the (projected) DP seed. The result therefore always satisfies the
+    ///   band and is never worse than the banded DP. Iterates are not
+    ///   projected (the sphere geometry has no cheap feasible-set
+    ///   projection); on a non-uniform grid `b` is in normalised time while
+    ///   the DP band is in grid indices.
+    ///
+    /// Not supported by the landmark-constrained or curve-shape entry points
+    /// (they reject `band_frac > 0` with [`FdarError::InvalidParameter`]).
+    pub band_frac: f64,
+    /// Convention of [`lambda`](Self::lambda) (default
+    /// [`WarpLambdaScale::Native`], unchanged behaviour); see
+    /// [`WarpLambdaScale`] for the exact DP ↔ RBFGS conversion.
+    pub lambda_scale: WarpLambdaScale,
 }
 
 impl Default for WarpOptimConfig {
@@ -201,6 +286,8 @@ impl Default for WarpOptimConfig {
             dp_scl: 1,
             dp_cost: DpEdgeCost::PiecewiseConstant,
             dp_prune: true,
+            band_frac: 0.0,
+            lambda_scale: WarpLambdaScale::Native,
         }
     }
 }
@@ -209,9 +296,10 @@ impl WarpOptimConfig {
     /// Check the configuration.
     ///
     /// # Errors
-    /// [`FdarError::InvalidParameter`] if `lambda` is negative or non-finite,
-    /// `scl == 0`, `nbhd_dim` or `dp_scl` is outside `1..=64`, or a `Roughness`/`Geodesic` penalty with `lambda > 0` is
-    /// requested from the DP optimiser (it cannot express them).
+    /// [`FdarError::InvalidParameter`] if `lambda` or `band_frac` is negative
+    /// or non-finite, `scl == 0`, `nbhd_dim` or `dp_scl` is outside `1..=64`,
+    /// or a `Roughness`/`Geodesic` penalty with `lambda > 0` is requested from
+    /// the DP optimiser (it cannot express them).
     pub fn validate(&self) -> Result<(), FdarError> {
         if !self.lambda.is_finite() || self.lambda < 0.0 {
             return Err(FdarError::InvalidParameter {
@@ -223,6 +311,12 @@ impl WarpOptimConfig {
             return Err(FdarError::InvalidParameter {
                 parameter: "scl",
                 message: "must be >= 1".to_string(),
+            });
+        }
+        if !self.band_frac.is_finite() || self.band_frac < 0.0 {
+            return Err(FdarError::InvalidParameter {
+                parameter: "band_frac",
+                message: format!("must be finite and >= 0, got {}", self.band_frac),
             });
         }
         for (parameter, v) in [("nbhd_dim", self.nbhd_dim), ("dp_scl", self.dp_scl)] {
@@ -257,11 +351,117 @@ impl WarpOptimConfig {
             ..Self::default()
         }
     }
+
+    /// The exact DP → RBFGS penalty-weight factor `φ` for the 1-D SRSFs `q1`,
+    /// `q2` (sampled on the alignment grid): RBFGS with `λ_rb = φ·λ_dp`
+    /// minimises the same functional as DP with `λ_dp` (up to a positive
+    /// factor and an additive constant), for the `L2Gam` and `L2Psi`
+    /// penalties. `φ = scl·‖q1‖₂‖q2‖₂ / (‖q1ᶠ‖₂‖q2ᶠ‖₂)` with `qᶠ` the SRSF
+    /// linearly resampled `scl` times finer (as RBFGS does); `φ → 1` as the
+    /// grid is refined. See [`WarpLambdaScale`] for the derivation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use fdars_core::alignment::WarpOptimConfig;
+    ///
+    /// let q: Vec<f64> = (0..101).map(|i| 1.0 + (i as f64 * 0.07).sin()).collect();
+    /// let phi = WarpOptimConfig::default().rbfgs_lambda_factor(&q, &q);
+    /// assert!((phi - 1.0).abs() < 0.03); // 1 + O(1/m)
+    /// ```
+    #[must_use]
+    pub fn rbfgs_lambda_factor(&self, q1: &[f64], q2: &[f64]) -> f64 {
+        lambda_factor(&[q1], &[q2], self.scl, 1.0)
+    }
+
+    /// Penalty weight in `method`'s own convention, converting
+    /// [`lambda`](Self::lambda) per [`lambda_scale`](Self::lambda_scale);
+    /// `phi` returns the DP → RBFGS factor (evaluated only when needed).
+    pub(super) fn native_lambda(&self, method: WarpOptimMethod, phi: impl FnOnce() -> f64) -> f64 {
+        let lam = self.lambda;
+        if lam == 0.0 {
+            return lam;
+        }
+        match (self.lambda_scale, method) {
+            (WarpLambdaScale::Dp, WarpOptimMethod::Rbfgs) => lam * phi(),
+            (WarpLambdaScale::Fdasrsf, WarpOptimMethod::Dp) => lam / phi(),
+            _ => lam,
+        }
+    }
+
+    /// The DP options of the RBFGS coarse-DP seed.
+    pub(super) fn dp_seed(&self) -> DpSeed {
+        DpSeed {
+            nbhd_dim: self.nbhd_dim,
+            dp_scl: self.dp_scl,
+            dp_cost: self.dp_cost,
+            dp_prune: self.dp_prune,
+        }
+    }
+}
+
+/// DP options of the RBFGS coarse-DP seed (the DP fields of
+/// [`WarpOptimConfig`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct DpSeed {
+    pub nbhd_dim: usize,
+    pub dp_scl: usize,
+    pub dp_cost: DpEdgeCost,
+    pub dp_prune: bool,
+}
+
+impl DpSeed {
+    /// The classic 35-move, unrefined, piecewise-constant DP.
+    pub(super) fn is_classic(&self) -> bool {
+        self.nbhd_dim == 7 && self.dp_scl == 1 && self.dp_cost == DpEdgeCost::PiecewiseConstant
+    }
+}
+
+/// `scl·E1·E2 / (div·e1·e2)` for multi-channel SRSFs: `E_i` the total
+/// Euclidean norm over all channels and samples, `e_i` the same after linear
+/// resampling `scl` times finer (`div = 1` for 1-D, `d` for the per-channel
+/// normalised R^d DP).
+pub(super) fn lambda_factor(q1: &[&[f64]], q2: &[&[f64]], scl: usize, div: f64) -> f64 {
+    let scl = scl.max(1);
+    let euclid = |chs: &[&[f64]]| -> f64 {
+        chs.iter()
+            .map(|f| f.iter().map(|v| v * v).sum::<f64>())
+            .sum::<f64>()
+            .sqrt()
+    };
+    let (big1, big2) = (euclid(q1), euclid(q2));
+    let (f1, f2) = (refined_euclid(q1, scl), refined_euclid(q2, scl));
+    let den = div * f1 * f2;
+    if den > 0.0 && big1 > 0.0 && big2 > 0.0 {
+        scl as f64 * big1 * big2 / den
+    } else {
+        1.0
+    }
+}
+
+/// Total Euclidean norm of the channels linearly resampled `scl` times finer
+/// (the `e_i` of [`WarpLambdaScale`]).
+pub(super) fn refined_euclid(q: &[&[f64]], scl: usize) -> f64 {
+    q.iter()
+        .map(|f| {
+            if f.len() < 2 || scl <= 1 {
+                f.iter().map(|v| v * v).sum::<f64>()
+            } else {
+                refine_srsf_linear(f, scl)
+                    .iter()
+                    .map(|v| v * v)
+                    .sum::<f64>()
+            }
+        })
+        .sum::<f64>()
+        .sqrt()
 }
 
 /// Optimal warp aligning SRSF `q2` to `q1` under `cfg` (assumed validated).
 ///
-/// `band` is the Sakoe–Chiba radius for the DP optimiser (ignored by RBFGS).
+/// `band` is an explicit Sakoe–Chiba index radius (the classic banded
+/// functions); `None` falls back to [`WarpOptimConfig::band_frac`]. The
+/// penalty weight is converted per [`WarpOptimConfig::lambda_scale`].
 /// `Dp` + `L2Gam` with the default DP options runs exactly the arithmetic of
 /// [`dp_alignment_core_banded`](super::dp_alignment_core_banded) the classic
 /// functions use, so it is bit-identical to them.
@@ -272,28 +472,24 @@ pub(super) fn optimal_warp(
     cfg: &WarpOptimConfig,
     band: Option<usize>,
 ) -> Vec<f64> {
+    let band = band.or_else(|| band_radius(cfg.band_frac, argvals.len()));
+    let lambda = cfg.native_lambda(cfg.method, || cfg.rbfgs_lambda_factor(q1, q2));
     match cfg.method {
-        WarpOptimMethod::Dp => dp_warp(q1, q2, argvals, cfg, band),
-        WarpOptimMethod::Rbfgs => rbfgs_warp(
-            q1,
-            q2,
-            argvals,
-            &RbfgsParams {
-                lambda: cfg.lambda,
-                penalty: cfg.penalty,
-                max_iter: cfg.max_iter,
-                scl: cfg.scl,
-            },
-        ),
+        WarpOptimMethod::Dp => dp_warp(q1, q2, argvals, cfg, lambda, band),
+        WarpOptimMethod::Rbfgs => {
+            rbfgs_warp(q1, q2, argvals, &RbfgsParams::from_cfg(cfg, lambda, band))
+        }
     }
 }
 
-/// DP branch of [`optimal_warp`]: builds the engine options from `cfg`.
-fn dp_warp(
+/// DP branch of [`optimal_warp`]: builds the engine options from `cfg`, with
+/// penalty weight `lambda` (already in the DP convention).
+pub(super) fn dp_warp(
     q1: &[f64],
     q2: &[f64],
     argvals: &[f64],
     cfg: &WarpOptimConfig,
+    lambda: f64,
     band: Option<usize>,
 ) -> Vec<f64> {
     let nbhd = coprime_nbhd(cfg.nbhd_dim);
@@ -301,12 +497,11 @@ fn dp_warp(
         moves: DpMoves {
             nbhd: &nbhd,
             // Exact (bit-identical) only for non-negative edge costs.
-            prune: cfg.dp_prune && dp_prune_is_exact(argvals, cfg.lambda),
+            prune: cfg.dp_prune && dp_prune_is_exact(argvals, lambda),
         },
         scl: cfg.dp_scl.max(1),
         cost: cfg.dp_cost,
     };
-    let lambda = cfg.lambda;
     match cfg.penalty {
         WarpObjectivePenalty::L2Psi if lambda > 0.0 => {
             dp_alignment_core_opts(q1, q2, argvals, band, &opts, |sc, tc, sr, tr| {
@@ -368,3 +563,7 @@ mod dp_golden;
 #[cfg(test)]
 #[path = "dp_options_tests.rs"]
 mod dp_tests;
+
+#[cfg(test)]
+#[path = "optim_coverage_tests.rs"]
+mod coverage_tests;

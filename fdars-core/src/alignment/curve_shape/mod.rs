@@ -278,7 +278,11 @@ pub struct CurveShapeConfig {
     /// The warp penalty weight is always [`lambda`](Self::lambda) with the
     /// penalty shape `warp_optim.penalty` (`L2Gam` = the classic `∫(γ' − 1)²`);
     /// `warp_optim.lambda` must stay `0`. With RBFGS `lambda` has fdasrsf's
-    /// RBFGS scale (see [`WarpObjectivePenalty`](super::WarpObjectivePenalty)).
+    /// RBFGS scale (see [`WarpObjectivePenalty`](super::WarpObjectivePenalty)),
+    /// which for curves differs from the DP scale by `φ = scl/(e1·e2)`; set
+    /// `warp_optim.lambda_scale` to convert (see
+    /// [`WarpLambdaScale`](super::WarpLambdaScale)). The RBFGS coarse-DP seed
+    /// honours `warp_optim.nbhd_dim` / `dp_scl` / `dp_cost`.
     ///
     /// ```
     /// use fdars_core::alignment::{curve_shape_distance, CurveShapeConfig, WarpOptimMethod};
@@ -332,8 +336,9 @@ impl CurveShapeConfig {
     /// [`FdarError::InvalidParameter`] if `seed_step == 0`, `align_iter == 0`,
     /// `lambda` is negative / non-finite, the metric parameters are invalid,
     /// the elastic `(a, b)` metric is combined with `closed = true`,
-    /// `warp_optim.lambda ≠ 0`, or `warp_optim` (with weight `lambda`) is
-    /// invalid ([`WarpOptimConfig::validate`]).
+    /// `warp_optim.lambda ≠ 0`, `warp_optim.band_frac ≠ 0` (no band for curve
+    /// shapes), or `warp_optim` (with weight `lambda`) is invalid
+    /// ([`WarpOptimConfig::validate`]).
     pub fn validate(&self) -> Result<(), FdarError> {
         let bad = |parameter: &'static str, message: String| {
             Err(FdarError::InvalidParameter { parameter, message })
@@ -358,6 +363,15 @@ impl CurveShapeConfig {
                     "the warp penalty weight is CurveShapeConfig::lambda; leave \
                      warp_optim.lambda at 0 (got {})",
                     self.warp_optim.lambda
+                ),
+            );
+        }
+        if self.warp_optim.band_frac != 0.0 {
+            return bad(
+                "warp_optim.band_frac",
+                format!(
+                    "the Sakoe–Chiba band is not supported for curve shapes (got {})",
+                    self.warp_optim.band_frac
                 ),
             );
         }

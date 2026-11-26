@@ -151,19 +151,21 @@ where
 /// Returns `(mu_q_new, align_results)` where `mu_q_new` is the averaged SRSF and
 /// `align_results` carries per-curve `(ClosedAlignmentResult, q_aligned)` pairs for
 /// the caller to store gammas/rotations.
-fn karcher_iter_step(
+fn karcher_iter_step<A>(
     data: &FdMatrix,
     mu: &[f64],
     argvals: &[f64],
-    lambda: f64,
+    align: &A,
     n: usize,
     m: usize,
-) -> (Vec<f64>, Vec<(ClosedAlignmentResult, Vec<f64>)>) {
+) -> (Vec<f64>, Vec<(ClosedAlignmentResult, Vec<f64>)>)
+where
+    A: Fn(&[f64], &[f64]) -> Result<ClosedAlignmentResult, FdarError> + Sync,
+{
     let align_results: Vec<(ClosedAlignmentResult, Vec<f64>)> = iter_maybe_parallel!(0..n)
         .map(|i| {
             let fi = data.row(i);
-            let res = elastic_align_pair_closed(mu, &fi, argvals, lambda)
-                .expect("dimension invariant: all curves have length m");
+            let res = align(mu, &fi).expect("dimension invariant: all curves have length m");
             let q_warped = srsf_single(&res.f_aligned, argvals);
             (res, q_warped)
         })
@@ -365,6 +367,64 @@ pub fn karcher_mean_closed(
     tol: f64,
     lambda: f64,
 ) -> Result<ClosedKarcherMeanResult, FdarError> {
+    check_closed_data(data, argvals)?;
+    let align = |mu: &[f64], fi: &[f64]| elastic_align_pair_closed(mu, fi, argvals, lambda);
+    Ok(karcher_mean_closed_impl(
+        data, argvals, max_iter, tol, &align,
+    ))
+}
+
+/// [`karcher_mean_closed`] with a configurable warp optimiser: every
+/// curve-to-mean alignment (shift search and warp) is
+/// [`elastic_align_pair_closed_with_config`] under `config` (RBFGS, the DP
+/// options, a Sakoe–Chiba band, the λ conversion).
+/// [`WarpOptimConfig::default`] with `lambda` set gives exactly
+/// [`karcher_mean_closed`]`(data, argvals, max_iter, tol, lambda)`.
+///
+/// # Errors
+/// As [`karcher_mean_closed`], plus [`FdarError::InvalidParameter`] for a
+/// non-increasing `argvals` or an invalid `config`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::{karcher_mean_closed_with_config, WarpOptimConfig, WarpOptimMethod};
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let m = 40;
+/// let t: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+/// let tau = 2.0 * std::f64::consts::PI;
+/// let mut data = FdMatrix::zeros(3, m);
+/// for i in 0..3 {
+///     for j in 0..m {
+///         data[(i, j)] = (tau * (t[j] + 0.05 * i as f64)).sin();
+///     }
+/// }
+/// let mut cfg = WarpOptimConfig::default();
+/// cfg.method = WarpOptimMethod::Rbfgs;
+/// let km = karcher_mean_closed_with_config(&data, &t, 3, 1e-3, &cfg).unwrap();
+/// assert_eq!(km.rotations.len(), 3);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn karcher_mean_closed_with_config(
+    data: &FdMatrix,
+    argvals: &[f64],
+    max_iter: usize,
+    tol: f64,
+    config: &WarpOptimConfig,
+) -> Result<ClosedKarcherMeanResult, FdarError> {
+    check_closed_data(data, argvals)?;
+    check_grid(argvals, data.ncols(), "data")?;
+    config.validate()?;
+    let align =
+        |mu: &[f64], fi: &[f64]| elastic_align_pair_closed_with_config(mu, fi, argvals, config);
+    Ok(karcher_mean_closed_impl(
+        data, argvals, max_iter, tol, &align,
+    ))
+}
+
+/// Shape checks of [`karcher_mean_closed`].
+fn check_closed_data(data: &FdMatrix, argvals: &[f64]) -> Result<(), FdarError> {
     let (n, m) = data.shape();
     if m != argvals.len() {
         return Err(FdarError::InvalidDimension {
@@ -387,6 +447,21 @@ pub fn karcher_mean_closed(
             actual: "nrows = 0".to_string(),
         });
     }
+    Ok(())
+}
+
+/// Shared body of the closed-curve Karcher mean with the pair aligner `align`.
+fn karcher_mean_closed_impl<A>(
+    data: &FdMatrix,
+    argvals: &[f64],
+    max_iter: usize,
+    tol: f64,
+    align: &A,
+) -> ClosedKarcherMeanResult
+where
+    A: Fn(&[f64], &[f64]) -> Result<ClosedAlignmentResult, FdarError> + Sync,
+{
+    let (n, m) = data.shape();
 
     // Initialize mean as the first curve
     let mut mu: Vec<f64> = data.row(0);
@@ -401,7 +476,7 @@ pub fn karcher_mean_closed(
         n_iter = iter + 1;
 
         // Align all curves to current mean and accumulate new SRSF mean
-        let (mu_q_new, align_results) = karcher_iter_step(data, &mu, argvals, lambda, n, m);
+        let (mu_q_new, align_results) = karcher_iter_step(data, &mu, argvals, align, n, m);
         store_align_results(&mut gammas, &mut rotations, &align_results, m);
 
         // Check convergence
@@ -440,7 +515,7 @@ pub fn karcher_mean_closed(
     // Reconstruct final mean from SRSF
     mu = crate::alignment::srsf::srsf_inverse(&mu_q, argvals, mu[0]);
 
-    Ok(ClosedKarcherMeanResult {
+    ClosedKarcherMeanResult {
         mean: mu,
         mean_srsf: mu_q,
         gammas,
@@ -448,7 +523,7 @@ pub fn karcher_mean_closed(
         rotations,
         n_iter,
         converged,
-    })
+    }
 }
 
 #[cfg(test)]

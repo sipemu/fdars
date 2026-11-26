@@ -8,9 +8,10 @@
 //! - [`robust_karcher_mean`] — Trimmed Karcher mean that removes the
 //!   most distant curves before averaging.
 
-use super::karcher::karcher_mean;
-use super::pairwise::elastic_distance;
-use super::set::align_to_target;
+use super::karcher::karcher_mean_impl;
+use super::optim::{check_grid, WarpOptimConfig};
+use super::pairwise::align_pair_cfg;
+use super::set::align_to_target_cfg;
 use super::srsf::srsf_single;
 use crate::error::FdarError;
 use crate::matrix::FdMatrix;
@@ -93,15 +94,77 @@ pub fn karcher_median(
 ) -> Result<RobustKarcherResult, FdarError> {
     let (n, m) = data.shape();
     validate_inputs(n, m, argvals)?;
+    Ok(karcher_median_impl(
+        data,
+        argvals,
+        config,
+        &WarpOptimConfig::classic_dp(config.lambda),
+    ))
+}
+
+/// [`karcher_median`] with a configurable warp optimiser: every alignment and
+/// elastic distance of the Weiszfeld iteration (and its 1-step Karcher
+/// initialisation) uses `warp` (RBFGS, the DP options, a Sakoe–Chiba band,
+/// the λ conversion).
+///
+/// The penalty weight is `warp.lambda`; `config.lambda` must be `0` or equal
+/// to it. `warp = WarpOptimConfig::default()` with `lambda = config.lambda`
+/// gives exactly [`karcher_median`]`(data, argvals, config)`.
+///
+/// # Errors
+/// As [`karcher_median`], plus [`FdarError::InvalidParameter`] for a
+/// non-increasing `argvals`, an invalid `warp` or a conflicting
+/// `config.lambda`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::{
+///     karcher_median_with_config, RobustKarcherConfig, WarpOptimConfig, WarpOptimMethod,
+/// };
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let t: Vec<f64> = (0..40).map(|i| i as f64 / 39.0).collect();
+/// let mut data = FdMatrix::zeros(5, 40);
+/// for i in 0..5 {
+///     for j in 0..40 {
+///         data[(i, j)] = (-(t[j] - 0.4 - 0.03 * i as f64).powi(2) / 0.01).exp();
+///     }
+/// }
+/// let mut rc = RobustKarcherConfig::default();
+/// rc.max_iter = 3;
+/// let mut warp = WarpOptimConfig::default();
+/// warp.method = WarpOptimMethod::Rbfgs;
+/// let med = karcher_median_with_config(&data, &t, &rc, &warp).unwrap();
+/// assert_eq!(med.mean.len(), 40);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn karcher_median_with_config(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &RobustKarcherConfig,
+    warp: &WarpOptimConfig,
+) -> Result<RobustKarcherResult, FdarError> {
+    validate_with_config(data, argvals, config, warp)?;
+    Ok(karcher_median_impl(data, argvals, config, warp))
+}
+
+fn karcher_median_impl(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &RobustKarcherConfig,
+    warp: &WarpOptimConfig,
+) -> RobustKarcherResult {
+    let (n, m) = data.shape();
 
     // Step 1: Initialize with a quick Karcher mean (1 iteration).
-    let init = karcher_mean(data, argvals, 1, config.tol, config.lambda);
+    let init = karcher_mean_impl(data, argvals, 1, config.tol, warp, 0.0);
     let mut current_mean = init.mean;
 
     let mut converged = false;
     let mut n_iter = 0;
     let mut weights = vec![1.0 / n as f64; n];
-    let mut alignment_result = align_to_target(data, &current_mean, argvals, config.lambda);
+    let mut alignment_result = align_to_target_cfg(data, &current_mean, argvals, warp);
 
     // Step 2: Weiszfeld iterations.
     for iter in 0..config.max_iter {
@@ -111,7 +174,7 @@ pub fn karcher_median(
         let distances: Vec<f64> = (0..n)
             .map(|i| {
                 let fi = data.row(i);
-                elastic_distance(&current_mean, &fi, argvals, config.lambda)
+                align_pair_cfg(&current_mean, &fi, argvals, warp).distance
             })
             .collect();
 
@@ -139,17 +202,17 @@ pub fn karcher_median(
         if rel < config.tol {
             converged = true;
             // Final alignment to converged median.
-            alignment_result = align_to_target(data, &current_mean, argvals, config.lambda);
+            alignment_result = align_to_target_cfg(data, &current_mean, argvals, warp);
             break;
         }
 
         // Re-align to updated median.
-        alignment_result = align_to_target(data, &current_mean, argvals, config.lambda);
+        alignment_result = align_to_target_cfg(data, &current_mean, argvals, warp);
     }
 
     let mean_srsf = srsf_single(&current_mean, argvals);
 
-    Ok(RobustKarcherResult {
+    RobustKarcherResult {
         mean: current_mean,
         mean_srsf,
         gammas: alignment_result.gammas,
@@ -157,7 +220,7 @@ pub fn karcher_median(
         weights,
         n_iter,
         converged,
-    })
+    }
 }
 
 /// Compute a trimmed Karcher mean by removing the most distant curves.
@@ -184,22 +247,90 @@ pub fn robust_karcher_mean(
 ) -> Result<RobustKarcherResult, FdarError> {
     let (n, m) = data.shape();
     validate_inputs(n, m, argvals)?;
+    check_trim(config)?;
+    Ok(robust_karcher_mean_impl(
+        data,
+        argvals,
+        config,
+        &WarpOptimConfig::classic_dp(config.lambda),
+    ))
+}
 
+/// [`robust_karcher_mean`] (trimmed Karcher mean) with a configurable warp
+/// optimiser: both Karcher means, the trimming distances and the final
+/// re-alignment use `warp` (RBFGS, the DP options, a Sakoe–Chiba band, the λ
+/// conversion).
+///
+/// The penalty weight is `warp.lambda`; `config.lambda` must be `0` or equal
+/// to it. `warp = WarpOptimConfig::default()` with `lambda = config.lambda`
+/// gives exactly [`robust_karcher_mean`]`(data, argvals, config)`.
+///
+/// # Errors
+/// As [`robust_karcher_mean`], plus [`FdarError::InvalidParameter`] for a
+/// non-increasing `argvals`, an invalid `warp` or a conflicting
+/// `config.lambda`.
+///
+/// # Examples
+///
+/// ```
+/// use fdars_core::alignment::{
+///     robust_karcher_mean_with_config, RobustKarcherConfig, WarpOptimConfig, WarpOptimMethod,
+/// };
+/// use fdars_core::matrix::FdMatrix;
+///
+/// let t: Vec<f64> = (0..40).map(|i| i as f64 / 39.0).collect();
+/// let mut data = FdMatrix::zeros(6, 40);
+/// for i in 0..6 {
+///     for j in 0..40 {
+///         data[(i, j)] = (-(t[j] - 0.4 - 0.03 * i as f64).powi(2) / 0.01).exp();
+///     }
+/// }
+/// let mut rc = RobustKarcherConfig::default();
+/// rc.max_iter = 3;
+/// rc.trim_fraction = 0.2;
+/// let mut warp = WarpOptimConfig::default();
+/// warp.method = WarpOptimMethod::Rbfgs;
+/// let res = robust_karcher_mean_with_config(&data, &t, &rc, &warp).unwrap();
+/// assert_eq!(res.weights.iter().filter(|&&w| w == 0.0).count(), 2);
+/// ```
+#[must_use = "expensive computation whose result should not be discarded"]
+pub fn robust_karcher_mean_with_config(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &RobustKarcherConfig,
+    warp: &WarpOptimConfig,
+) -> Result<RobustKarcherResult, FdarError> {
+    validate_with_config(data, argvals, config, warp)?;
+    check_trim(config)?;
+    Ok(robust_karcher_mean_impl(data, argvals, config, warp))
+}
+
+fn check_trim(config: &RobustKarcherConfig) -> Result<(), FdarError> {
     if !(0.0..1.0).contains(&config.trim_fraction) {
         return Err(FdarError::InvalidParameter {
             parameter: "trim_fraction",
             message: format!("must be in [0, 1), got {}", config.trim_fraction),
         });
     }
+    Ok(())
+}
+
+fn robust_karcher_mean_impl(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &RobustKarcherConfig,
+    warp: &WarpOptimConfig,
+) -> RobustKarcherResult {
+    let n = data.nrows();
 
     // Step 1: Compute standard Karcher mean.
-    let initial_mean = karcher_mean(data, argvals, config.max_iter, config.tol, config.lambda);
+    let initial_mean = karcher_mean_impl(data, argvals, config.max_iter, config.tol, warp, 0.0);
 
     // Step 2: Compute elastic distances from the mean.
     let distances: Vec<f64> = (0..n)
         .map(|i| {
             let fi = data.row(i);
-            elastic_distance(&initial_mean.mean, &fi, argvals, config.lambda)
+            align_pair_cfg(&initial_mean.mean, &fi, argvals, warp).distance
         })
         .collect();
 
@@ -225,20 +356,15 @@ pub fn robust_karcher_mean(
 
     // Step 5: Recompute Karcher mean on the kept subset.
     let kept_data = subset_rows_from_indices(data, &kept_indices);
-    let robust_mean = karcher_mean(
-        &kept_data,
-        argvals,
-        config.max_iter,
-        config.tol,
-        config.lambda,
-    );
+    let robust_mean =
+        karcher_mean_impl(&kept_data, argvals, config.max_iter, config.tol, warp, 0.0);
 
     // Step 6: Re-align ALL curves (including trimmed) to the robust mean.
-    let final_alignment = align_to_target(data, &robust_mean.mean, argvals, config.lambda);
+    let final_alignment = align_to_target_cfg(data, &robust_mean.mean, argvals, warp);
 
     let mean_srsf = srsf_single(&robust_mean.mean, argvals);
 
-    Ok(RobustKarcherResult {
+    RobustKarcherResult {
         mean: robust_mean.mean,
         mean_srsf,
         gammas: final_alignment.gammas,
@@ -246,7 +372,31 @@ pub fn robust_karcher_mean(
         weights,
         n_iter: robust_mean.n_iter,
         converged: robust_mean.converged,
-    })
+    }
+}
+
+/// Validation shared by the `*_with_config` robust estimators.
+fn validate_with_config(
+    data: &FdMatrix,
+    argvals: &[f64],
+    config: &RobustKarcherConfig,
+    warp: &WarpOptimConfig,
+) -> Result<(), FdarError> {
+    let (n, m) = data.shape();
+    validate_inputs(n, m, argvals)?;
+    check_grid(argvals, m, "data")?;
+    warp.validate()?;
+    if config.lambda != 0.0 && config.lambda != warp.lambda {
+        return Err(FdarError::InvalidParameter {
+            parameter: "lambda",
+            message: format!(
+                "the warp penalty weight is warp.lambda ({}); config.lambda must be 0 or \
+                 equal to it (got {})",
+                warp.lambda, config.lambda
+            ),
+        });
+    }
+    Ok(())
 }
 
 /// Validate common input dimensions.
@@ -285,6 +435,7 @@ use crate::cv::subset_rows as subset_rows_from_indices;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::alignment::karcher_mean;
     use crate::test_helpers::uniform_grid;
 
     fn make_sine_data(n: usize, m: usize) -> (FdMatrix, Vec<f64>) {

@@ -4,12 +4,13 @@
 //! column = sample) on the implicit uniform grid `t_j = j/(m−1)` of `[0, 1]`.
 //! L² inner products use trapezoidal weights on that grid.
 
+use crate::alignment::optim::refined_euclid;
 use crate::alignment::rbfgs::{rbfgs_warp_multi, RbfgsParams};
 use crate::alignment::{
     coprime_nbhd, dp_edge_weight_core, dp_edge_weight_linear_core, dp_grid_solve,
     dp_grid_solve_moves, dp_l2psi_penalty, dp_lambda_penalty, dp_path_to_gamma, dp_prune_is_exact,
-    refine_srsf_linear, DpEdgeCost, DpMoves, WarpObjectivePenalty, WarpOptimConfig,
-    WarpOptimMethod,
+    refine_srsf_linear, DpEdgeCost, DpMoves, WarpLambdaScale, WarpObjectivePenalty,
+    WarpOptimConfig, WarpOptimMethod,
 };
 use crate::error::FdarError;
 use crate::helpers::linear_interp;
@@ -554,9 +555,40 @@ pub(super) fn optimal_warp(
     opt: &WarpOptimConfig,
 ) -> Vec<f64> {
     match opt.method {
-        WarpOptimMethod::Dp if is_classic_dp(opt) => dp_warp(q1, q2, grid, lambda),
-        WarpOptimMethod::Dp => dp_warp_opts(q1, q2, grid, lambda, opt),
+        WarpOptimMethod::Dp
+            if is_classic_dp(opt) && opt.lambda_scale == WarpLambdaScale::Native =>
+        {
+            dp_warp(q1, q2, grid, lambda)
+        }
+        WarpOptimMethod::Dp => {
+            let mut conv = opt.clone();
+            conv.lambda = lambda;
+            let lam = conv.native_lambda(WarpOptimMethod::Dp, || curve_lambda_factor(q1, q2, opt));
+            if is_classic_dp(opt) {
+                dp_warp(q1, q2, grid, lam)
+            } else {
+                dp_warp_opts(q1, q2, grid, lam, opt)
+            }
+        }
         WarpOptimMethod::Rbfgs => rbfgs_warp_curve(q1, q2, grid, lambda, opt),
+    }
+}
+
+/// Curve-shape DP → RBFGS λ factor `φ = scl/(e1·e2)` (`e_i` the total
+/// Euclidean norm of the SRVF resampled `scl` times finer): the R^d DP works
+/// on the raw SRVFs, see [`WarpLambdaScale`].
+fn curve_lambda_factor(q1: &FdMatrix, q2: &FdMatrix, opt: &WarpOptimConfig) -> f64 {
+    let d = q1.nrows();
+    let rows1: Vec<Vec<f64>> = (0..d).map(|k| q1.row(k)).collect();
+    let rows2: Vec<Vec<f64>> = (0..d).map(|k| q2.row(k)).collect();
+    let c1: Vec<&[f64]> = rows1.iter().map(Vec::as_slice).collect();
+    let c2: Vec<&[f64]> = rows2.iter().map(Vec::as_slice).collect();
+    let scl = opt.scl.max(1);
+    let den = refined_euclid(&c1, scl) * refined_euclid(&c2, scl);
+    if den > 0.0 {
+        scl as f64 / den
+    } else {
+        1.0
     }
 }
 
@@ -623,9 +655,13 @@ pub(super) fn dp_warp_opts(
 }
 
 /// RBFGS warp of an R^d SRVF pair (data term summed over coordinates),
-/// started from the classic R^d DP on a coarse grid of ≤ 51 points. The
-/// coarse start honours the DP-expressible penalties as the 1-D optimiser
-/// does (`L2Gam`, otherwise `L2Psi`).
+/// started from the R^d DP on a coarse grid of ≤ 51 points. The coarse start
+/// honours the DP-expressible penalties as the 1-D optimiser does (`L2Gam`,
+/// otherwise `L2Psi`) and the DP options `nbhd_dim` / `dp_scl` / `dp_cost` /
+/// `dp_prune` of `opt` (the defaults run the classic R^d DP). `lambda` is
+/// converted per `opt.lambda_scale` (curve-shape factor `φ = scl/(e1·e2)`,
+/// see [`WarpLambdaScale`](crate::alignment::WarpLambdaScale)); the seed DP
+/// keeps the DP-convention weight.
 fn rbfgs_warp_curve(
     q1: &FdMatrix,
     q2: &FdMatrix,
@@ -638,13 +674,16 @@ fn rbfgs_warp_curve(
     let rows2: Vec<Vec<f64>> = (0..d).map(|k| q2.row(k)).collect();
     let c1: Vec<&[f64]> = rows1.iter().map(Vec::as_slice).collect();
     let c2: Vec<&[f64]> = rows2.iter().map(Vec::as_slice).collect();
-    let p = RbfgsParams {
-        lambda,
-        penalty: opt.penalty,
-        max_iter: opt.max_iter,
-        scl: opt.scl,
-    };
-    rbfgs_warp_multi(&c1, &c2, &grid.t, &p, |q1c, q2c, tc| {
+    let mut conv = opt.clone();
+    conv.lambda = lambda;
+    let lam_rb = conv.native_lambda(WarpOptimMethod::Rbfgs, || curve_lambda_factor(q1, q2, opt));
+    let mut p = RbfgsParams::from_cfg(opt, lam_rb, None);
+    // The seed DP reads lambda in the DP convention (unchanged when Native).
+    if opt.lambda_scale != WarpLambdaScale::Native {
+        p.seed_lambda = lambda;
+    }
+    let seed_lambda = p.seed_lambda;
+    rbfgs_warp_multi(&c1, &c2, &grid.t, &p, |q1c, q2c, tc, _band| {
         let nc = tc.len();
         let to_mat = |rows: &[Vec<f64>]| {
             let mut out = FdMatrix::zeros(d, nc);
@@ -655,12 +694,18 @@ fn rbfgs_warp_curve(
             }
             out
         };
-        let mut start = WarpOptimConfig::default();
-        if lambda > 0.0 && opt.penalty != WarpObjectivePenalty::L2Gam {
+        let mut start = WarpOptimConfig {
+            nbhd_dim: opt.nbhd_dim,
+            dp_scl: opt.dp_scl,
+            dp_cost: opt.dp_cost,
+            dp_prune: opt.dp_prune,
+            ..WarpOptimConfig::default()
+        };
+        if seed_lambda > 0.0 && opt.penalty != WarpObjectivePenalty::L2Gam {
             start.penalty = WarpObjectivePenalty::L2Psi;
         }
         let cg = Grid::new(nc);
-        let g = optimal_warp(&to_mat(q1c), &to_mat(q2c), &cg, lambda, &start);
+        let g = optimal_warp(&to_mat(q1c), &to_mat(q2c), &cg, seed_lambda, &start);
         // `Grid::new` and the RBFGS coarse grid are the same uniform grid of
         // [0, 1]; re-sample to be safe against last-ulp differences.
         tc.iter().map(|&x| linear_interp(&cg.t, &g, x)).collect()

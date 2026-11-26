@@ -108,15 +108,16 @@ pub use bayesian_group::{
 };
 pub use closed::{
     elastic_align_pair_closed, elastic_align_pair_closed_with_config, elastic_distance_closed,
-    elastic_distance_closed_with_config, karcher_mean_closed, ClosedAlignmentResult,
-    ClosedKarcherMeanResult,
+    elastic_distance_closed_with_config, karcher_mean_closed, karcher_mean_closed_with_config,
+    ClosedAlignmentResult, ClosedKarcherMeanResult,
 };
 pub use clustering::{
     cut_dendrogram, hierarchical_from_distances, kmedoids_from_distances, Dendrogram,
     KMedoidsConfig, KMedoidsResult, Linkage,
 };
 pub use constrained::{
-    elastic_align_pair_constrained, elastic_align_pair_with_landmarks, ConstrainedAlignmentResult,
+    elastic_align_pair_constrained, elastic_align_pair_constrained_with_config,
+    elastic_align_pair_with_landmarks, ConstrainedAlignmentResult,
 };
 pub use continuous::{
     continuous_registration, ContinuousRegistrationConfig, ContinuousRegistrationCriterion,
@@ -164,11 +165,16 @@ pub use landmark_shift::{
 };
 pub use multires::{elastic_align_pair_multires, MultiresConfig};
 pub use nd::{
-    elastic_align_pair_nd, elastic_distance_nd, srsf_inverse_nd, srsf_transform_nd,
-    AlignmentResultNd,
+    elastic_align_pair_nd, elastic_align_pair_nd_with_config, elastic_distance_nd,
+    elastic_distance_nd_with_config, srsf_inverse_nd, srsf_transform_nd, AlignmentResultNd,
 };
-pub use nd::{karcher_covariance_nd, karcher_mean_nd, pca_nd, KarcherMeanResultNd, PcaNdResult};
-pub use optim::{DpEdgeCost, WarpObjectivePenalty, WarpOptimConfig, WarpOptimMethod};
+pub use nd::{
+    karcher_covariance_nd, karcher_mean_nd, karcher_mean_nd_with_config, pca_nd,
+    KarcherMeanResultNd, PcaNdResult,
+};
+pub use optim::{
+    DpEdgeCost, WarpLambdaScale, WarpObjectivePenalty, WarpOptimConfig, WarpOptimMethod,
+};
 pub use outlier::{
     elastic_outlier_detection, ElasticOutlierConfig, ElasticOutlierResult, OutlierThreshold,
 };
@@ -194,9 +200,12 @@ pub use quality::{
     sobolev_least_squares_score, warp_complexity, warp_smoothness, AlignmentQuality,
 };
 pub use robust_karcher::{
-    karcher_median, robust_karcher_mean, RobustKarcherConfig, RobustKarcherResult,
+    karcher_median, karcher_median_with_config, robust_karcher_mean,
+    robust_karcher_mean_with_config, RobustKarcherConfig, RobustKarcherResult,
 };
-pub use set::{align_to_target, elastic_decomposition, DecompositionResult};
+pub use set::{
+    align_to_target, align_to_target_with_config, elastic_decomposition, DecompositionResult,
+};
 pub use shape::{
     orbit_representative, shape_distance, shape_mean, shape_self_distance_matrix,
     OrbitRepresentative, ShapeDistanceResult, ShapeMeanResult, ShapeQuotient,

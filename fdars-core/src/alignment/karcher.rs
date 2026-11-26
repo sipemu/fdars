@@ -445,7 +445,7 @@ pub fn karcher_mean_with_config(
     Ok(karcher_mean_impl(data, argvals, max_iter, tol, cfg, 0.0))
 }
 
-fn karcher_mean_impl(
+pub(super) fn karcher_mean_impl(
     data: &FdMatrix,
     argvals: &[f64],
     max_iter: usize,
