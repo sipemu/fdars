@@ -583,3 +583,59 @@ fn test_single_timepoint_streaming() {
     let depth = streamer.depth_one(&[1.0]);
     assert!(depth.is_finite());
 }
+
+/// Refactor pin (#75): streaming BD (`depth_one` + `depth_batch`) stays
+/// bit-identical to the pre-refactor values on tie-heavy pseudo-random data.
+#[test]
+fn streaming_bd_bit_identity_pin() {
+    use crate::test_helpers::{bits_fingerprint, lcg_values};
+    let (n, m) = (9, 5);
+    // Quantize to create ties / band-boundary equalities.
+    let q = |v: Vec<f64>| -> Vec<f64> { v.iter().map(|x| (x * 3.0).round() / 3.0).collect() };
+    let ref_data = FdMatrix::from_column_major(q(lcg_values(n * m, 21)), n, m).unwrap();
+    let obj = FdMatrix::from_column_major(q(lcg_values(12 * m, 22)), 12, m).unwrap();
+    let bd = StreamingBd::new(FullReferenceState::from_reference(&ref_data));
+    let mut out = bd.depth_batch(&obj);
+    for i in 0..12 {
+        let row: Vec<f64> = (0..m).map(|t| obj[(i, t)]).collect();
+        out.push(bd.depth_one(&row));
+    }
+    assert!(
+        out.iter().any(|&v| v > 0.0),
+        "pin must exercise in-band pairs"
+    );
+    let fp = bits_fingerprint(&out);
+    assert_eq!(fp, 16_138_409_176_533_847_713);
+}
+
+/// Refactor pin (#75): `RollingReference::push` (eviction with duplicates and
+/// signed zeros) keeps sorted columns, evicted curves and window MBD
+/// bit-identical to the pre-refactor values.
+#[test]
+fn rolling_push_bit_identity_pin() {
+    use crate::test_helpers::{bits_fingerprint, lcg_values};
+    let m = 4;
+    let mut w = RollingReference::new(5, m);
+    let mut all = Vec::new();
+    for k in 0..23u64 {
+        let mut c: Vec<f64> = lcg_values(m, 900 + k)
+            .iter()
+            .map(|x| (x * 2.0).round() / 2.0)
+            .collect();
+        if k % 4 == 0 {
+            c[1] = -0.0;
+        }
+        if k % 5 == 0 {
+            c[2] = 0.0;
+        }
+        if let Some(old) = w.push(&c) {
+            all.extend(old);
+        }
+        for col in &w.snapshot().sorted_columns {
+            all.extend(col.iter().copied());
+        }
+        all.push(w.mbd_one(&c));
+    }
+    let fp = bits_fingerprint(&all);
+    assert_eq!(fp, 3_709_468_055_699_907_021);
+}

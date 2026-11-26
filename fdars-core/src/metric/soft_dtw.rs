@@ -1359,45 +1359,9 @@ mod differentiable_tests {
     /// independent cross-check alongside the Dual forward-mode path and
     /// central finite differences (SC #3).
     fn corrected_oracle_gradient(bary: &[f64], xi: &[f64], gamma: f64) -> Vec<f64> {
-        let n = bary.len();
-        let m = xi.len();
-        // Forward pass (identical recurrence to soft_dtw_distance).
-        let mut r = vec![vec![f64::INFINITY; m + 1]; n + 1];
-        r[0][0] = 0.0;
-        for i in 1..=n {
-            for j in 1..=m {
-                let d = bary[i - 1] - xi[j - 1];
-                let cost = d * d;
-                r[i][j] = cost + softmin3(r[i - 1][j], r[i][j - 1], r[i - 1][j - 1], gamma);
-            }
-        }
-        // Backward pass with the endpoint boundary preserved.
-        let mut e = vec![vec![0.0; m + 2]; n + 2];
-        e[n][m] = 1.0;
-        for i in (1..=n).rev() {
-            for j in (1..=m).rev() {
-                if i == n && j == m {
-                    continue; // preserve the E[n][m] = 1.0 seed
-                }
-                let a = if i < n {
-                    e[i + 1][j] * (-(r[i][j] - softmin3_val(&r, i + 1, j, gamma)) / gamma).exp()
-                } else {
-                    0.0
-                };
-                let b = if j < m {
-                    e[i][j + 1] * (-(r[i][j] - softmin3_val(&r, i, j + 1, gamma)) / gamma).exp()
-                } else {
-                    0.0
-                };
-                let c = if i < n && j < m {
-                    e[i + 1][j + 1]
-                        * (-(r[i][j] - softmin3_val(&r, i + 1, j + 1, gamma)) / gamma).exp()
-                } else {
-                    0.0
-                };
-                e[i][j] = a + b + c;
-            }
-        }
+        let (n, m) = (bary.len(), xi.len());
+        let r = oracle_forward(bary, xi, gamma);
+        let e = oracle_backward(&r, n, m, gamma);
         // Accumulate d(sdtw)/d(bary[k]).
         let mut grad = vec![0.0; n];
         for k in 1..=n {
@@ -1408,6 +1372,71 @@ mod differentiable_tests {
             grad[k - 1] = g;
         }
         grad
+    }
+
+    /// Oracle forward pass (identical recurrence to soft_dtw_distance).
+    fn oracle_forward(bary: &[f64], xi: &[f64], gamma: f64) -> Vec<Vec<f64>> {
+        let (n, m) = (bary.len(), xi.len());
+        let mut r = vec![vec![f64::INFINITY; m + 1]; n + 1];
+        r[0][0] = 0.0;
+        for i in 1..=n {
+            for j in 1..=m {
+                let d = bary[i - 1] - xi[j - 1];
+                let cost = d * d;
+                r[i][j] = cost + softmin3(r[i - 1][j], r[i][j - 1], r[i - 1][j - 1], gamma);
+            }
+        }
+        r
+    }
+
+    /// One oracle backward contribution: `e[ni][nj] * exp(-(r[i][j] - softmin(ni, nj)) / gamma)`,
+    /// or `0.0` when the neighbour is outside the grid (`valid == false`).
+    fn oracle_term(
+        e: &[Vec<f64>],
+        r: &[Vec<f64>],
+        (i, j): (usize, usize),
+        (ni, nj): (usize, usize),
+        valid: bool,
+        gamma: f64,
+    ) -> f64 {
+        if valid {
+            e[ni][nj] * (-(r[i][j] - softmin3_val(r, ni, nj, gamma)) / gamma).exp()
+        } else {
+            0.0
+        }
+    }
+
+    /// Oracle backward pass with the endpoint boundary `E[n][m] = 1` preserved.
+    fn oracle_backward(r: &[Vec<f64>], n: usize, m: usize, gamma: f64) -> Vec<Vec<f64>> {
+        let mut e = vec![vec![0.0; m + 2]; n + 2];
+        e[n][m] = 1.0;
+        for i in (1..=n).rev() {
+            for j in (1..=m).rev() {
+                if i == n && j == m {
+                    continue; // preserve the E[n][m] = 1.0 seed
+                }
+                let a = oracle_term(&e, r, (i, j), (i + 1, j), i < n, gamma);
+                let b = oracle_term(&e, r, (i, j), (i, j + 1), j < m, gamma);
+                let c = oracle_term(&e, r, (i, j), (i + 1, j + 1), i < n && j < m, gamma);
+                e[i][j] = a + b + c;
+            }
+        }
+        e
+    }
+
+    /// Refactor pin (#75): the oracle's outputs stay bit-identical to values
+    /// recorded on the pre-refactor (monolithic) helper.
+    #[test]
+    fn corrected_oracle_gradient_bit_identity_pin() {
+        use crate::test_helpers::{bits_fingerprint, lcg_values};
+        let mut all = corrected_oracle_gradient(&X, &Y, 1.0);
+        for (k, &gamma) in [0.1, 1.0, 10.0].iter().enumerate() {
+            let a = lcg_values(9, 500 + k as u64);
+            let b = lcg_values(6, 600 + k as u64);
+            all.extend(corrected_oracle_gradient(&a, &b, gamma));
+        }
+        let fp = bits_fingerprint(&all);
+        assert_eq!(fp, 2_876_726_033_181_513_223);
     }
 
     #[test]

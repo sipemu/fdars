@@ -338,118 +338,104 @@ impl FpcPredictor for ClassifFit {
     }
 
     fn predict_from_scores(&self, scores: &[f64], _scalar_covariates: Option<&[f64]>) -> f64 {
+        let d = scores.len();
         match &self.method {
             ClassifMethod::Lda {
                 class_means,
                 cov_chol,
                 priors,
                 n_classes,
-            } => {
-                let g = *n_classes;
-                let d = scores.len();
-                if g == 2 {
-                    // Return P(Y=1) via softmax of discriminant scores
-                    let score0 = priors[0].max(1e-15).ln()
-                        - 0.5 * mahalanobis_sq(scores, &class_means[0], cov_chol, d);
-                    let score1 = priors[1].max(1e-15).ln()
-                        - 0.5 * mahalanobis_sq(scores, &class_means[1], cov_chol, d);
-                    let max_s = score0.max(score1);
-                    let exp0 = (score0 - max_s).exp();
-                    let exp1 = (score1 - max_s).exp();
-                    exp1 / (exp0 + exp1)
-                } else {
-                    // Return predicted class as f64
-                    let mut best_class = 0;
-                    let mut best_score = f64::NEG_INFINITY;
-                    for c in 0..g {
-                        let maha = mahalanobis_sq(scores, &class_means[c], cov_chol, d);
-                        let s = priors[c].max(1e-15).ln() - 0.5 * maha;
-                        if s > best_score {
-                            best_score = s;
-                            best_class = c;
-                        }
-                    }
-                    best_class as f64
-                }
-            }
+            } => discriminant_predict(*n_classes, |c| {
+                priors[c].max(1e-15).ln()
+                    - 0.5 * mahalanobis_sq(scores, &class_means[c], cov_chol, d)
+            }),
             ClassifMethod::Qda {
                 class_means,
                 class_chols,
                 class_log_dets,
                 priors,
                 n_classes,
-            } => {
-                let g = *n_classes;
-                let d = scores.len();
-                if g == 2 {
-                    // Return P(Y=1) via softmax of discriminant scores
-                    let score0 = priors[0].max(1e-15).ln()
-                        - 0.5
-                            * (class_log_dets[0]
-                                + mahalanobis_sq(scores, &class_means[0], &class_chols[0], d));
-                    let score1 = priors[1].max(1e-15).ln()
-                        - 0.5
-                            * (class_log_dets[1]
-                                + mahalanobis_sq(scores, &class_means[1], &class_chols[1], d));
-                    let max_s = score0.max(score1);
-                    let exp0 = (score0 - max_s).exp();
-                    let exp1 = (score1 - max_s).exp();
-                    exp1 / (exp0 + exp1)
-                } else {
-                    let mut best_class = 0;
-                    let mut best_score = f64::NEG_INFINITY;
-                    for c in 0..g {
-                        let maha = mahalanobis_sq(scores, &class_means[c], &class_chols[c], d);
-                        let s = priors[c].max(1e-15).ln() - 0.5 * (class_log_dets[c] + maha);
-                        if s > best_score {
-                            best_score = s;
-                            best_class = c;
-                        }
-                    }
-                    best_class as f64
-                }
-            }
+            } => discriminant_predict(*n_classes, |c| {
+                priors[c].max(1e-15).ln()
+                    - 0.5
+                        * (class_log_dets[c]
+                            + mahalanobis_sq(scores, &class_means[c], &class_chols[c], d))
+            }),
             ClassifMethod::Knn {
                 training_scores,
                 training_labels,
                 k,
                 n_classes,
-            } => {
-                let g = *n_classes;
-                let n_train = training_scores.nrows();
-                let d = scores.len();
-                let k_nn = (*k).min(n_train);
-
-                let mut dists: Vec<(f64, usize)> = (0..n_train)
-                    .map(|j| {
-                        let d_sq: f64 = (0..d)
-                            .map(|c| (scores[c] - training_scores[(j, c)]).powi(2))
-                            .sum();
-                        (d_sq, training_labels[j])
-                    })
-                    .collect();
-                dists.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-
-                let mut votes = vec![0usize; g];
-                for &(_, label) in dists.iter().take(k_nn) {
-                    if label < g {
-                        votes[label] += 1;
-                    }
-                }
-
-                if g == 2 {
-                    // Return proportion voting for class 1 as probability
-                    votes[1] as f64 / k_nn as f64
-                } else {
-                    // Return majority vote class as f64
-                    votes
-                        .iter()
-                        .enumerate()
-                        .max_by_key(|&(_, &v)| v)
-                        .map_or(0.0, |(c, _)| c as f64)
-                }
-            }
+            } => knn_predict_one(scores, training_scores, training_labels, *k, *n_classes),
         }
+    }
+}
+
+/// Turn per-class discriminant scores into a single prediction.
+///
+/// Binary (`g == 2`): `P(Y=1)` via a max-shifted softmax of the two scores.
+/// Multiclass: the arg-max class index as `f64` (first maximum wins).
+fn discriminant_predict(g: usize, score: impl Fn(usize) -> f64) -> f64 {
+    if g == 2 {
+        let score0 = score(0);
+        let score1 = score(1);
+        let max_s = score0.max(score1);
+        let exp0 = (score0 - max_s).exp();
+        let exp1 = (score1 - max_s).exp();
+        return exp1 / (exp0 + exp1);
+    }
+    let mut best_class = 0;
+    let mut best_score = f64::NEG_INFINITY;
+    for c in 0..g {
+        let s = score(c);
+        if s > best_score {
+            best_score = s;
+            best_class = c;
+        }
+    }
+    best_class as f64
+}
+
+/// k-NN prediction for one score vector: proportion of class-1 votes when
+/// binary, otherwise the majority-vote class index as `f64`.
+fn knn_predict_one(
+    scores: &[f64],
+    training_scores: &FdMatrix,
+    training_labels: &[usize],
+    k: usize,
+    g: usize,
+) -> f64 {
+    let n_train = training_scores.nrows();
+    let d = scores.len();
+    let k_nn = k.min(n_train);
+
+    let mut dists: Vec<(f64, usize)> = (0..n_train)
+        .map(|j| {
+            let d_sq: f64 = (0..d)
+                .map(|c| (scores[c] - training_scores[(j, c)]).powi(2))
+                .sum();
+            (d_sq, training_labels[j])
+        })
+        .collect();
+    dists.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut votes = vec![0usize; g];
+    for &(_, label) in dists.iter().take(k_nn) {
+        if label < g {
+            votes[label] += 1;
+        }
+    }
+
+    if g == 2 {
+        // Return proportion voting for class 1 as probability
+        votes[1] as f64 / k_nn as f64
+    } else {
+        // Return majority vote class as f64
+        votes
+            .iter()
+            .enumerate()
+            .max_by_key(|&(_, &v)| v)
+            .map_or(0.0, |(c, _)| c as f64)
     }
 }
 

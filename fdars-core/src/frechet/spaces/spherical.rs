@@ -19,6 +19,7 @@
 //! `tol = 1e-8`. The geodesic geometry is identical; iterates may differ at the
 //! last few digits.
 
+use super::check_mean_inputs;
 use crate::error::FdarError;
 use crate::frechet::MetricSpace;
 
@@ -108,6 +109,52 @@ fn log_map(x: &[f64], y: &[f64]) -> Result<Vec<f64>, FdarError> {
         .collect())
 }
 
+/// Divide `x` by its norm in place; errors with `detail` if the norm is ~0.
+fn normalize_or_err(x: &mut [f64], detail: &str) -> Result<(), FdarError> {
+    let nx = norm(x);
+    if nx < 1e-14 {
+        return Err(FdarError::ComputationFailed {
+            operation: "SphericalSpace::weighted_frechet_mean",
+            detail: detail.to_string(),
+        });
+    }
+    for xk in x.iter_mut() {
+        *xk /= nx;
+    }
+    Ok(())
+}
+
+/// Extrinsic initialization: normalized weighted average of the objects.
+fn extrinsic_init(objects: &[Vec<f64>], weights: &[f64], d: usize) -> Result<Vec<f64>, FdarError> {
+    let mut x = vec![0.0f64; d];
+    for (o, &w) in objects.iter().zip(weights.iter()) {
+        for (k, xk) in x.iter_mut().enumerate() {
+            *xk += w * o[k];
+        }
+    }
+    normalize_or_err(
+        &mut x,
+        "extrinsic mean is ~0 (antipodally-balanced input); Karcher mean is undefined",
+    )?;
+    Ok(x)
+}
+
+/// Riemannian gradient at `x`: `sum_i w_i log_x(o_i)`.
+fn weighted_log_sum(
+    x: &[f64],
+    objects: &[Vec<f64>],
+    weights: &[f64],
+) -> Result<Vec<f64>, FdarError> {
+    let mut g = vec![0.0f64; x.len()];
+    for (o, &w) in objects.iter().zip(weights.iter()) {
+        let lm = log_map(x, o)?;
+        for (k, gk) in g.iter_mut().enumerate() {
+            *gk += w * lm[k];
+        }
+    }
+    Ok(g)
+}
+
 impl MetricSpace for SphericalSpace {
     type Object = Vec<f64>;
 
@@ -122,73 +169,16 @@ impl MetricSpace for SphericalSpace {
         objects: &[Self::Object],
         weights: &[f64],
     ) -> Result<Self::Object, FdarError> {
-        if objects.is_empty() {
-            return Err(FdarError::InvalidDimension {
-                parameter: "objects",
-                expected: "at least 1 object".to_string(),
-                actual: "0 objects".to_string(),
-            });
-        }
-        if weights.len() != objects.len() {
-            return Err(FdarError::InvalidDimension {
-                parameter: "weights",
-                expected: format!("{} weights (matching objects)", objects.len()),
-                actual: format!("{} weights", weights.len()),
-            });
-        }
-        for (i, o) in objects.iter().enumerate() {
-            if o.len() != self.d {
-                return Err(FdarError::InvalidDimension {
-                    parameter: "objects",
-                    expected: format!("each object has {} elements", self.d),
-                    actual: format!("object {i} has {} elements", o.len()),
-                });
-            }
-        }
-
-        // Extrinsic initialization: normalized weighted average.
-        let mut x = vec![0.0f64; self.d];
-        for (o, &w) in objects.iter().zip(weights.iter()) {
-            for (k, xk) in x.iter_mut().enumerate() {
-                *xk += w * o[k];
-            }
-        }
-        let nx = norm(&x);
-        if nx < 1e-14 {
-            return Err(FdarError::ComputationFailed {
-                operation: "SphericalSpace::weighted_frechet_mean",
-                detail:
-                    "extrinsic mean is ~0 (antipodally-balanced input); Karcher mean is undefined"
-                        .to_string(),
-            });
-        }
-        for xk in &mut x {
-            *xk /= nx;
-        }
-
+        check_mean_inputs(objects, weights, self.d)?;
+        let mut x = extrinsic_init(objects, weights, self.d)?;
         // Riemannian gradient descent.
         for _ in 0..MAX_ITER {
-            let mut g = vec![0.0f64; self.d];
-            for (o, &w) in objects.iter().zip(weights.iter()) {
-                let lm = log_map(&x, o)?;
-                for (k, gk) in g.iter_mut().enumerate() {
-                    *gk += w * lm[k];
-                }
-            }
+            let g = weighted_log_sum(&x, objects, weights)?;
             if norm(&g) < TOL {
                 return Ok(x);
             }
             x = exp_map(&x, &g);
-            let nx = norm(&x);
-            if nx < 1e-14 {
-                return Err(FdarError::ComputationFailed {
-                    operation: "SphericalSpace::weighted_frechet_mean",
-                    detail: "Karcher iterate collapsed to the origin".to_string(),
-                });
-            }
-            for xk in &mut x {
-                *xk /= nx;
-            }
+            normalize_or_err(&mut x, "Karcher iterate collapsed to the origin")?;
         }
         Err(FdarError::ComputationFailed {
             operation: "SphericalSpace::weighted_frechet_mean",
@@ -265,5 +255,31 @@ mod tests {
             s.distance(&a, &bad),
             Err(FdarError::InvalidDimension { .. })
         ));
+    }
+
+    /// Refactor pin (#75): Karcher means on pseudo-random clustered S^2 data
+    /// stay bit-identical to values recorded on the pre-refactor code.
+    #[test]
+    fn spherical_karcher_bit_identity_pin() {
+        use crate::test_helpers::{bits_fingerprint, lcg_values};
+        let s = SphericalSpace::new(3).unwrap();
+        let objs: Vec<Vec<f64>> = (0..7)
+            .map(|k| {
+                let r = lcg_values(3, 200 + k);
+                let raw = [1.0 + 0.3 * r[0], 0.3 * r[1], 0.3 * r[2]];
+                let n = raw.iter().map(|x| x * x).sum::<f64>().sqrt();
+                raw.iter().map(|x| x / n).collect()
+            })
+            .collect();
+        let mut all = Vec::new();
+        for seed in 0..5u64 {
+            let w: Vec<f64> = lcg_values(7, 300 + seed)
+                .iter()
+                .map(|v| (v + 1.5) / 7.0)
+                .collect();
+            all.extend(s.weighted_frechet_mean(&objs, &w).unwrap());
+        }
+        let fp = bits_fingerprint(&all);
+        assert_eq!(fp, 12_241_966_407_315_560_618);
     }
 }

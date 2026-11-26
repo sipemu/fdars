@@ -725,3 +725,82 @@ fn test_fclassif_three_classes() {
         result.accuracy
     );
 }
+
+/// Refactor pin (#75): `predict_from_scores` outputs for every method/branch
+/// (LDA/QDA/kNN × binary/multiclass) on hand-specified parameters must stay
+/// bit-identical to the values recorded on the pre-refactor code.
+#[test]
+fn predict_from_scores_bit_identity_pin() {
+    use crate::explain_generic::FpcPredictor;
+    use crate::test_helpers::{bits_fingerprint, lcg_values};
+    let (data, labels, _t) = generate_two_class_data(10, 20);
+    let mut fit = fclassif_lda_fit(&data, &labels, None, 2).unwrap();
+    let d = 3;
+    let means =
+        |g: usize| -> Vec<Vec<f64>> { (0..g).map(|c| lcg_values(d, 11 + c as u64)).collect() };
+    let chol = vec![1.3, 0.0, 0.0, 0.2, 0.9, 0.0, -0.4, 0.1, 1.1];
+    let chol_b = vec![0.8, 0.0, 0.0, -0.3, 1.2, 0.0, 0.5, 0.25, 0.7];
+    let chol_c = vec![1.0, 0.0, 0.0, 0.1, 1.0, 0.0, 0.1, 0.1, 1.0];
+    let train_scores = FdMatrix::from_column_major(lcg_values(30, 99), 10, d).unwrap();
+    let train_labels: Vec<usize> = (0..10).map(|i| (i * 7) % 3).collect();
+    let methods = vec![
+        ClassifMethod::Lda {
+            class_means: means(2),
+            cov_chol: chol.clone(),
+            priors: vec![0.4, 0.6],
+            n_classes: 2,
+        },
+        ClassifMethod::Lda {
+            class_means: means(3),
+            cov_chol: chol.clone(),
+            priors: vec![0.2, 0.5, 0.3],
+            n_classes: 3,
+        },
+        ClassifMethod::Qda {
+            class_means: means(2),
+            class_chols: vec![chol.clone(), chol_b.clone()],
+            class_log_dets: vec![0.25, -0.5],
+            priors: vec![0.45, 0.55],
+            n_classes: 2,
+        },
+        ClassifMethod::Qda {
+            class_means: means(3),
+            class_chols: vec![chol.clone(), chol_b.clone(), chol_c.clone()],
+            class_log_dets: vec![0.25, -0.5, 0.0],
+            priors: vec![0.3, 0.3, 0.4],
+            n_classes: 3,
+        },
+        ClassifMethod::Knn {
+            training_scores: train_scores.clone(),
+            training_labels: train_labels.iter().map(|&l| l % 2).collect(),
+            k: 5,
+            n_classes: 2,
+        },
+        ClassifMethod::Knn {
+            training_scores: train_scores,
+            training_labels: train_labels,
+            k: 4,
+            n_classes: 3,
+        },
+    ];
+    let queries: Vec<Vec<f64>> = (0..40).map(|q| lcg_values(d, 1000 + q)).collect();
+    let mut fps = Vec::new();
+    for method in methods {
+        fit.method = method;
+        let out: Vec<f64> = queries
+            .iter()
+            .map(|s| fit.predict_from_scores(s, None))
+            .collect();
+        fps.push(bits_fingerprint(&out));
+    }
+    // Recorded on the pre-refactor code (commit a389c1cd).
+    let expected: [u64; 6] = [
+        17_454_433_019_985_644_304,
+        9_627_312_865_277_783_653,
+        10_993_989_829_246_521_458,
+        6_548_101_843_728_058_968,
+        13_417_722_425_176_544_665,
+        1_671_990_815_573_419_205,
+    ];
+    assert_eq!(fps, expected);
+}

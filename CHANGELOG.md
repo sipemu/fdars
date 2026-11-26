@@ -13,6 +13,21 @@ Changed below).
 
 ## [Unreleased]
 
+**pmat version drift (GH #75 ALN-CAV).** Internal refactor + CI tooling only; no public API
+or numeric change.
+
+### Changed
+
+- CI pmat pin bumped 3.18.0 → 3.45.1 so local and CI quality gates agree; the no-op
+  `--fail-on-violation` flag is dropped (3.32+ exits non-zero on blocking violations by
+  default) and the installed-version check compares only the first `pmat --version` line.
+- Decomposed the 9 functions pmat 3.45 flagged for cognitive complexity
+  (`ClassifFit::predict_from_scores`, `CorrelationMatrixSpace`/`SphericalSpace`
+  `weighted_frechet_mean`, `Lfd::apply`, `MfpcaResult::project`, streaming BD,
+  `RollingReference::push`, and a soft-DTW test oracle) into private helpers. Outputs are
+  bit-identical: FNV-1a fingerprints of every output bit were recorded on the unmodified code
+  before the refactor and are pinned in tests.
+
 **Missing options for continuous registration and partial-curve conformal (GH #72 ALN-CAV).**
 Opt-in; default results are bit-identical (FNV-hash tests pinned before the change).
 

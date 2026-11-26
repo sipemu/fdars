@@ -56,29 +56,29 @@ impl StreamingBd {
 
     #[inline]
     fn bd_one_inner(&self, curve: &[f64]) -> f64 {
+        self.bd_one_by(|t| curve[t])
+    }
+
+    /// Compute BD for row `row` of `data` without allocating a temporary Vec.
+    #[inline]
+    fn bd_one_from_row(&self, data: &FdMatrix, row: usize) -> f64 {
+        self.bd_one_by(|t| data[(row, t)])
+    }
+
+    /// BD of the curve whose value at time point `t` is `x_at(t)`: the
+    /// fraction of reference pairs whose band contains it at ALL time points.
+    #[inline]
+    fn bd_one_by(&self, x_at: impl Fn(usize) -> f64) -> f64 {
         let n = self.state.sorted.nori;
         if n < 2 {
             return 0.0;
         }
         let n_pairs = c2(n);
-        let n_points = self.state.sorted.n_points;
 
         let mut count_in_band = 0usize;
         for j in 0..n {
             for k in (j + 1)..n {
-                let mut inside = true;
-                for t in 0..n_points {
-                    let x_t = curve[t];
-                    let y_j_t = self.state.values_by_curve[j][t];
-                    let y_k_t = self.state.values_by_curve[k][t];
-                    let band_min = y_j_t.min(y_k_t);
-                    let band_max = y_j_t.max(y_k_t);
-                    if x_t < band_min || x_t > band_max {
-                        inside = false;
-                        break;
-                    }
-                }
-                if inside {
+                if self.inside_band(j, k, &x_at) {
                     count_in_band += 1;
                 }
             }
@@ -86,37 +86,21 @@ impl StreamingBd {
         count_in_band as f64 / n_pairs as f64
     }
 
-    /// Compute BD for row `row` of `data` without allocating a temporary Vec.
+    /// Whether `x_at` lies inside the band of reference curves `j`, `k` at
+    /// every time point (early exit on the first violation).
     #[inline]
-    fn bd_one_from_row(&self, data: &FdMatrix, row: usize) -> f64 {
-        let n = self.state.sorted.nori;
-        if n < 2 {
-            return 0.0;
-        }
-        let n_pairs = c2(n);
-        let n_points = self.state.sorted.n_points;
-
-        let mut count_in_band = 0usize;
-        for j in 0..n {
-            for k in (j + 1)..n {
-                let mut inside = true;
-                for t in 0..n_points {
-                    let x_t = data[(row, t)];
-                    let y_j_t = self.state.values_by_curve[j][t];
-                    let y_k_t = self.state.values_by_curve[k][t];
-                    let band_min = y_j_t.min(y_k_t);
-                    let band_max = y_j_t.max(y_k_t);
-                    if x_t < band_min || x_t > band_max {
-                        inside = false;
-                        break;
-                    }
-                }
-                if inside {
-                    count_in_band += 1;
-                }
+    fn inside_band(&self, j: usize, k: usize, x_at: &impl Fn(usize) -> f64) -> bool {
+        let y_j = &self.state.values_by_curve[j];
+        let y_k = &self.state.values_by_curve[k];
+        for t in 0..self.state.sorted.n_points {
+            let x_t = x_at(t);
+            let band_min = y_j[t].min(y_k[t]);
+            let band_max = y_j[t].max(y_k[t]);
+            if x_t < band_min || x_t > band_max {
+                return false;
             }
         }
-        count_in_band as f64 / n_pairs as f64
+        true
     }
 }
 
