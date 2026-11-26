@@ -10,6 +10,8 @@
 //! - [`elastic_distance`] — Elastic (Fisher-Rao) distance between curves
 //! - [`align_to_target`] — Align a set of curves to a common target
 //! - [`karcher_mean`] — Karcher (Fréchet) mean in the elastic metric
+//! - [`bayesian_align_pair`] / [`bayesian_align_group`] — Bayesian pairwise and group
+//!   alignment (pCN MCMC; group: joint warps + template + noise, multi-chain)
 //! - [`WarpOptimConfig`] + `*_with_config` — DP or Riemannian L-BFGS warp optimiser
 //!   with in-objective warp penalties (`l2gam`, `l2psi`, `roughness`, `geodesic`)
 //! - [`elastic_self_distance_matrix`] / [`elastic_cross_distance_matrix`] — Distance matrices
@@ -28,6 +30,7 @@
 
 mod affine;
 mod bayesian;
+mod bayesian_group;
 mod closed;
 mod clustering;
 mod constrained;
@@ -81,6 +84,9 @@ pub(crate) use affine::{
     Warp,
 };
 pub use bayesian::{bayesian_align_pair, BayesianAlignConfig, BayesianAlignmentResult};
+pub use bayesian_group::{
+    bayesian_align_group, BayesianGroupChain, BayesianGroupConfig, BayesianGroupResult,
+};
 pub use closed::{
     elastic_align_pair_closed, elastic_distance_closed, karcher_mean_closed, ClosedAlignmentResult,
     ClosedKarcherMeanResult,

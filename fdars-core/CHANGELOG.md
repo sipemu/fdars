@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Bayesian group alignment (GH #52 ALN-BAYESGRP).** Additive and non-breaking: new
+`alignment::bayesian_group` module only; `bayesian_align_pair` and every existing code path
+unchanged; no new crate dependency.
+
+### Added
+
+- `alignment::bayesian_align_group(data, argvals, &BayesianGroupConfig)` →
+  `BayesianGroupResult` — joint posterior sampling of all warps, the template SRSF and the
+  SRSF noise variance (model of fdasrsf 2.7.5 / fdasrvf 2.6.0 `time_warping_bayes`):
+  Fourier tangent-space warps on the Hilbert sphere, quadratic B-spline template, Z-mixture
+  pCN updates for warps and template, exact inverse-gamma Gibbs step for σ², periodic
+  re-centring. Multi-chain (`n_chains`, chain `k` seeded `seed + k`, parallel under
+  `parallel`, bit-identical either way); pooled posterior-mean (ψ-mean) and median warps,
+  pointwise credible bands for warps / template SRSF / template function, σ² interval,
+  per-curve warp and template acceptance rates, per-chain modes (`BayesianGroupChain`:
+  chain-mean warps, max-log-likelihood draw, traces), between-chain `mode_spread`, split-R̂
+  for σ², log-likelihood and per-curve warps, full pooled draws. Defaults `init_dp` (start
+  from DP alignment) and `center_draws` (summarise exactly re-centred draws) can be switched
+  off for fdasrsf behaviour. Validated against fdasrsf 2.7.5 `time_warping_bayes`
+  (posterior-mean warps within 0.06), scipy B-spline design matrix, hand-computed split-R̂,
+  and distributional checks (recovery, coverage, noise → wider bands, R̂ ≈ 1, determinism).
+  Infinite-dimensional HMC (`time_warping_bayes_infHMC`) is not included yet.
+
 **Conformal prediction for partially observed curves (GH #51 ALN-CONFPART).** Additive and
 non-breaking: new `conformal::partial` module only; no existing code path changed; no new crate
 dependency.
