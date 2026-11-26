@@ -4,6 +4,7 @@ use rand::Rng;
 
 use super::geometry::{self, Grid};
 use super::karcher::curve_shape_karcher_mean;
+use super::model_ci::{model_based_ci, CurveShapeModelCi};
 use super::{
     curve_from_set, curve_shape_align_pair, curves_to_set, transform_to_curve, validate_curve,
     CurveShapeConfig, CurveShapeKarcherResult,
@@ -295,7 +296,7 @@ pub fn curve_shape_boxplot_from_aligned(
 
 /// Box plot body; `shape` supplies `scale` and the metric (for reconstructing
 /// curves from the median / whisker transforms).
-fn boxplot_impl(
+pub(super) fn boxplot_impl(
     median_srvf: &FdMatrix,
     aligned_srvfs: &FdCurveSet,
     aligned_curves: &FdCurveSet,
@@ -399,6 +400,23 @@ pub fn curve_shape_boxplot(
 
 // ─── Bootstrap confidence region ────────────────────────────────────────────
 
+/// How [`curve_shape_confidence_interval`] builds the confidence region.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CurveShapeCiMethod {
+    /// Bootstrap of the Karcher **mean** (resample curves, recompute the mean).
+    /// The default, unchanged since #54.
+    #[default]
+    Bootstrap,
+    /// fdasrvf `shape_CI`: Gaussian model in the tangent space at the Karcher
+    /// **median**, `n_samples` shapes sampled from its leading `n_components`
+    /// principal directions (plus random warps and rotations, as fdasrvf
+    /// `sample_shapes`), summarised by the elastic box plot of the samples
+    /// (`Q1a` / `Q3a` = the `(1 − confidence_level)` box-plot quantile curves).
+    /// See [`CurveShapeModelCi`].
+    ModelBased,
+}
+
 /// Configuration of [`curve_shape_confidence_interval`].
 ///
 /// Construct with `CurveShapeCiConfig::default()` and assign fields (the struct
@@ -406,16 +424,27 @@ pub fn curve_shape_boxplot(
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
 pub struct CurveShapeCiConfig {
-    /// Number of bootstrap resamples (default 200).
+    /// Number of bootstrap resamples (default 200; [`CurveShapeCiMethod::Bootstrap`]).
     pub n_bootstrap: usize,
-    /// Confidence level in `(0, 1)` (default 0.95).
+    /// Confidence level in `(0, 1)` (default 0.95; fdasrvf `a` for
+    /// [`CurveShapeCiMethod::ModelBased`], whose box plot uses `alpha = 1 − a`).
     pub confidence_level: f64,
-    /// Karcher iterations per mean (default 15).
+    /// Karcher iterations per mean / median (default 15).
     pub max_iter: usize,
     /// Karcher tolerance (default 1e-3).
     pub tol: f64,
-    /// Random seed; resample `b` uses `seed + b` (default 42).
+    /// Random seed; resample (or model sample) `b` uses `seed + b` (default 42).
     pub seed: u64,
+    /// Construction method (default [`CurveShapeCiMethod::Bootstrap`]).
+    pub method: CurveShapeCiMethod,
+    /// Model-based: number of shape principal directions sampled (fdasrvf `no`,
+    /// default 5; capped at `n − 1`).
+    pub n_components: usize,
+    /// Model-based: number of sampled shapes (fdasrvf `Nsamp`, default 100, ≥ 3).
+    pub n_samples: usize,
+    /// Model-based: number of warp principal directions sampled (fdasrvf
+    /// `randomGamma` uses 5, the default; capped at `n − 1`).
+    pub n_warp_components: usize,
 }
 
 impl Default for CurveShapeCiConfig {
@@ -426,27 +455,44 @@ impl Default for CurveShapeCiConfig {
             max_iter: 15,
             tol: 1e-3,
             seed: 42,
+            method: CurveShapeCiMethod::Bootstrap,
+            n_components: 5,
+            n_samples: 100,
+            n_warp_components: 5,
         }
     }
 }
 
-/// Bootstrap confidence region of the Karcher mean shape.
+/// Confidence region of the centre shape (bootstrap of the Karcher mean, or
+/// the fdasrvf model-based region around the Karcher median).
+///
+/// With [`CurveShapeCiMethod::ModelBased`] the generic fields describe the
+/// model samples: `mean` is the Karcher **median**, `bootstrap_means` are the
+/// sampled shapes in the median's frame (before the random warps / rotations,
+/// fdasrvf `betans`), `bootstrap_distances` their shape distances to the median,
+/// and `radius` / bands are computed from those; the fdasrvf outputs are in
+/// [`model`](Self::model).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct CurveShapeCiResult {
-    /// Karcher mean of the full sample (with its alignment).
+    /// Karcher mean (median for the model-based method) of the full sample, with
+    /// its alignment.
     pub mean: CurveShapeKarcherResult,
-    /// Bootstrap Karcher means aligned to the full-sample mean (`d × m` each).
+    /// Bootstrap Karcher means aligned to the full-sample mean (`d × m` each), or
+    /// the model's sampled shapes.
     pub bootstrap_means: Vec<FdMatrix>,
-    /// Shape distance of each bootstrap mean to the full-sample mean.
+    /// Shape distance of each bootstrap mean (model sample) to the centre.
     pub bootstrap_distances: Vec<f64>,
-    /// Geodesic radius of the confidence ball around the mean: the
+    /// Geodesic radius of the confidence ball around the centre: the
     /// `confidence_level` quantile of `bootstrap_distances`.
     pub radius: f64,
-    /// Pointwise lower band of the aligned bootstrap means (`d × m`).
+    /// Pointwise lower band of the aligned bootstrap means / samples (`d × m`).
     pub lower_band: FdMatrix,
     /// Pointwise upper band (`d × m`).
     pub upper_band: FdMatrix,
+    /// fdasrvf `shape_CI` outputs ([`CurveShapeCiMethod::ModelBased`] only;
+    /// `None` for the bootstrap).
+    pub model: Option<CurveShapeModelCi>,
 }
 
 fn validate_ci(curves: &FdCurveSet, config: &CurveShapeCiConfig) -> Result<(), FdarError> {
@@ -473,7 +519,7 @@ fn validate_ci(curves: &FdCurveSet, config: &CurveShapeCiConfig) -> Result<(), F
 }
 
 /// Pointwise `(alpha/2, 1 − alpha/2)` quantile bands of `d × m` fields.
-fn pointwise_bands(fields: &[FdMatrix], level: f64) -> (FdMatrix, FdMatrix) {
+pub(super) fn pointwise_bands(fields: &[FdMatrix], level: f64) -> (FdMatrix, FdMatrix) {
     let (d, m) = fields[0].shape();
     let alpha = 1.0 - level;
     let mut lo = FdMatrix::zeros(d, m);
@@ -489,9 +535,11 @@ fn pointwise_bands(fields: &[FdMatrix], level: f64) -> (FdMatrix, FdMatrix) {
     (lo, hi)
 }
 
-/// Bootstrap confidence region for the Karcher mean shape of R^d curves.
+/// Confidence region for the centre shape of R^d curves: a bootstrap of the
+/// Karcher mean (default) or fdasrvf's model-based `shape_CI`
+/// ([`CurveShapeCiMethod`]).
 ///
-/// Resamples the curves with replacement (`n_bootstrap` times, resample `b`
+/// **Bootstrap** ([`CurveShapeCiMethod::Bootstrap`]). Resamples the curves with replacement (`n_bootstrap` times, resample `b`
 /// seeded with `seed + b`), computes the Karcher mean of each resample under
 /// `shape`, aligns it to the full-sample mean and reports (a) the confidence
 /// ball of geodesic radius `radius` (the `confidence_level` quantile of the
@@ -501,14 +549,31 @@ fn pointwise_bands(fields: &[FdMatrix], level: f64) -> (FdMatrix, FdMatrix) {
 ///
 /// This is the bootstrap counterpart of the 1-D
 /// [`shape_confidence_interval`](crate::alignment::shape_confidence_interval).
-/// fdasrvf `shape_CI` instead samples shapes from the tangent Gaussian model at
-/// the Karcher median and reports the `(1 − a)` box plot quantile curves; use
-/// [`curve_shape_boxplot`] for that kind of summary.
+///
+/// **Model-based** ([`CurveShapeCiMethod::ModelBased`], port of fdasrvf 2.6.0
+/// `shape_CI(beta, a = confidence_level, no = n_components, Nsamp = n_samples)`).
+/// Computes the Karcher median, fits a zero-mean Gaussian to its shooting
+/// vectors (leading `n_components` principal directions of
+/// [`curve_shape_pca`](crate::alignment::curve_shape_pca)), samples `n_samples`
+/// shapes by shooting geodesics from the median (fdasrvf `sample_shapes`), poses
+/// them with random warps (if `shape.reparam`, from the horizontal FPCA of the
+/// median's warps) and random rotations (if `shape.rotation`, planar curves
+/// only), and returns the elastic box plot of the posed samples around the
+/// median with `alpha = 1 − confidence_level` (fdasrvf `curve_boxplot`); the
+/// fdasrvf outputs `Q1a` / `Q3a` are [`CurveShapeModelCi::q1a`] /
+/// [`q3a`](CurveShapeModelCi::q3a). Requires `shape.scale = true` (as
+/// fdasrvf). The random streams differ from R's, so individual samples (and
+/// hence `Q1a` / `Q3a`) are not reproducible across the two libraries; the
+/// median and the model covariance are. Inner products use trapezoidal weights
+/// (fdasrvf: Riemann sums `Σ/T`) and the principal directions are L²-orthonormal
+/// (fdasrvf: Euclidean SVD of the covariance) — equivalent up to quadrature.
 ///
 /// # Errors
 /// [`FdarError::InvalidDimension`] for fewer than 3 curves or invalid shapes;
 /// [`FdarError::InvalidParameter`] for `confidence_level ∉ (0, 1)`,
-/// `n_bootstrap = 0` or an invalid shape configuration;
+/// `n_bootstrap = 0` or an invalid shape configuration; for the model-based
+/// method also `n_samples < 3`, `n_components = 0`, `n_warp_components = 0`,
+/// `shape.scale = false` or `shape.rotation` with non-planar curves;
 /// [`FdarError::ComputationFailed`] for a zero-length curve.
 ///
 /// # Example
@@ -548,6 +613,9 @@ pub fn curve_shape_confidence_interval(
     config: &CurveShapeCiConfig,
 ) -> Result<CurveShapeCiResult, FdarError> {
     validate_ci(curves, config)?;
+    if config.method == CurveShapeCiMethod::ModelBased {
+        return model_based_ci(curves, shape, config);
+    }
     let full = curve_shape_karcher_mean(curves, shape, config.max_iter, config.tol)?;
     let n = curves.ncurves();
     let list: Vec<FdMatrix> = (0..n)
@@ -580,5 +648,6 @@ pub fn curve_shape_confidence_interval(
         radius,
         lower_band,
         upper_band,
+        model: None,
     })
 }

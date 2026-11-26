@@ -112,13 +112,14 @@ pub use crate::alignment::amplitude_distance_at_warp_generic;
 pub use crate::alignment::{
     AlignmentOutput, AlignmentResult, AmplitudeBoxplot, BayesianAlignmentResult,
     BayesianGroupResult, BoxplotClassification, ClosedKarcherMeanResult, CurveShapeBoxplot,
-    CurveShapeCiResult, CurveShapeDepthResult, CurveShapeKarcherResult, CurveShapeOutlierResult,
-    CurveShapePcaResult, CurveShapeTsrvfResult, Dendrogram, ElasticBoxplots, ElasticDepthResult,
-    ElasticOutlierResult, ElasticPhaseBoxplot, FpnsResult, GenerativeModelResult, GeodesicPath,
-    KMedoidsResult, KarcherMeanResult, KarcherMeanResultNd, LambdaCvResult, PartialMatchResult,
-    PcaNdResult, PersistenceDiagramResult, PhaseAmplitudeTestResult, PhaseBoxplot,
-    RobustKarcherResult, ShapeCiResult, ShapeMeanResult, SparseAlignmentResult, SparseCurve,
-    SparseElasticMeanResult, TransferAlignResult, WarpStatistics,
+    CurveShapeCiResult, CurveShapeDepthResult, CurveShapeKarcherResult, CurveShapeModelCi,
+    CurveShapeOutlierResult, CurveShapePcaResult, CurveShapeTsrvfResult, Dendrogram,
+    ElasticBoxplots, ElasticDepthResult, ElasticOutlierResult, ElasticPhaseBoxplot, FpnsResult,
+    GenerativeModelResult, GeodesicPath, KMedoidsResult, KarcherMeanResult, KarcherMeanResultNd,
+    LambdaCvResult, PartialMatchResult, PcaNdResult, PersistenceDiagramResult,
+    PhaseAmplitudeTestResult, PhaseBoxplot, RobustKarcherResult, ShapeCiResult, ShapeMeanResult,
+    SparseAlignmentResult, SparseCurve, SparseElasticMeanResult, TransferAlignResult,
+    WarpStatistics,
 };
 
 // Irregular functional data

@@ -77,6 +77,9 @@ mod downstream;
 mod downstream_tests;
 mod geometry;
 mod karcher;
+mod model_ci;
+#[cfg(test)]
+mod model_ci_tests;
 #[cfg(test)]
 mod optim_tests;
 mod pl_exact;
@@ -87,7 +90,8 @@ mod tests;
 
 pub use boxplot::{
     curve_shape_boxplot, curve_shape_boxplot_from_aligned, curve_shape_confidence_interval,
-    CurveShapeBoxplot, CurveShapeBoxplotConfig, CurveShapeCiConfig, CurveShapeCiResult,
+    CurveShapeBoxplot, CurveShapeBoxplotConfig, CurveShapeCiConfig, CurveShapeCiMethod,
+    CurveShapeCiResult,
 };
 pub use downstream::{
     curve_shape_depth, curve_shape_outlier_detection, curve_shape_tangent_to_curve,
@@ -98,6 +102,7 @@ pub use karcher::{
     curve_shape_karcher_covariance, curve_shape_karcher_mean, curve_shape_karcher_median,
     curve_shape_pca, CurveShapeKarcherResult, CurveShapePcaResult,
 };
+pub use model_ci::CurveShapeModelCi;
 pub use pl_exact::{ab_elastic_distance_pl, ab_elastic_match_pl, AbPlMatching};
 
 use geometry::Grid;
