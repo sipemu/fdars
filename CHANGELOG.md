@@ -13,6 +13,37 @@ Changed below).
 
 ## [Unreleased]
 
+**Alignment hygiene (GH #56 ALN-HYGIENE).** Additive and non-breaking; all defaults are
+bit-identical (proven with pre-change FNV-1a bit-pattern hashes); no new crate dependency.
+
+### Added
+
+- `alignment::OutlierThreshold { TukeyFence { k }, Quantile }` and
+  `ElasticOutlierConfig::threshold_method` (default `TukeyFence { k: 1.5 }`, the previous
+  fixed fence). `Quantile` finally uses `ElasticOutlierConfig::alpha` (cutoff = empirical
+  `(1 − alpha)` quantile of the elastic distances); `alpha` is now documented as having no
+  effect under the default Tukey rule.
+- `alignment::srsf_transform_smoothed(data, argvals, &SrsfSmoothing)` and
+  `alignment::srsf_presmooth` — opt-in pre-smoothing before the SRSF transform:
+  `SrsfSmoothing::None` (default, identical to `srsf_transform`), `BoxFilter { passes }`
+  (fdasrvf `smooth.data`, golden-matched to fdasrvf 2.5.0) and `SmoothingSpline`
+  (semantics of fdasrvf 2.5.1 `f_to_srvf(smooth = TRUE)`: per-curve GCV cubic smoothing
+  spline).
+
+### Performance
+
+- Closed-curve rotation search (`elastic_align_pair_closed`, `elastic_distance_closed`,
+  `karcher_mean_closed`): the target SRSF and Simpson weights are computed once instead of
+  per candidate, and candidate rotations are evaluated in parallel —
+  `elastic_align_pair_closed` m=50 37.7 → 17.1 ms, m=100 170.7 → 35.0 ms (new criterion
+  bench `elastic_align_pair_closed`). Results unchanged.
+- Elastic FPCA: the remaining per-curve loops (ψ conversion, sphere tangent mean,
+  covariance build, score projection) dispatch via `iter_maybe_parallel!` above a work
+  threshold with deterministic in-order reductions, the covariance is built from
+  contiguous centred columns, and joint FPCA's balance search evaluates its two probe SVDs
+  concurrently (`vert_fpca` n=100 m=50: 561 → 369 µs). Results bit-identical.
+- `elastic_outlier_detection` computes its per-curve distances in parallel.
+
 **Shift / dilation / affine warp registration + linear warp classes in `align_cluster_fd`
 (GH #50 ALN-AFFINE).** Additive and non-breaking; `align_cluster_fd` defaults are
 bit-identical (default warp class `Elastic` runs the unchanged elastic path); no new crate

@@ -271,6 +271,7 @@ mod tests {
     /// `t <- seq(0, 1, length.out = 9); f <- cbind(sin(3*t) + t^2, cos(5*t));
     ///  smooth.data(f, 3)`.
     #[test]
+    #[allow(clippy::excessive_precision)] // R's %.17g output, verbatim
     fn box_filter_matches_fdasrvf_smooth_data() {
         let t = grid(9);
         let mut d = FdMatrix::zeros(2, 9);
@@ -349,6 +350,7 @@ mod tests {
     /// (j = 0..100), R 4.x gives an L2 error vs the noise-free SRSF of
     /// 0.0236 (smoothed) and 1.0957 (unsmoothed `splinefun` derivative).
     #[test]
+    #[allow(clippy::approx_constant)] // 0.7071 is the literal used in the R reference
     fn smoothing_spline_denoises_like_fdasrvf() {
         let m = 101;
         let t = grid(m);
