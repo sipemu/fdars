@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T06:56:20.176Z"
+last_updated: "2026-11-26T06:57:53.627Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 1d4d5ce10e53bf58ee77fbf6b891a49a1c2fc8a2
+state_head: 8209d8e2c5739eb4722212f0cff8f537edc74368
 progress:
   total_phases: 6
   completed_phases: 6
@@ -198,6 +198,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-8kh | ALN-EXPFAM (GH #60, refs) exponential-family registration with variational-EM GFPCA (registr register_fpca port: gaussian/binomial/gamma/poisson, irregular, incomplete curves; registr 2.2.1 goldens) | 2026-11-26 | 00fe89fc | [261126-8kh-aln-expfam-60-exponential-family-registr](./quick/261126-8kh-aln-expfam-60-exponential-family-registr/) |
 | 261126-amx | ALN-EXPFAM part 2: two-step GFPCA, npc_criterion, periodic, piecewise_linear2 (#60) | 2026-11-26 | 004c7141 | [261126-amx-aln-expfam-part-2-two-step-gfpca-npc-cri](./quick/261126-amx-aln-expfam-part-2-two-step-gfpca-npc-cri/) |
 | 261126-apa | ALN-PHTEST (#62) elastic amplitude/phase permutation test (PERMANOVA; vegan 2.7.8 adonis2 goldens) | 2026-11-26 | 1d4d5ce1 | [261126-apa-aln-phtest-62-elastic-phase-amplitude-pe](./quick/261126-apa-aln-phtest-62-elastic-phase-amplitude-pe/) |
+| 261126-al4 | ALN-WFDA (GH #61): Tang–Müller pairwise curve synchronisation (fdapace WFDA) | 2026-11-26 | 8209d8e2 | [261126-al4-aln-wfda-tang-mueller-pairwise-synchroni](./quick/261126-al4-aln-wfda-tang-mueller-pairwise-synchroni/) |
 
 ## Deferred Items
 
