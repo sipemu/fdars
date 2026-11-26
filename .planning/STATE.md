@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T14:54:26.094Z"
+last_updated: "2026-11-26T15:19:25.526Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 576acc523789533aad4b6d07ce3fb03050f0e73b
+state_head: 1b4466f4429c3800da3c9a779fda9ac90c63900d
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-lfb: ALN-CAV infHMC mode escape via parallel tempering (n_temperatures; stuck chains escape, invariance validated) (closes #69)
+Last activity: 2026-11-26 - Completed quick task 261126-m5e: ALN-CAV missing options — periodic continuous registration + R-default W preset; partial conformal simultaneous bands, held-out bandwidth tuning, fragmented/sparse observation (closes #72)
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -205,6 +205,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-j5n | ALN-CAV RBFGS coverage gaps: N-d, landmarks, robust Karcher, band, lambda scale (#67) | 2026-11-26 | 4dbb5a88 | [261126-j5n-aln-cav-rbfgs-coverage-gaps-n-d-landmark](./quick/261126-j5n-aln-cav-rbfgs-coverage-gaps-n-d-landmark/) |
 | 261126-jtn | ALN-CAV Bayesian group band calibration study + template centring fix (#64) | 2026-11-26 | 51a9a762 | [261126-jtn-aln-cav-bayesian-group-band-calibration-](./quick/261126-jtn-aln-cav-bayesian-group-band-calibration-/) |
 | 261126-lfb | ALN-CAV infHMC mode escape via parallel tempering (closes #69) | 2026-11-26 | 576acc52 | [261126-lfb-aln-cav-infhmc-mode-escape-moves-for-stu](./quick/261126-lfb-aln-cav-infhmc-mode-escape-moves-for-stu/) |
+| 261126-m5e | ALN-CAV missing options: continuous registration periodic + partial conformal bandwidth/simultaneous/sparse (#72) | 2026-11-26 | 1b4466f4 | [261126-m5e-aln-cav-missing-options-continuous-regis](./quick/261126-m5e-aln-cav-missing-options-continuous-regis/) |
 
 ## Deferred Items
 
