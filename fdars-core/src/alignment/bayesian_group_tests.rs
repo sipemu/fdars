@@ -948,11 +948,12 @@ const DUAL_AVG_REF: [f64; 4] = [
 ];
 
 /// Posterior mean / variance of the 2 warp coefficients of curve `i` (template and σ²
-/// fixed) by tensor-product quadrature on `centre ± w`, restricted to valid warps.
+/// fixed, likelihood tempered by `beta`) by tensor-product quadrature on `centre ± w`,
+/// restricted to valid warps.
 fn quadrature_moments(
     prob: &Problem,
     state: &ChainState,
-    i: usize,
+    (i, beta): (usize, f64),
     centre: [f64; 2],
     w: [f64; 2],
     k: usize,
@@ -966,7 +967,7 @@ fn quadrature_moments(
                 centre[1] - w[1] + 2.0 * w[1] * b as f64 / (k - 1) as f64,
             ];
             let lp = prob.warp_from_coef(i, c.to_vec()).map(|wp| {
-                -sse(&state.template, &wp.warped) / (2.0 * state.sigma2)
+                -sse(&state.template, &wp.warped) * beta / (2.0 * state.sigma2)
                     - 0.5 * (c[0] * c[0] / var[0] + c[1] * c[1] / var[1])
             });
             logs.push((c, lp.unwrap_or(f64::NEG_INFINITY)));
@@ -991,6 +992,22 @@ fn hmc_kernel_leaves_warp_conditional_invariant() {
     // Curve 0, one harmonic, template and σ² held fixed: the infHMC chain of the two
     // warp coefficients must reproduce the exact conditional posterior moments, computed
     // independently by 2-D quadrature.
+    // Measured (seed 77): means 0.24544 / −0.12646 vs 0.24556 / −0.12651, variances
+    // 1.475e-4 / 4.457e-4 vs 1.425e-4 / 4.380e-4, ESS ≈ 9600 / 10600 of 20000, acc 0.68.
+    check_hmc_conditional(1.0);
+}
+
+#[test]
+fn tempered_hmc_kernel_leaves_tempered_conditional_invariant() {
+    // Parallel tempering (GH #69): a replica at inverse temperature β must leave
+    // `exp(−β·SSE/2σ²)·prior` invariant; checked against quadrature of that density.
+    check_hmc_conditional(0.3);
+}
+
+/// infHMC on one curve's warp (fixed template / σ²) at inverse temperature `beta` vs
+/// 2-D quadrature of the tempered conditional: means within 4 SE, variances within
+/// 4 relative SE, acceptance near the target.
+fn check_hmc_conditional(beta: f64) {
     let (data, t, _) = synth_in_model(31, 0.02, 100);
     let mut cfg = hmc_cfg(1);
     cfg.n_warp_harmonics = 1;
@@ -998,11 +1015,11 @@ fn hmc_kernel_leaves_warp_conditional_invariant() {
     let mut state = ChainState::init(&prob, true).unwrap();
     state.sigma2 = 0.5;
     // Coarse pass to locate the posterior, then a fine grid over ±10 posterior sd.
-    let coarse = quadrature_moments(&prob, &state, 0, [0.0, 0.0], [1.2, 1.2], 401);
+    let coarse = quadrature_moments(&prob, &state, (0, beta), [0.0, 0.0], [1.2, 1.2], 401);
     let exact = quadrature_moments(
         &prob,
         &state,
-        0,
+        (0, beta),
         [coarse[0], coarse[1]],
         [10.0 * coarse[2].sqrt(), 10.0 * coarse[3].sqrt()],
         401,
@@ -1016,7 +1033,7 @@ fn hmc_kernel_leaves_warp_conditional_invariant() {
     let n_adapt = 1000;
     let n_keep = 20000;
     for it in 0..n_adapt + n_keep {
-        let out = hmc::hmc_transition(&prob, &state, 0, eps, 10, &mut rng);
+        let out = hmc::hmc_transition(&prob, &state, 0, (eps, beta), 10, &mut rng);
         if let Some((w, s)) = out.accepted {
             state.warps[0] = w;
             state.sse[0] = s;
@@ -1043,9 +1060,7 @@ fn hmc_kernel_leaves_warp_conditional_invariant() {
     let (ma, va, ea) = stats(&x0);
     let (mb, vb, eb) = stats(&x1);
     let acc = acc as f64 / n_keep as f64;
-    println!("eps {eps} acc {acc} chain ({ma}, {mb}, {va}, {vb}) ess ({ea}, {eb})");
-    // Measured (seed 77): means 0.24544 / −0.12646 vs 0.24556 / −0.12651, variances
-    // 1.475e-4 / 4.457e-4 vs 1.425e-4 / 4.380e-4, ESS ≈ 9600 / 10600 of 20000, acc 0.68.
+    println!("β {beta}: eps {eps} acc {acc} chain ({ma}, {mb}, {va}, {vb}) ess ({ea}, {eb})");
     for (m, v, e, mx, vx) in [
         (ma, va, ea, exact[0], exact[2]),
         (mb, vb, eb, exact[1], exact[3]),
@@ -1451,4 +1466,329 @@ fn max_abs_diff_vec(a: &[f64], b: &[f64]) -> f64 {
         .zip(b)
         .map(|(x, y)| (x - y).abs())
         .fold(0.0, f64::max)
+}
+
+/// [`result_hash`] plus the infHMC-specific and diagnostic fields.
+fn hmc_result_hash(r: &BayesianGroupResult) -> u64 {
+    let mut h = result_hash(r);
+    for v in [&r.ess_warps, &r.warp_bimodality] {
+        fnv(&mut h, v);
+    }
+    fnv(&mut h, &[r.ess_sigma2, r.ess_log_likelihood]);
+    for c in &r.chains {
+        fnv(&mut h, &c.warp_step_sizes);
+    }
+    h
+}
+
+#[test]
+fn default_infhmc_sampler_is_bit_identical_to_pre_mode_jump_release() {
+    // Pinned on 80fb0916 (before the GH #69 mode-jumping options were added): with the
+    // new options at their defaults infHMC must keep producing identical results.
+    let (data, t, _) = synth(31, 0.01, 2);
+    let mut cfg = hmc_cfg(11);
+    cfg.n_iter = 300;
+    cfg.burn_in = 100;
+    cfg.thin = 2;
+    cfg.n_chains = 2;
+    let h = hmc_result_hash(&bayesian_align_group(&data, &t, &cfg).unwrap());
+    let (d5, t5) = tiny_data(5);
+    let h5 = hmc_result_hash(
+        &bayesian_align_group(
+            &d5,
+            &t5,
+            &tiny_problem_cfg(BayesianSampler::InfHmc, 600, 1, 3),
+        )
+        .unwrap(),
+    );
+    println!("infhmc hashes {h:#018x} {h5:#018x}");
+    assert_eq!(
+        h, INFHMC_RESULT_HASH,
+        "default infHMC results changed: {h:#018x}"
+    );
+    assert_eq!(
+        h5, INFHMC_TINY_HASH,
+        "default infHMC results changed: {h5:#018x}"
+    );
+}
+
+const INFHMC_RESULT_HASH: u64 = 0xc01e_025f_f834_51b8;
+const INFHMC_TINY_HASH: u64 = 0x7d6b_9558_f89a_dbf3;
+
+// ─── Parallel tempering (GH #69) ────────────────────────────────────────────
+
+fn chain_sigma2_means(res: &BayesianGroupResult) -> Vec<f64> {
+    res.chains
+        .iter()
+        .map(|c| c.sigma2_trace.iter().sum::<f64>() / c.sigma2_trace.len() as f64)
+        .collect()
+}
+
+fn pt_cfg(seed: u64, k: usize) -> BayesianGroupConfig {
+    let mut c = tiny_problem_cfg(BayesianSampler::InfHmc, 3000, 1, seed);
+    c.n_temperatures = k;
+    c.pt_min_inv_temp = 0.1;
+    c
+}
+
+/// Runs plain infHMC and infHMC with 6 tempered replicas on the stuck 5-curve problem;
+/// asserts plain is stuck and tempering escapes. Returns (plain, tempered, seconds).
+fn stuck_vs_tempered(seed: u64) -> (BayesianGroupResult, BayesianGroupResult, [f64; 2]) {
+    let (data, t) = tiny_data(5);
+    let t0 = std::time::Instant::now();
+    let plain = bayesian_align_group(&data, &t, &pt_cfg(seed, 1)).unwrap();
+    let t1 = std::time::Instant::now();
+    let pt = bayesian_align_group(&data, &t, &pt_cfg(seed, 6)).unwrap();
+    let secs = [(t1 - t0).as_secs_f64(), t1.elapsed().as_secs_f64()];
+    let (mp, rp) = mixing(&plain);
+    let (mt, rt) = mixing(&pt);
+    println!(
+        "seed {seed}: plain σ² {:.3?} R̂σ² {:.3} maxR̂ {rp:.3} ESS/draw {mp:.3?} {:.2}s | \
+         PT6 σ² {:.3?} R̂σ² {:.4} maxR̂ {rt:.4} ESS/draw {mt:.3?} swaps {:.2?} {:.2}s",
+        chain_sigma2_means(&plain),
+        plain.rhat_sigma2,
+        secs[0],
+        chain_sigma2_means(&pt),
+        pt.rhat_sigma2,
+        pt.chains[0].swap_acceptance,
+        secs[1]
+    );
+    // Reproduction: one chain sits in the poor mode (σ² ≈ 0.66 vs 0.22) and is flagged.
+    let m = chain_sigma2_means(&plain);
+    let (lo, hi) = m
+        .iter()
+        .fold((f64::INFINITY, 0.0f64), |(a, b), &v| (a.min(v), b.max(v)));
+    assert!(
+        hi > 2.0 * lo,
+        "plain infHMC not stuck for seed {seed}: {m:?}"
+    );
+    assert!(plain.rhat_sigma2 > 1.5 && plain.multimodal_curves.iter().any(|&b| b));
+    // Escape: every chain in the good mode, diagnostics clean.
+    let m = chain_sigma2_means(&pt);
+    for &v in &m {
+        assert!((v - 0.224).abs() < 0.01, "tempered chain σ² means {m:?}");
+    }
+    assert!(pt.rhat_sigma2 < 1.01, "R̂(σ²) {}", pt.rhat_sigma2);
+    assert!(rt < 1.02, "max R̂ {rt}");
+    assert!(
+        pt.multimodal_curves.iter().all(|&b| !b),
+        "{:?}",
+        pt.warp_bimodality
+    );
+    assert!(
+        pt.mode_spread.iter().all(|&s| s < 0.01),
+        "{:?}",
+        pt.mode_spread
+    );
+    for c in &pt.chains {
+        assert_eq!(c.swap_acceptance.len(), 5);
+        // Rates are probabilities; some exchanges happen (a single level can be a
+        // bottleneck with rate ≈ 0 in one chain: seed 13, pair 2).
+        assert!(c.swap_acceptance.iter().all(|&a| (0.0..=1.0).contains(&a)));
+        assert!(c.swap_acceptance.iter().any(|&a| a > 0.1));
+        assert_eq!(c.warp_step_sizes.len(), 5);
+    }
+    assert!(plain.chains[0].swap_acceptance.is_empty());
+    (plain, pt, secs)
+}
+
+#[test]
+fn parallel_tempering_escapes_poor_mode() {
+    // GH #69: 5 curves, no centring, 4 chains × 3000 it. Plain infHMC: chain 3 stuck at
+    // σ² ≈ 0.66 (others 0.22), R̂(σ²) 3.38, all curves flagged multimodal. With 6 replicas
+    // (β_min = 0.1) every chain finds the good mode. Measured (debug, 2026-11-26):
+    //   plain σ² [0.224, 0.224, 0.224, 0.656], R̂σ² 3.383, ESS/draw [0.49, 0.22, 0.34], 2.5 s
+    //   PT6   σ² [0.223, 0.222, 0.225, 0.224], R̂σ² 1.000, ESS/draw [0.61, 0.36, 0.52], 7.3 s
+    //   swap acceptance [0.24, 0.16, 0.03, 0.33, 0.35]
+    let (plain, pt, _) = stuck_vs_tempered(3);
+    // ESS per draw does not drop (the good mode is sampled as well as by healthy chains).
+    let (mp, _) = mixing(&plain);
+    let (mt, _) = mixing(&pt);
+    for k in 0..3 {
+        assert!(mt[k] > 0.5 * mp[k], "PT ESS/draw {mt:?} vs plain {mp:?}");
+    }
+}
+
+#[test]
+#[ignore = "multi-seed stuck-chain study (~40 s debug)"]
+fn parallel_tempering_escapes_poor_mode_all_stuck_seeds() {
+    // Of seeds 3, 13, 23, 33, 43, 53 plain infHMC is stuck for 3, 13, 33, 53 (measured
+    // 2026-11-26); PT6 (β_min 0.1) fixes all four (R̂(σ²) ≤ 1.002). Release run time per
+    // seed: plain ≈ 0.4 s, PT6 ≈ 1.1 s.
+    for seed in [3, 13, 33, 53] {
+        stuck_vs_tempered(seed);
+    }
+}
+
+/// Pooled moments of σ² and the warp areas of two runs agree within 4 batch-means SE.
+fn assert_same_posterior(a: &BayesianGroupResult, b: &BayesianGroupResult, t: &[f64]) {
+    let sig = |r: &BayesianGroupResult| -> Vec<Vec<f64>> {
+        r.chains.iter().map(|c| c.sigma2_trace.clone()).collect()
+    };
+    let mut pairs: Vec<(Vec<Vec<f64>>, Vec<Vec<f64>>)> = vec![(sig(a), sig(b))];
+    let (aa, ab) = (
+        area_traces(a, t, a.chains.len()),
+        area_traces(b, t, b.chains.len()),
+    );
+    pairs.extend(aa.into_iter().zip(ab));
+    for (x, y) in &pairs {
+        let ((mx, vx), (my, vy)) = (pooled_mean_var(x), pooled_mean_var(y));
+        let (sx, sy) = (batch_means_se(x, mx), batch_means_se(y, my));
+        let se = (sx[0] * sx[0] + sy[0] * sy[0]).sqrt();
+        let se_v = (sx[1] * sx[1] + sy[1] * sy[1]).sqrt();
+        println!("mean {mx} vs {my} (SE {se}), var {vx} vs {vy} (SE {se_v})");
+        assert!((mx - my).abs() < 4.0 * se, "means {mx} vs {my} (SE {se})");
+        assert!(
+            (vx - vy).abs() < 4.0 * se_v,
+            "variances {vx} vs {vy} (SE {se_v})"
+        );
+    }
+}
+
+#[test]
+fn parallel_tempering_preserves_the_posterior() {
+    // Two curves, one harmonic, no centring (exact target, unimodal): the β = 1 replica of
+    // a tempered run must sample the same posterior as plain infHMC (itself validated
+    // against long pCN and quadrature).
+    let (data, t) = tiny_data(2);
+    let plain = bayesian_align_group(
+        &data,
+        &t,
+        &tiny_problem_cfg(BayesianSampler::InfHmc, 6000, 1, 21),
+    )
+    .unwrap();
+    let mut cfg = tiny_problem_cfg(BayesianSampler::InfHmc, 6000, 1, 31);
+    cfg.n_temperatures = 4;
+    let pt = bayesian_align_group(&data, &t, &cfg).unwrap();
+    println!("swap acceptance {:?}", pt.chains[0].swap_acceptance);
+    assert!(mixing(&pt).1 < 1.02);
+    assert_same_posterior(&plain, &pt, &t);
+}
+
+#[test]
+#[ignore = "long invariance study: tempered infHMC / tempered pCN vs 1e6-iteration pCN (~2 min release)"]
+fn parallel_tempering_and_long_pcn_agree_on_posterior_moments() {
+    // Same design as `infhmc_and_long_pcn_agree_on_posterior_moments`; the reference is
+    // untempered injective pCN, so a wrong tempered kernel (HMC scale, Gibbs template or σ²)
+    // or swap ratio would bias the β = 1 marginal.
+    let (data, t) = tiny_data(2);
+    let mut pcn_cfg = tiny_problem_cfg(BayesianSampler::Pcn, 1_000_000, 20, 3);
+    pcn_cfg.injective_warps = true;
+    let pcn = bayesian_align_group(&data, &t, &pcn_cfg).unwrap();
+    let mut hmc_cfg = tiny_problem_cfg(BayesianSampler::InfHmc, 50_000, 1, 7);
+    hmc_cfg.n_temperatures = 4;
+    let hmc = bayesian_align_group(&data, &t, &hmc_cfg).unwrap();
+    let mut pt_pcn_cfg = pcn_cfg.clone();
+    pt_pcn_cfg.seed = 11;
+    pt_pcn_cfg.n_temperatures = 3;
+    pt_pcn_cfg.n_iter = 600_000;
+    pt_pcn_cfg.burn_in = 120_000;
+    let pt_pcn = bayesian_align_group(&data, &t, &pt_pcn_cfg).unwrap();
+    println!(
+        "R̂ pcn {} pt-hmc {} pt-pcn {}; swaps hmc {:?} pcn {:?}",
+        mixing(&pcn).1,
+        mixing(&hmc).1,
+        mixing(&pt_pcn).1,
+        hmc.chains[0].swap_acceptance,
+        pt_pcn.chains[0].swap_acceptance
+    );
+    assert!(mixing(&pcn).1 < 1.02 && mixing(&hmc).1 < 1.02 && mixing(&pt_pcn).1 < 1.02);
+    assert_same_posterior(&hmc, &pcn, &t);
+    assert_same_posterior(&pt_pcn, &pcn, &t);
+}
+
+#[test]
+fn replica_exchange_acceptance_matches_formula() {
+    // Two replicas (β = 1, 0.4) with log-likelihoods ℓ_A, ℓ_B: a swap is accepted with
+    // probability min(1, exp((1 − 0.4)(ℓ_B − ℓ_A))); temperatures stay with the levels.
+    let (data, t) = tiny_data(2);
+    let cfg = tiny_problem_cfg(BayesianSampler::InfHmc, 100, 1, 1);
+    let prob = Problem::new(&data, &t, &cfg).unwrap();
+    let base = ChainState::init(&prob, true).unwrap();
+    let sse: f64 = base.sse.iter().sum();
+    let ll = |s2: f64| prob.log_likelihood(sse, s2);
+    let s2a = sse / (prob.n_curves() * prob.t_len()) as f64; // maximises ℓ
+    let s2b = [1.1, 1.2, 1.3, 1.5, 2.0]
+        .iter()
+        .map(|f| f * s2a)
+        .find(|&s| {
+            let p = (0.6 * (ll(s) - ll(s2a))).exp();
+            p > 0.2 && p < 0.8
+        })
+        .unwrap();
+    let want = (0.6 * (ll(s2b) - ll(s2a))).exp();
+    let mk = |s2: f64, beta: f64| {
+        let mut state = base.clone();
+        state.sigma2 = s2;
+        Replica {
+            state,
+            beta,
+            hmc: None,
+            warp_accept: vec![0; 2],
+            tmpl_accept: 0,
+        }
+    };
+    let mut reps = vec![mk(s2a, 1.0), mk(s2b, 0.4)];
+    let mut rng = StdRng::seed_from_u64(4);
+    let mut swaps = vec![0usize];
+    let n = 40_000;
+    for _ in 0..n {
+        exchange_states(&mut reps, &prob, 0, &mut rng, &mut swaps);
+        if reps[0].state.sigma2 != s2a {
+            reps.swap(0, 1);
+            let (b0, b1) = (reps[0].beta, reps[1].beta);
+            reps[0].beta = b1;
+            reps[1].beta = b0;
+        }
+        assert_eq!((reps[0].beta, reps[1].beta), (1.0, 0.4));
+    }
+    let rate = swaps[0] as f64 / n as f64;
+    let se = (want * (1.0 - want) / n as f64).sqrt();
+    println!("swap rate {rate} vs {want} (SE {se})");
+    assert!((rate - want).abs() < 4.0 * se, "rate {rate} vs {want}");
+    // Odd iterations attempt pair (1, 2) only: nothing to do with two replicas.
+    exchange_states(&mut reps, &prob, 1, &mut rng, &mut swaps);
+    assert_eq!(reps[0].state.sigma2, s2a);
+    // A swap towards a better state for the cold replica is always accepted.
+    let mut reps = vec![mk(s2b, 1.0), mk(s2a, 0.4)];
+    exchange_states(&mut reps, &prob, 0, &mut rng, &mut swaps);
+    assert_eq!(reps[0].state.sigma2, s2a);
+}
+
+#[test]
+fn temperature_ladder_and_validation() {
+    let mut cfg = BayesianGroupConfig::default();
+    assert_eq!(temperature_ladder(&cfg), vec![1.0]);
+    cfg.n_temperatures = 3;
+    cfg.pt_min_inv_temp = 0.04;
+    let l = temperature_ladder(&cfg);
+    assert_eq!(l[0], 1.0);
+    assert!(
+        (l[1] - 0.2).abs() < 1e-15 && (l[2] - 0.04).abs() < 1e-15,
+        "{l:?}"
+    );
+    let (data, t, _) = synth(21, 0.0, 1);
+    for (k, b) in [(0, 0.1), (2, 0.0), (2, 1.0), (2, f64::NAN)] {
+        let mut c = hmc_cfg(1);
+        c.n_temperatures = k;
+        c.pt_min_inv_temp = b;
+        assert!(
+            matches!(
+                bayesian_align_group(&data, &t, &c),
+                Err(FdarError::InvalidParameter { .. })
+            ),
+            "({k}, {b}) should be rejected"
+        );
+    }
+    // β_min is ignored without tempering; tempering also works with pCN.
+    let mut c = small_cfg(1);
+    c.n_iter = 40;
+    c.burn_in = 20;
+    c.pt_min_inv_temp = 5.0;
+    assert!(bayesian_align_group(&data, &t, &c).is_ok());
+    c.pt_min_inv_temp = 0.2;
+    c.n_temperatures = 3;
+    let r = bayesian_align_group(&data, &t, &c).unwrap();
+    assert_eq!(r.chains[0].swap_acceptance.len(), 2);
+    assert!(r.chains[0].warp_step_sizes.is_empty());
 }

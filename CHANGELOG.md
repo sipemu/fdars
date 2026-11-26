@@ -13,6 +13,29 @@ Changed below).
 
 ## [Unreleased]
 
+**Parallel tempering for Bayesian group alignment (GH #69 ALN-CAV).** Opt-in; default pCN
+and infHMC results are bit-identical (FNV-hash tests pinned before the change).
+
+### Added
+
+- `BayesianGroupConfig::n_temperatures` (default 1 = off) and `pt_min_inv_temp` (default 0.1):
+  parallel tempering inside each chain of `bayesian_align_group` (either sampler). Replica `k`
+  targets `L^{β_k}·prior`, `β_k = β_min^{k/(K−1)}`; every sampler step (pCN ratios, infHMC
+  kinetic scale, Gibbs template and σ²) is tempered, adjacent replicas exchange states with
+  exact Metropolis–Hastings acceptance (even/odd pairing) and only `β = 1` is reported.
+  `BayesianGroupChain::swap_acceptance` reports per-pair exchange rates. On the 5-curve
+  problem where plain infHMC leaves a chain in a poor mode (σ² 0.66 vs 0.22, R̂(σ²) 3.4; stuck
+  for 4 of 6 seeds) 6 replicas put every chain in the good mode (R̂(σ²) ≤ 1.002) at ≈ 3× the
+  run time, with equal or better ESS per draw. Validated against quadrature of the tempered
+  warp conditional and against plain infHMC / long pCN posterior moments.
+
+### Documentation
+
+- `bayesian_group` module docs: "Multimodality" — reading `rhat_sigma2`, `mode_spread`,
+  `multimodal_curves` and per-chain log-likelihoods, when a chain may be discarded, and how to
+  size the tempering ladder from `swap_acceptance`. Independence / pCN jumps mixed into infHMC
+  were evaluated and not added (unreliable escape, see the quick-task summary).
+
 **Bayesian group alignment band calibration (GH #64 ALN-CAV).** One fix to the posterior
 summaries of `bayesian_align_group`; the chains, warp / σ² summaries and every
 `center_draws = false` result are bit-identical (FNV-hash tests pinned on the previous commit).

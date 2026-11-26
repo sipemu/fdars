@@ -224,17 +224,18 @@ pub(super) struct HmcOutcome {
 }
 
 /// One preconditioned HMC transition of curve `i`'s warp coefficients, with the
-/// template and σ² of `state` held fixed (fdasrsf `infhmc_step`).
+/// template and σ² of `state` held fixed (fdasrsf `infhmc_step`); the likelihood is
+/// tempered by the inverse temperature `beta` (`1` = the posterior).
 pub(super) fn hmc_transition(
     prob: &Problem,
     state: &ChainState,
     i: usize,
-    eps: f64,
+    (eps, beta): (f64, f64),
     max_leapfrog: usize,
     rng: &mut StdRng,
 ) -> HmcOutcome {
     let var = &prob.warp_var;
-    let scale = 1.0 / (2.0 * state.sigma2);
+    let scale = beta / (2.0 * state.sigma2);
     let c0 = &state.warps[i].coef;
     let kinetic = |c: &[f64], m: &[f64]| -> f64 {
         0.5 * c
@@ -295,6 +296,15 @@ fn kick(m: &mut [f64], g: &[f64], var: &[f64], h: f64) {
     }
 }
 
+/// Per-iteration context of a sweep.
+pub(super) struct SweepCtx {
+    /// Iteration (1-based, as fdasrsf's `m`).
+    pub(super) it: usize,
+    pub(super) burn_in: usize,
+    /// Inverse temperature of the replica.
+    pub(super) beta: f64,
+}
+
 /// Per-chain infHMC warp sampler state (step sizes and their adaptation).
 pub(super) struct HmcWarpSampler {
     pub(super) eps: Vec<f64>,
@@ -315,18 +325,18 @@ impl HmcWarpSampler {
         }
     }
 
-    /// One sweep over all curves at iteration `it` (1-based, as fdasrsf's `m`).
+    /// One sweep over all curves (likelihood tempered by `ctx.beta`).
     pub(super) fn sweep(
         &mut self,
         prob: &Problem,
         state: &mut ChainState,
-        it: usize,
-        burn_in: usize,
+        ctx: SweepCtx,
         rng: &mut StdRng,
         accepts: &mut [usize],
     ) {
+        let SweepCtx { it, burn_in, beta } = ctx;
         for i in 0..prob.n_curves() {
-            let out = hmc_transition(prob, state, i, self.eps[i], self.max_leapfrog, rng);
+            let out = hmc_transition(prob, state, i, (self.eps[i], beta), self.max_leapfrog, rng);
             if let Some((w, s)) = out.accepted {
                 state.warps[i] = w;
                 state.sse[i] = s;
@@ -346,22 +356,24 @@ impl HmcWarpSampler {
 
 impl ChainState {
     /// Exact draw of the template coefficients from their Gaussian full conditional
-    /// `N(P⁻¹ Bᵀ Σ_i w_i / σ², P⁻¹)`, `P = n BᵀB / σ² + diag(1 / sd²)`.
+    /// `N(P⁻¹ Bᵀ Σ_i w_i β / σ², P⁻¹)`, `P = β n BᵀB / σ² + diag(1 / sd²)` (likelihood
+    /// tempered by `beta`; `1` = the posterior).
     pub(super) fn gibbs_template(
         &mut self,
         prob: &Problem,
+        beta: f64,
         rng: &mut StdRng,
     ) -> Result<(), FdarError> {
         let nb = prob.tmpl_basis.len();
         let tl = prob.t_len();
         let s2 = self.sigma2;
-        let n = prob.n_curves() as f64;
+        let n = prob.n_curves() as f64 * beta;
         let mut prec = &prob.btb * (n / s2);
         for k in 0..nb {
             prec[(k, k)] += 1.0 / (prob.tmpl_sd[k] * prob.tmpl_sd[k]);
         }
         let wsum: Vec<f64> = (0..tl)
-            .map(|j| self.warps.iter().map(|w| w.warped[j]).sum::<f64>() / s2)
+            .map(|j| self.warps.iter().map(|w| w.warped[j]).sum::<f64>() / s2 * beta)
             .collect();
         let rhs = nalgebra::DVector::from_fn(nb, |k, _| {
             prob.tmpl_basis[k]

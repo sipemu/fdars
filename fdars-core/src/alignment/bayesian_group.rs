@@ -66,11 +66,69 @@
 //! `‖v‖`, so without it every warp has further coefficient preimages near `‖v‖ ≈ 2πk`
 //! that pCN's large steps visit but local HMC moves cannot reach.
 //!
-//! infHMC moves locally: a chain that settles in a poor, well-separated mode (e.g. a bump
-//! aligned to the wrong peak) stays there. Run several chains and check
-//! [`BayesianGroupResult::rhat_sigma2`], [`BayesianGroupResult::mode_spread`] and
-//! [`BayesianGroupResult::multimodal_curves`] (Sarle's bimodality coefficient of the pooled
-//! per-curve warp draws), which flag such chains.
+//! # Multimodality
+//!
+//! infHMC (and, more slowly, pCN) moves locally: a chain can settle in a poor,
+//! well-separated *joint* mode — some curves aligned to the wrong feature and the template
+//! adapted to them — and never leave it (GH #69: 5 curves, one of four chains at σ² ≈ 0.66
+//! vs 0.22 for the others, a log-likelihood gap of ≈ 57). Always run several chains
+//! (`n_chains ≥ 4`) and read the diagnostics together:
+//!
+//! * [`BayesianGroupResult::rhat_sigma2`] / [`BayesianGroupResult::rhat_log_likelihood`]
+//!   far above 1 (3.4 in the example) and [`BayesianGroupResult::mode_spread`] above ≈ 0.01
+//!   mean the chains disagree;
+//! * [`BayesianGroupResult::multimodal_curves`] (Sarle's bimodality coefficient of the
+//!   pooled draws > 5/9) flags curves whose pooled draws are bimodal — either genuinely
+//!   multimodal warps or chains stuck in different modes; the per-chain
+//!   [`BayesianGroupChain::posterior_mean_gammas`] tell the two apart;
+//! * per-chain [`BayesianGroupChain::log_likelihood_trace`] / `sigma2_trace` identify the
+//!   culprit: a chain whose log-likelihood is lower by tens of units than the others' sits in
+//!   a mode of negligible posterior mass (weight ≈ `e^{−gap}`).
+//!
+//! Discarding such a chain (re-running with the remaining seeds, or summarising the other
+//! chains' draws) is justified only when the gap is large and the other chains agree with
+//! each other; if chains split between modes of similar log-likelihood the posterior itself
+//! is multimodal and every mode must be kept. The principled remedy is parallel tempering
+//! ([`BayesianGroupConfig::n_temperatures`]): each chain runs K replicas at inverse
+//! temperatures `1 = β_0 > … > β_{K−1} = pt_min_inv_temp` (likelihood raised to `β`; every
+//! sampler step is tempered exactly) that exchange states by Metropolis–Hastings, so the
+//! `β = 1` replica keeps the exact posterior while hot replicas carry it across likelihood
+//! barriers. In the example plain infHMC was stuck for 4 of 6 seeds; with K = 6,
+//! β_min = 0.1 all chains agreed for all 6 (R̂(σ²) ≤ 1.002, multimodality flags cleared,
+//! ESS per draw unchanged or higher) at ≈ 3× the run time (cost is linear in K).
+//! [`BayesianGroupChain::swap_acceptance`] sizes the ladder: rates near 0 for a pair mean a
+//! gap the replicas cannot cross — add temperatures. The number needed grows roughly with
+//! `√(n·T)` (log-likelihood fluctuations scale with the number of observations), so large
+//! problems need longer ladders; centre the ladder's resolution near β = 1 by lowering
+//! `pt_min_inv_temp` only as far as needed. Independence / large-step pCN jumps mixed into
+//! infHMC were evaluated for this example and did not escape reliably: single-curve moves
+//! with the template held fixed cannot leave a joint mode.
+//!
+//! ```
+//! use fdars_core::alignment::{bayesian_align_group, BayesianGroupConfig, BayesianSampler};
+//! use fdars_core::matrix::FdMatrix;
+//!
+//! let m = 31;
+//! let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+//! let mut data = FdMatrix::zeros(3, m);
+//! for (i, s) in [-0.04, 0.0, 0.04].iter().enumerate() {
+//!     for j in 0..m {
+//!         data[(i, j)] = (-(t[j] + s - 0.5).powi(2) / 0.02).exp();
+//!     }
+//! }
+//! let mut cfg = BayesianGroupConfig::default();
+//! cfg.sampler = BayesianSampler::InfHmc;
+//! cfg.n_iter = 200;
+//! cfg.burn_in = 100;
+//! cfg.n_warp_harmonics = 3;
+//! cfg.n_template_basis = 12;
+//! cfg.n_chains = 2;
+//! cfg.n_temperatures = 3; // β = 1, √0.1, 0.1
+//! let res = bayesian_align_group(&data, &t, &cfg).unwrap();
+//! // One exchange rate per adjacent pair of replicas; only β = 1 draws are reported.
+//! assert_eq!(res.chains[0].swap_acceptance.len(), 2);
+//! assert_eq!(res.sigma2_draws.len(), 2 * 100);
+//! ```
 //!
 //! # Calibration of the credible bands
 //!
@@ -250,6 +308,19 @@ pub struct BayesianGroupConfig {
     /// for [`BayesianSampler::InfHmc`], whose local moves cannot cross between shells;
     /// default `false` for pCN (unchanged behaviour).
     pub injective_warps: bool,
+    /// Number K of tempered replicas per chain (parallel tempering, Geyer 1991); `1`
+    /// (default) disables tempering. Replica `k` targets `π_k(θ) ∝ L(θ)^{β_k} p(θ)` with
+    /// inverse temperatures `β_k = pt_min_inv_temp^{k/(K−1)}` (`β_0 = 1`, the posterior);
+    /// every iteration each replica takes one sweep of the chosen sampler, then adjacent
+    /// replicas propose to exchange states (deterministic even/odd pairing, exact
+    /// Metropolis–Hastings acceptance `min(1, exp((β_k − β_{k+1})(ℓ_{k+1} − ℓ_k)))`, ℓ the
+    /// log-likelihood). Only the `β = 1` replica is reported. Lets a chain leave poor,
+    /// well-separated modes (GH #69) at K times the cost; see the module docs,
+    /// "Multimodality".
+    pub n_temperatures: usize,
+    /// Smallest inverse temperature `β_{K−1}` of the tempering ladder, in `(0, 1)`
+    /// (used only when `n_temperatures > 1`; default 0.1).
+    pub pt_min_inv_temp: f64,
 }
 
 impl Default for BayesianGroupConfig {
@@ -278,6 +349,8 @@ impl Default for BayesianGroupConfig {
             hmc_adapt: true,
             hmc_target_accept: 0.65,
             injective_warps: false,
+            n_temperatures: 1,
+            pt_min_inv_temp: 0.1,
         }
     }
 }
@@ -308,6 +381,10 @@ pub struct BayesianGroupChain {
     pub log_likelihood_trace: Vec<f64>,
     /// Final (adapted) infHMC step size of each curve; empty for the pCN sampler.
     pub warp_step_sizes: Vec<f64>,
+    /// Parallel tempering: acceptance rate of state exchanges between replicas `k` and
+    /// `k + 1` (length `n_temperatures − 1`; empty without tempering). Rates near 0 mean
+    /// the ladder is too coarse (add temperatures).
+    pub swap_acceptance: Vec<f64>,
 }
 
 /// Result of [`bayesian_align_group`]: posterior summaries pooled over all chains.
@@ -444,6 +521,19 @@ fn validate_chain_config(c: &BayesianGroupConfig) -> Result<(), FdarError> {
     }
     if c.sampler == BayesianSampler::InfHmc {
         validate_hmc_config(c)?;
+    }
+    validate_tempering_config(c)
+}
+
+fn validate_tempering_config(c: &BayesianGroupConfig) -> Result<(), FdarError> {
+    if c.n_temperatures == 0 {
+        return Err(invalid("n_temperatures", "must be >= 1".to_string()));
+    }
+    if c.n_temperatures > 1 && !(c.pt_min_inv_temp > 0.0 && c.pt_min_inv_temp < 1.0) {
+        return Err(invalid(
+            "pt_min_inv_temp",
+            format!("must be in (0, 1), got {}", c.pt_min_inv_temp),
+        ));
     }
     Ok(())
 }
@@ -921,6 +1011,7 @@ struct Draw {
     log_lik: f64,
 }
 
+#[derive(Clone)]
 struct ChainState {
     warps: Vec<Warp>,
     tmpl_coef: Vec<f64>,
@@ -936,6 +1027,7 @@ struct ChainRun {
     tmpl_accept: usize,
     n_updates: usize,
     step_sizes: Vec<f64>,
+    swap_rates: Vec<f64>,
 }
 
 impl ChainState {
@@ -987,14 +1079,15 @@ impl ChainState {
         Ok(state)
     }
 
-    fn update_warps(&mut self, prob: &Problem, rng: &mut StdRng, accepts: &mut [usize]) {
+    /// One Z-mixture pCN Metropolis step per curve, likelihood tempered by `beta`.
+    fn update_warps(&mut self, prob: &Problem, beta: f64, rng: &mut StdRng, accepts: &mut [usize]) {
         for i in 0..prob.n_curves() {
             let coef = prob.propose(&self.warps[i].coef, &prob.warp_sd, rng);
             let cand = prob.warp_from_coef(i, coef);
             let u: f64 = rng.gen();
             let Some(w) = cand else { continue };
             let sse_prop = sse(&self.template, &w.warped);
-            let log_ratio = -(sse_prop - self.sse[i]) / (2.0 * self.sigma2);
+            let log_ratio = -(sse_prop - self.sse[i]) * beta / (2.0 * self.sigma2);
             if u.ln() <= log_ratio.min(0.0) {
                 self.warps[i] = w;
                 self.sse[i] = sse_prop;
@@ -1003,13 +1096,13 @@ impl ChainState {
         }
     }
 
-    fn update_template(&mut self, prob: &Problem, rng: &mut StdRng) -> bool {
+    fn update_template(&mut self, prob: &Problem, beta: f64, rng: &mut StdRng) -> bool {
         let coef = prob.propose(&self.tmpl_coef, &prob.tmpl_sd, rng);
         let tmpl = prob.template_from_coef(&coef);
         let sse_prop: Vec<f64> = self.warps.iter().map(|w| sse(&tmpl, &w.warped)).collect();
         let delta: f64 = sse_prop.iter().sum::<f64>() - self.sse.iter().sum::<f64>();
         let u: f64 = rng.gen();
-        if u.ln() <= (-delta / (2.0 * self.sigma2)).min(0.0) {
+        if u.ln() <= (-delta * beta / (2.0 * self.sigma2)).min(0.0) {
             self.tmpl_coef = coef;
             self.template = tmpl;
             self.sse = sse_prop;
@@ -1018,14 +1111,17 @@ impl ChainState {
         false
     }
 
+    /// Exact Gibbs draw of σ² from `InvGamma(α₀ + β·nT/2, β₀ + β·SSE/2)` (likelihood
+    /// tempered by `beta`).
     fn update_sigma2(
         &mut self,
         prob: &Problem,
         cfg: &BayesianGroupConfig,
+        beta: f64,
         rng: &mut StdRng,
     ) -> Result<(), FdarError> {
-        let shape = (prob.n_curves() * prob.t_len()) as f64 / 2.0 + cfg.alpha0;
-        let rate = 0.5 * self.sse.iter().sum::<f64>() + cfg.beta0;
+        let shape = (prob.n_curves() * prob.t_len()) as f64 * beta / 2.0 + cfg.alpha0;
+        let rate = 0.5 * self.sse.iter().sum::<f64>() * beta + cfg.beta0;
         let g = Gamma::new(shape, 1.0 / rate).map_err(|e| FdarError::ComputationFailed {
             operation: "bayesian_align_group",
             detail: format!("inverse-gamma draw failed: {e}"),
@@ -1069,52 +1165,145 @@ impl ChainState {
     }
 }
 
-fn run_chain(prob: &Problem, cfg: &BayesianGroupConfig, seed: u64) -> Result<ChainRun, FdarError> {
-    let mut rng = StdRng::seed_from_u64(seed);
-    let mut state = ChainState::init(prob, cfg.init_dp)?;
-    let mut warp_accept = vec![0usize; prob.n_curves()];
-    let mut tmpl_accept = 0usize;
-    let mut draws = Vec::new();
-    let mut hmc = (cfg.sampler == BayesianSampler::InfHmc)
-        .then(|| hmc::HmcWarpSampler::new(cfg, prob.n_curves()));
-    // Iteration 0 is the initial state (as in the reference); updates run 1..n_iter.
-    for it in 1..cfg.n_iter {
-        let tmpl_moved = match hmc.as_mut() {
+/// One tempered replica of a chain: its state, the inverse temperature and the
+/// per-level sampler state (adapted step sizes stay with the level when states are
+/// exchanged).
+struct Replica {
+    state: ChainState,
+    beta: f64,
+    hmc: Option<hmc::HmcWarpSampler>,
+    warp_accept: Vec<usize>,
+    tmpl_accept: usize,
+}
+
+impl Replica {
+    /// One iteration (`it ≥ 1`): warps, template, σ², optional re-centring.
+    fn step(
+        &mut self,
+        prob: &Problem,
+        cfg: &BayesianGroupConfig,
+        it: usize,
+        rng: &mut StdRng,
+    ) -> Result<(), FdarError> {
+        let state = &mut self.state;
+        let tmpl_moved = match self.hmc.as_mut() {
             None => {
-                state.update_warps(prob, &mut rng, &mut warp_accept);
-                state.update_template(prob, &mut rng)
+                state.update_warps(prob, self.beta, rng, &mut self.warp_accept);
+                state.update_template(prob, self.beta, rng)
             }
             Some(h) => {
                 h.sweep(
                     prob,
-                    &mut state,
-                    it,
-                    cfg.burn_in,
-                    &mut rng,
-                    &mut warp_accept,
+                    state,
+                    hmc::SweepCtx {
+                        it,
+                        burn_in: cfg.burn_in,
+                        beta: self.beta,
+                    },
+                    rng,
+                    &mut self.warp_accept,
                 );
-                state.gibbs_template(prob, &mut rng)?;
+                state.gibbs_template(prob, self.beta, rng)?;
                 true
             }
         };
         if tmpl_moved {
-            tmpl_accept += 1;
+            self.tmpl_accept += 1;
         }
-        state.update_sigma2(prob, cfg, &mut rng)?;
+        state.update_sigma2(prob, cfg, self.beta, rng)?;
         if cfg.center_every != 0 && (it + 1) % cfg.center_every == 0 {
             state.center(prob);
         }
+        Ok(())
+    }
+}
+
+/// Geometric inverse-temperature ladder `β_k = β_min^{k/(K−1)}`, `β_0 = 1`.
+fn temperature_ladder(cfg: &BayesianGroupConfig) -> Vec<f64> {
+    let k = cfg.n_temperatures;
+    if k <= 1 {
+        return vec![1.0];
+    }
+    (0..k)
+        .map(|j| {
+            if j == 0 {
+                1.0
+            } else {
+                cfg.pt_min_inv_temp.powf(j as f64 / (k - 1) as f64)
+            }
+        })
+        .collect()
+}
+
+/// Replica-exchange step: adjacent pairs `(k, k+1)` with `k ≡ it (mod 2)` propose to
+/// swap states, accepted with `min(1, exp((β_k − β_{k+1})(ℓ_{k+1} − ℓ_k)))`. Each swap
+/// is a Metropolis–Hastings move with a symmetric proposal on the product space, so the
+/// product of the tempered targets (and hence the `β = 1` marginal) is invariant.
+fn exchange_states(
+    reps: &mut [Replica],
+    prob: &Problem,
+    it: usize,
+    rng: &mut StdRng,
+    swaps: &mut [usize],
+) {
+    let ll = |r: &Replica| prob.log_likelihood(r.state.sse.iter().sum(), r.state.sigma2);
+    let mut k = it % 2;
+    while k + 1 < reps.len() {
+        let log_ratio = (reps[k].beta - reps[k + 1].beta) * (ll(&reps[k + 1]) - ll(&reps[k]));
+        let u: f64 = rng.gen();
+        if log_ratio.is_finite() && u.ln() < log_ratio {
+            let (lo, hi) = reps.split_at_mut(k + 1);
+            std::mem::swap(&mut lo[k].state, &mut hi[0].state);
+            swaps[k] += 1;
+        }
+        k += 2;
+    }
+}
+
+fn run_chain(prob: &Problem, cfg: &BayesianGroupConfig, seed: u64) -> Result<ChainRun, FdarError> {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let init = ChainState::init(prob, cfg.init_dp)?;
+    let mut reps: Vec<Replica> = temperature_ladder(cfg)
+        .into_iter()
+        .map(|beta| Replica {
+            state: init.clone(),
+            beta,
+            hmc: (cfg.sampler == BayesianSampler::InfHmc)
+                .then(|| hmc::HmcWarpSampler::new(cfg, prob.n_curves())),
+            warp_accept: vec![0usize; prob.n_curves()],
+            tmpl_accept: 0,
+        })
+        .collect();
+    let mut swaps = vec![0usize; reps.len() - 1];
+    let mut draws = Vec::new();
+    // Iteration 0 is the initial state (as in the reference); updates run 1..n_iter.
+    for it in 1..cfg.n_iter {
+        for r in &mut reps {
+            r.step(prob, cfg, it, &mut rng)?;
+        }
+        if reps.len() > 1 {
+            exchange_states(&mut reps, prob, it, &mut rng, &mut swaps);
+        }
         if it >= cfg.burn_in && (it - cfg.burn_in) % cfg.thin == 0 {
-            draws.push(state.snapshot(prob));
+            draws.push(reps[0].state.snapshot(prob));
         }
     }
+    // Pair (k, k+1) is attempted on iterations with it ≡ k (mod 2).
+    let attempts = |k: usize| (1..cfg.n_iter).filter(|it| it % 2 == k % 2).count().max(1);
+    let swap_rates = swaps
+        .iter()
+        .enumerate()
+        .map(|(k, &s)| s as f64 / attempts(k) as f64)
+        .collect();
+    let cold = reps.swap_remove(0);
     Ok(ChainRun {
         seed,
         draws,
-        warp_accept,
-        tmpl_accept,
+        warp_accept: cold.warp_accept,
+        tmpl_accept: cold.tmpl_accept,
         n_updates: cfg.n_iter - 1,
-        step_sizes: hmc.map(|h| h.eps).unwrap_or_default(),
+        step_sizes: cold.hmc.map(|h| h.eps).unwrap_or_default(),
+        swap_rates,
     })
 }
 
@@ -1370,6 +1559,7 @@ fn summarize_chain(
         sigma2_trace: run.draws.iter().map(|d| d.sigma2).collect(),
         log_likelihood_trace: run.draws.iter().map(|d| d.log_lik).collect(),
         warp_step_sizes: run.step_sizes.clone(),
+        swap_acceptance: run.swap_rates.clone(),
     }
 }
 
