@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.48.1] - 2026-11-27
+
+**Bug-fix release.** Fixes GH #77–#83 and the `itp_two_pop` permutation scheme, and adds
+localised group-difference testing (GH #76, additive). No public signature changes; new
+fields only on `#[non_exhaustive]` results. Several fixes intentionally change numeric
+output — see *Fixed* below:
+
+- `transfer_alignment` composes warps in the correct order (#77).
+- `landmark_register` / `detect_and_register` return identity warps instead of zeros on
+  inconsistent input (#78).
+- TSRVF pole and Schild's ladder transports are correct (#79).
+- `joint_gauss_model` samples the full joint covariance; `gauss_model` and
+  `joint_gauss_model` build samples with the inverse warp (#80).
+- `elastic_align_pair_multires` refinement never increases the objective and honours
+  `lambda` (#81).
+- `wcr` / `wnet` map `beta_t` through the DWT adjoint (Symmetric and odd-length Periodic) (#82).
+- `continuous_registration` reports a per-curve `termination`; `converged` is true only on
+  genuine convergence (#83).
+- `itp_two_pop` permutes both groups (it permuted only group B) and excludes all-zero basis
+  functions from the adjustment.
+- New (#76): `elastic_local_difference_test`, `scb_two_sample_band`,
+  `itp_two_pop_regions`, `itp_pointwise_pvalues`, `fdars_core::regions`.
+
+Detailed entries follow.
+
+
 ### Added
 - **Localised group differences (GH #76).** `alignment::elastic_local_difference_test`
   aligns all curves label-free to one Karcher mean (`karcher_mean_with_config`,
