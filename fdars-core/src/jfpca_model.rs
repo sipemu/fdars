@@ -186,8 +186,9 @@ pub struct JfpcaTransform {
 /// * `argvals` — Evaluation grid (length m). Must satisfy `argvals.len() == m`.
 /// * `ncomp` — Number of principal components to extract (≥ 1). Clamped to
 ///   `n-1` internally; the stored [`JfpcaModel::ncomp`] reflects the clamped value.
-/// * `balance_c` — Phase-vs-amplitude balance weight. `None` triggers golden-
-///   section optimization (matches [`joint_fpca`] default).
+/// * `balance_c` — Phase-vs-amplitude balance weight. `None` chooses it by
+///   minimising the reconstruction error of the original SRSFs (fdasrsf
+///   `jointFPCA`; matches the [`joint_fpca`] default).
 /// * `lambda` — Warp regularization penalty for Karcher alignment (0.0 = no
 ///   penalty; must match any subsequent manual alignment calls).
 /// * `max_iter` — Maximum Karcher-mean iterations (20 is a safe default).

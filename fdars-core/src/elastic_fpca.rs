@@ -12,7 +12,7 @@
 use crate::alignment::{srsf_inverse, srsf_transform, KarcherMeanResult};
 use crate::iter_maybe_parallel;
 use crate::matrix::FdMatrix;
-use crate::warping::{exp_map_sphere, inv_exp_map_sphere, l2_norm_l2, psi_to_gam};
+use crate::warping::{exp_map_sphere, inv_exp_map_sphere, invert_gamma, l2_norm_l2, psi_to_gam};
 use nalgebra::SVD;
 #[cfg(feature = "parallel")]
 use rayon::iter::ParallelIterator;
@@ -303,7 +303,8 @@ pub fn horiz_fpca(
 /// * `karcher` — Pre-computed Karcher mean result
 /// * `argvals` — Evaluation points (length m)
 /// * `ncomp` — Number of principal components
-/// * `balance_c` — Weight for phase component (if None, optimized via golden section)
+/// * `balance_c` — Weight for phase component. `None` chooses it by minimising
+///   the reconstruction error of the original SRSFs (fdasrsf `jointFPCA`).
 pub fn joint_fpca(
     karcher: &KarcherMeanResult,
     argvals: &[f64],
@@ -336,12 +337,21 @@ pub fn joint_fpca(
         None => srsf_transform(&karcher.aligned_data, argvals),
     };
     let q_aug = build_augmented_srsfs(&qn, &karcher.aligned_data, n, m);
-    let (q_centered, _mean_q) = center_matrix(&q_aug, n, m_aug);
+    let (q_centered, mean_q) = center_matrix(&q_aug, n, m_aug);
 
     let shooting = &horiz.shooting_vectors;
     let c = match balance_c {
         Some(c) => c,
-        None => optimize_balance_c(karcher, argvals, &q_centered, shooting, ncomp),
+        None => optimize_balance_c_raw(&BalanceCProblem::new(
+            &q_centered,
+            &mean_q,
+            shooting,
+            &horiz.mean_psi,
+            &qn,
+            &karcher.gammas,
+            argvals,
+            ncomp,
+        )),
     };
 
     // Concatenate: g_i = [qn_aug_centered_i; C * v_i]
@@ -604,12 +614,21 @@ pub fn joint_fpca_from_alignment(
         None => srsf_transform(aligned_data, argvals),
     };
     let q_aug = build_augmented_srsfs(&qn, aligned_data, n, m);
-    let (q_centered, _mean_q) = center_matrix(&q_aug, n, m_aug);
+    let (q_centered, mean_q) = center_matrix(&q_aug, n, m_aug);
 
     let shooting = &horiz.shooting_vectors;
     let c = match balance_c {
         Some(c) => c,
-        None => optimize_balance_c_raw(&q_centered, shooting, ncomp, m_aug, m),
+        None => optimize_balance_c_raw(&BalanceCProblem::new(
+            &q_centered,
+            &mean_q,
+            shooting,
+            &horiz.mean_psi,
+            &qn,
+            gammas,
+            argvals,
+            ncomp,
+        )),
     };
 
     let combined = build_combined_representation(&q_centered, shooting, c, n, m_aug, m);
@@ -983,72 +1002,220 @@ pub(crate) fn build_combined_representation(
     combined
 }
 
-/// Optimize the balance parameter C via golden section search.
-///
-/// Minimizes reconstruction error of the joint representation.
-fn optimize_balance_c(
-    _karcher: &KarcherMeanResult,
-    _argvals: &[f64],
-    q_centered: &FdMatrix,
-    shooting: &FdMatrix,
+/// Inputs of the automatic balance-C search shared by [`joint_fpca`] and
+/// [`joint_fpca_from_alignment`].
+struct BalanceCProblem<'a> {
+    /// Centred augmented SRSFs (n × (m+1)).
+    q_centered: &'a FdMatrix,
+    /// Mean of the augmented SRSFs (length m+1).
+    mean_q: &'a [f64],
+    /// Shooting vectors of the warps at `mu_psi` (n × m).
+    shooting: &'a FdMatrix,
+    /// Karcher mean of the warps on the Hilbert sphere (length m, \[0,1\] grid).
+    mu_psi: &'a [f64],
+    /// Original (unaligned) SRSFs, rebuilt as `(qnᵢ, γᵢ⁻¹)` (n rows of length m).
+    q0: Vec<Vec<f64>>,
+    /// Evaluation grid (length m).
+    argvals: &'a [f64],
+    /// Uniform \[0,1\] grid (length m).
+    time: Vec<f64>,
+    /// Number of joint components used in the reconstruction.
     ncomp: usize,
-) -> f64 {
-    let m_aug = q_centered.ncols();
-    let m = shooting.ncols();
-    optimize_balance_c_raw(q_centered, shooting, ncomp, m_aug, m)
 }
 
-/// Core balance-C optimizer that does not depend on [`KarcherMeanResult`].
-fn optimize_balance_c_raw(
-    q_centered: &FdMatrix,
-    shooting: &FdMatrix,
-    ncomp: usize,
-    m_aug: usize,
-    m: usize,
-) -> f64 {
-    let n = shooting.nrows();
-    let combined_dim = m_aug + m;
+/// SRSF group action `(q, γ) = (q ∘ γ)·√γ̇` for a warp `gam01` given on the
+/// normalised \[0,1\] grid `time`; `q` is sampled on `argvals`.
+fn warp_srsf_01(q: &[f64], argvals: &[f64], gam01: &[f64], time: &[f64]) -> Vec<f64> {
+    let m = q.len();
+    let t0 = argvals[0];
+    let domain = argvals[m - 1] - t0;
+    let gam_abs: Vec<f64> = gam01.iter().map(|&g| t0 + g * domain).collect();
+    let q_warped = crate::alignment::reparameterize_curve(q, argvals, &gam_abs);
+    let gdot = crate::helpers::gradient_uniform(gam01, time[1] - time[0]);
+    q_warped
+        .iter()
+        .zip(gdot.iter())
+        .map(|(&qv, &g)| qv * g.max(0.0).sqrt())
+        .collect()
+}
 
-    let golden_ratio = (5.0_f64.sqrt() - 1.0) / 2.0;
-    let mut a = 0.0_f64;
-    let mut b = 10.0_f64;
-
-    let eval_c = |c: f64| -> f64 {
-        let mut combined = FdMatrix::zeros(n, combined_dim);
-        for i in 0..n {
-            for j in 0..m_aug {
-                combined[(i, j)] = q_centered[(i, j)];
-            }
-            for j in 0..m {
-                combined[(i, m_aug + j)] = c * shooting[(i, j)];
-            }
-        }
-
-        let svd = SVD::new(combined.to_dmatrix(), true, true);
-        if let (Some(_u), Some(_v_t)) = (svd.u.as_ref(), svd.v_t.as_ref()) {
-            let nc = ncomp.min(svd.singular_values.len());
-            // Reconstruction error = total variance - explained variance
-            let total_var: f64 = svd.singular_values.iter().map(|&s| s * s).sum();
-            let explained: f64 = svd.singular_values.iter().take(nc).map(|&s| s * s).sum();
-            total_var - explained
-        } else {
-            f64::INFINITY
-        }
-    };
-
-    for _ in 0..20 {
-        let c1 = b - golden_ratio * (b - a);
-        let c2 = a + golden_ratio * (b - a);
-        // The two probe SVDs are independent: evaluate them concurrently.
-        let f: Vec<f64> = iter_maybe_parallel!([c1, c2]).map(eval_c).collect();
-        if f[0] < f[1] {
-            b = c2;
-        } else {
-            a = c1;
+impl<'a> BalanceCProblem<'a> {
+    /// Assemble the problem; `qn` are the aligned SRSFs and `gammas` the warps
+    /// (on `argvals`), from which the original SRSFs are rebuilt.
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        q_centered: &'a FdMatrix,
+        mean_q: &'a [f64],
+        shooting: &'a FdMatrix,
+        mu_psi: &'a [f64],
+        qn: &FdMatrix,
+        gammas: &FdMatrix,
+        argvals: &'a [f64],
+        ncomp: usize,
+    ) -> Self {
+        let (n, m) = qn.shape();
+        let t0 = argvals[0];
+        let domain = argvals[m - 1] - t0;
+        let time: Vec<f64> = (0..m).map(|i| i as f64 / (m - 1) as f64).collect();
+        let q0 = map_indexed(n, 8 * n * m, |i| {
+            let gam01: Vec<f64> = (0..m).map(|j| (gammas[(i, j)] - t0) / domain).collect();
+            let gam_inv = invert_gamma(&gam01, &time);
+            warp_srsf_01(&qn.row(i), argvals, &gam_inv, &time)
+        });
+        Self {
+            q_centered,
+            mean_q,
+            shooting,
+            mu_psi,
+            q0,
+            argvals,
+            time,
+            ncomp,
         }
     }
 
-    (a + b) / 2.0
+    /// Upper end of the search bracket, `round(max q_aug) + 1` as in fdasrsf.
+    fn upper_bound(&self) -> f64 {
+        let (n, m_aug) = self.q_centered.shape();
+        let mut mx = f64::NEG_INFINITY;
+        for j in 0..m_aug {
+            for i in 0..n {
+                mx = mx.max(self.q_centered[(i, j)] + self.mean_q[j]);
+            }
+        }
+        if mx.is_finite() {
+            (mx.round() + 1.0).max(1.0)
+        } else {
+            10.0
+        }
+    }
+
+    /// Squared SRSF reconstruction error `dᵢ = ∫(q̃ᵢ − q0ᵢ)²` of curve `i`
+    /// from its rank-k joint reconstruction row `rec` (length m+1+m).
+    fn curve_error(&self, i: usize, rec: &[f64], c: f64) -> f64 {
+        let m = self.shooting.ncols();
+        let m_aug = self.q_centered.ncols();
+        let q_hat: Vec<f64> = (0..m).map(|j| self.mean_q[j] + rec[j]).collect();
+        let v_hat: Vec<f64> = (0..m).map(|j| rec[m_aug + j] / c).collect();
+        let psi_hat = exp_map_sphere(self.mu_psi, &v_hat, &self.time);
+        let gam_hat = psi_to_gam(&psi_hat, &self.time);
+        let gam_inv = invert_gamma(&gam_hat, &self.time);
+        let q_tilde = warp_srsf_01(&q_hat, self.argvals, &gam_inv, &self.time);
+        let diff2: Vec<f64> = q_tilde
+            .iter()
+            .zip(self.q0[i].iter())
+            .map(|(&a, &b)| (a - b) * (a - b))
+            .collect();
+        crate::helpers::trapz(&diff2, &self.time)
+    }
+
+    /// fdasrsf `find_C` objective `Σᵢ dᵢ² / N` at balance weight `c > 0`.
+    fn objective(&self, c: f64) -> f64 {
+        let (n, m_aug) = self.q_centered.shape();
+        let m = self.shooting.ncols();
+        let combined =
+            build_combined_representation(self.q_centered, self.shooting, c, n, m_aug, m);
+        let svd = SVD::new(combined.to_dmatrix(), true, true);
+        let (Some(u), Some(v_t)) = (svd.u.as_ref(), svd.v_t.as_ref()) else {
+            return f64::INFINITY;
+        };
+        let k = self.ncomp.min(svd.singular_values.len());
+        let dim = m_aug + m;
+        let mut total = 0.0;
+        for i in 0..n {
+            let rec: Vec<f64> = (0..dim)
+                .map(|j| {
+                    let mut s = 0.0;
+                    for r in 0..k {
+                        s += u[(i, r)] * svd.singular_values[r] * v_t[(r, j)];
+                    }
+                    s
+                })
+                .collect();
+            let d = self.curve_error(i, &rec, c);
+            total += d * d;
+        }
+        let val = total / n as f64;
+        if val.is_finite() {
+            val
+        } else {
+            f64::INFINITY
+        }
+    }
+}
+
+/// Number of coarse grid points scanned before the golden-section refinement.
+const BALANCE_C_GRID: usize = 20;
+
+/// Choose the balance weight C by minimising the reconstruction error of the
+/// original SRSFs (fdasrsf `fdajpca.calc_fpca` / `find_C`).
+///
+/// The objective rebuilds every curve from its rank-`ncomp` joint
+/// reconstruction (amplitude via the SRSF block, phase via the shooting block
+/// mapped back to a warp) and compares it with the unaligned SRSF. Unlike the
+/// residual variance of `[q | c·v]`, it does not shrink as `c → 0`: a vanishing
+/// phase weight leaves the phase unexplained and the error large (GH #84).
+///
+/// Search: the objective has shallow local minima, so the bracket
+/// `(0, round(max q_aug) + 1]` is first scanned on a uniform grid and the best
+/// cell is refined by golden-section search (fdasrsf uses a single bounded
+/// Brent search, which can stop in a local minimum).
+fn optimize_balance_c_raw(problem: &BalanceCProblem<'_>) -> f64 {
+    let hi = problem.upper_bound();
+    let h = hi / BALANCE_C_GRID as f64;
+    let grid: Vec<f64> = (1..=BALANCE_C_GRID).map(|k| k as f64 * h).collect();
+    let vals: Vec<f64> = iter_maybe_parallel!(grid.clone())
+        .map(|c| problem.objective(c))
+        .collect();
+    let mut best = 0;
+    for (k, &v) in vals.iter().enumerate() {
+        if v < vals[best] {
+            best = k;
+        }
+    }
+    if !vals[best].is_finite() {
+        return 1.0;
+    }
+    let a = grid[best] - h;
+    let b = (grid[best] + h).min(hi);
+    let (c_ref, f_ref) = golden_section_min(|c| problem.objective(c), a.max(1e-3 * h), b);
+    if f_ref <= vals[best] {
+        c_ref
+    } else {
+        grid[best]
+    }
+}
+
+/// Golden-section minimisation of `f` on `[a, b]` to absolute width `1e-5`
+/// (fdasrsf's `fminbound` tolerance). Returns `(argmin, min)`.
+fn golden_section_min(f: impl Fn(f64) -> f64, mut a: f64, mut b: f64) -> (f64, f64) {
+    let g = (5.0_f64.sqrt() - 1.0) / 2.0;
+    let mut x1 = b - g * (b - a);
+    let mut x2 = a + g * (b - a);
+    let (mut f1, mut f2) = (f(x1), f(x2));
+    for _ in 0..80 {
+        if b - a < 1e-5 {
+            break;
+        }
+        if f1 < f2 {
+            b = x2;
+            x2 = x1;
+            f2 = f1;
+            x1 = b - g * (b - a);
+            f1 = f(x1);
+        } else {
+            a = x1;
+            x1 = x2;
+            f1 = f2;
+            x2 = a + g * (b - a);
+            f2 = f(x2);
+        }
+    }
+    if f1 < f2 {
+        (x1, f1)
+    } else {
+        (x2, f2)
+    }
 }
 
 #[cfg(test)]
@@ -1137,6 +1304,163 @@ mod tests {
             result.is_ok(),
             "joint_fpca with C optimization should succeed"
         );
+    }
+
+    /// GH #84 repro: one Gaussian bump whose location shifts by 0.1·zᵢ (pure
+    /// phase variation), n = 30, m = 101. `z` = numpy
+    /// `default_rng(0).standard_normal(30)`.
+    fn bump_phase_data() -> (FdMatrix, Vec<f64>, Vec<f64>) {
+        let z = vec![
+            0.1257302210933933,
+            -0.1321048632913019,
+            0.6404226504432821,
+            0.10490011715303971,
+            -0.535669373161111,
+            0.36159505490948474,
+            1.3040000451301372,
+            0.9470809631292422,
+            -0.7037352358069926,
+            -1.2654214710460525,
+            -0.6232744625373522,
+            0.0413259793472436,
+            -2.3250307746388343,
+            -0.21879166393254573,
+            -1.2459109472530652,
+            -0.7322673547034516,
+            -0.5442589828573099,
+            -0.31630015636915454,
+            0.4116305363741328,
+            1.0425133694426776,
+            -0.12853466294403426,
+            1.3664634705496859,
+            -0.6651946734866135,
+            0.3515100700930197,
+            0.9034701816518086,
+            0.09401229776087457,
+            -0.7434992493538084,
+            -0.9217253762584194,
+            -0.45772582566733916,
+            0.2201951234700494,
+        ];
+        let m = 101;
+        let t: Vec<f64> = (0..m).map(|j| j as f64 / (m - 1) as f64).collect();
+        let mut data = FdMatrix::zeros(z.len(), m);
+        for (i, &zi) in z.iter().enumerate() {
+            for j in 0..m {
+                let u = (t[j] - 0.5 - 0.1 * zi) / 0.08;
+                data[(i, j)] = (-u * u).exp();
+            }
+        }
+        (data, t, z)
+    }
+
+    fn abs_corr(a: &[f64], b: &[f64]) -> f64 {
+        let n = a.len() as f64;
+        let (ma, mb) = (a.iter().sum::<f64>() / n, b.iter().sum::<f64>() / n);
+        let (mut sab, mut saa, mut sbb) = (0.0, 0.0, 0.0);
+        for (&x, &y) in a.iter().zip(b) {
+            sab += (x - ma) * (y - mb);
+            saa += (x - ma) * (x - ma);
+            sbb += (y - mb) * (y - mb);
+        }
+        (sab / (saa * sbb).sqrt()).abs()
+    }
+
+    fn balance_problem_parts(
+        km: &KarcherMeanResult,
+        t: &[f64],
+    ) -> (FdMatrix, FdMatrix, Vec<f64>, HorizFpcaResult) {
+        let (n, m) = km.aligned_data.shape();
+        let qn = srsf_transform(&km.aligned_data, t);
+        let q_aug = build_augmented_srsfs(&qn, &km.aligned_data, n, m);
+        let (q_centered, mean_q) = center_matrix(&q_aug, n, m + 1);
+        let horiz = horiz_fpca(km, t, 2).expect("horiz_fpca");
+        (qn, q_centered, mean_q, horiz)
+    }
+
+    /// GH #84: the automatic balance weight must not collapse to c ≈ 0 on
+    /// pure phase variation.
+    ///
+    /// Reference (fdasrsf 2.7.5, `fdawarp(X.T, t).srsf_align()` then
+    /// `fdajpca(w).calc_fpca(no=2)`): selected C = 4.0 (upper bracket end
+    /// `round(max q_aug) + 1 = 4`), |corr(score₁, z)| = 0.993; its `find_C`
+    /// objective is 7.008 at C = 0.001, 6.111 at C = 0.1, 0.0334 at C = 0.2 and
+    /// 0.010–0.017 on C ∈ [0.5, 4] — any C ≳ 0.3 is near-optimal, C → 0 drops the
+    /// phase. Before the fix fdars selected c ≈ 3e-4 with |corr| = 0.42.
+    #[test]
+    fn test_joint_fpca_auto_balance_c_keeps_phase() {
+        let (data, t, z) = bump_phase_data();
+        let km = karcher_mean(&data, &t, 15, 1e-4, 0.0);
+        let res = joint_fpca(&km, &t, 2, None).expect("joint_fpca");
+        assert!(
+            res.balance_c >= 0.3 && res.balance_c <= 5.0,
+            "automatic balance_c = {} collapsed / left the fdasrsf bracket",
+            res.balance_c
+        );
+        let s0: Vec<f64> = (0..z.len()).map(|i| res.scores[(i, 0)]).collect();
+        let r = abs_corr(&s0, &z);
+        assert!(r >= 0.95, "first joint score lost the phase: |corr| = {r}");
+
+        // The selected c is (near-)optimal for the objective it minimises.
+        let (qn, q_centered, mean_q, horiz) = balance_problem_parts(&km, &t);
+        let p = BalanceCProblem::new(
+            &q_centered,
+            &mean_q,
+            &horiz.shooting_vectors,
+            &horiz.mean_psi,
+            &qn,
+            &km.gammas,
+            &t,
+            2,
+        );
+        let f_auto = p.objective(res.balance_c);
+        assert!(f_auto <= p.objective(1.0) + 1e-12);
+        assert!(f_auto * 50.0 < p.objective(1e-3), "c→0 must be much worse");
+    }
+
+    /// Invariant: with all components kept the joint reconstruction is exact,
+    /// so the rebuilt curves equal the original SRSFs up to discretisation and
+    /// the objective is ~0 for every c, far below the rank-1 value.
+    #[test]
+    fn test_balance_c_objective_full_rank_is_near_zero() {
+        let (data, t, _z) = bump_phase_data();
+        let km = karcher_mean(&data, &t, 15, 1e-4, 0.0);
+        let (qn, q_centered, mean_q, horiz) = balance_problem_parts(&km, &t);
+        let mk = |k| {
+            BalanceCProblem::new(
+                &q_centered,
+                &mean_q,
+                &horiz.shooting_vectors,
+                &horiz.mean_psi,
+                &qn,
+                &km.gammas,
+                &t,
+                k,
+            )
+        };
+        let full = mk(30);
+        let rank1 = mk(1);
+        for c in [0.05, 0.5, 2.0] {
+            let f_full = full.objective(c);
+            assert!(f_full < 1e-2 * rank1.objective(c), "c={c}: {f_full}");
+        }
+    }
+
+    #[test]
+    fn test_joint_fpca_from_alignment_auto_c_matches_karcher_path() {
+        let (data, t, _z) = bump_phase_data();
+        let km = karcher_mean(&data, &t, 15, 1e-4, 0.0);
+        let a = joint_fpca(&km, &t, 2, None).expect("joint_fpca");
+        let b = joint_fpca_from_alignment(
+            &km.aligned_data,
+            km.aligned_srsfs.as_ref(),
+            &km.gammas,
+            &t,
+            2,
+            None,
+        )
+        .expect("joint_fpca_from_alignment");
+        assert!((a.balance_c - b.balance_c).abs() < 1e-9 * a.balance_c.max(1.0));
     }
 
     #[test]

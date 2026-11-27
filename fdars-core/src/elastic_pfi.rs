@@ -308,7 +308,8 @@ pub fn elastic_pfi(
 /// * `data` — Functional data matrix (n × m); rows are curves.
 /// * `argvals` — Evaluation grid (length m).
 /// * `ncomp` — Number of jfPCA components to extract.
-/// * `balance_c` — Phase-vs-amplitude balance; `None` triggers golden-section search.
+/// * `balance_c` — Phase-vs-amplitude balance; `None` chooses it automatically
+///   (reconstruction-error search, see [`crate::elastic_fpca::joint_fpca`]).
 /// * `lambda` — Warp regularization penalty (0.0 = no penalty).
 /// * `max_iter` — Max Karcher-mean iterations (20 is a safe default).
 /// * `y` — Response vector (length n) for PFI.

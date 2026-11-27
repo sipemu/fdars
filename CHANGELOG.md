@@ -13,6 +13,21 @@ Changed below).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Automatic `balance_c` in joint elastic FPCA no longer collapses to c ≈ 0 (#84).**
+  `joint_fpca`, `joint_fpca_from_alignment`, `jfpca_fit` and everything built on them
+  with `balance_c = None` (`elastic_pfi`, `veesa_pipeline`, elastic PCR / changepoint)
+  used to minimise the residual variance of `[q | c·v]`, which shrinks with c and drove
+  the search to the lower bracket end — the joint model then ignored phase. C is now
+  chosen as in fdasrsf `jointFPCA` (`find_C`): minimise the reconstruction error of the
+  original SRSFs from the rank-`ncomp` joint reconstruction (amplitude via the SRSF
+  block, phase via shooting vector → warp), over `(0, round(max q_aug) + 1]`, by a grid
+  scan plus golden-section refinement. On a pure phase-shift example fdars now selects
+  c = 4.0 (fdasrsf 2.7.5: 4.0) and the first joint score has |corr| 0.99 with the shift
+  (was c ≈ 3e-4, |corr| 0.42). **Numeric output changes** whenever `balance_c = None`;
+  explicit `Some(c)` is unchanged.
+
 ## [0.48.1] - 2026-11-27
 
 **Bug-fix release.** Fixes GH #77–#83 and the `itp_two_pop` permutation scheme, and adds

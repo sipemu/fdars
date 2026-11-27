@@ -198,17 +198,40 @@ fn elastic_fpca_is_bit_identical_to_pre_change() {
     fnv(&mut h, hz.shooting_vectors.as_slice());
     assert_eq!(h, 0x9407_b602_44f4_ac0f, "horiz_fpca: got {h:#x}");
 
-    for (bc, hj) in [
-        (None, 0xbadb_3986_99a8_94e0_u64),
-        (Some(0.7), 0xa4b6_7860_272c_5e74),
-    ] {
-        let j = joint_fpca(&km, &t, 3, bc).unwrap();
-        let mut h = FNV0;
-        fnv(&mut h, j.scores.as_slice());
-        fnv(&mut h, &j.eigenvalues);
-        fnv(&mut h, &[j.balance_c]);
-        fnv(&mut h, j.vert_component.as_slice());
-        fnv(&mut h, j.horiz_component.as_slice());
-        assert_eq!(h, hj, "joint_fpca bc={bc:?}: got {h:#x}");
-    }
+    let j = joint_fpca(&km, &t, 3, Some(0.7)).unwrap();
+    let mut h = FNV0;
+    fnv(&mut h, j.scores.as_slice());
+    fnv(&mut h, &j.eigenvalues);
+    fnv(&mut h, &[j.balance_c]);
+    fnv(&mut h, j.vert_component.as_slice());
+    fnv(&mut h, j.horiz_component.as_slice());
+    assert_eq!(
+        h, 0xa4b6_7860_272c_5e74,
+        "joint_fpca bc=Some(0.7): got {h:#x}"
+    );
+
+    // Automatic balance_c: re-pinned after GH #84 replaced the search
+    // objective (reconstruction error, fdasrsf `find_C`); a value pin, since the
+    // search runs through libm (exp/log maps) and bit pins differ across hosts.
+    let j = joint_fpca(&km, &t, 3, None).unwrap();
+    let mut pin = ValuePin::new();
+    pin.push(&[j.balance_c]);
+    pin.push(&j.eigenvalues);
+    pin.push(j.scores.as_slice());
+    pin.assert_close(JOINT_AUTO_C_PIN, 1e-8, "joint_fpca bc=None");
 }
+
+const JOINT_AUTO_C_PIN: &[f64] = &[
+    3.6608480228317704,
+    3.6608480228317704,
+    13.401808246271282,
+    3.6608480228317704,
+    95.30001545617768,
+    95.30001545617768,
+    4332.079985252092,
+    46.59011469047982,
+    -4.904623884804948e-7,
+    153.94389142706257,
+    1048.300170017954,
+    -9.0199299684375,
+];
