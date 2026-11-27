@@ -1,6 +1,7 @@
 //! Registration of exponential-family functional data with generalized FPCA
 //! (R `registr` 2.2.1 `register_fpca`; Wrobel, Zipunnikov, Schrack & Goldsmith
-//! 2019, *JCGS* 28(4); Wrobel & Bauer 2021, *JOSS* 6(61)).
+//! 2019, "Registration for exponential family functional data", *Biometrics*
+//! 75(1):48–57, doi:10.1111/biom.12963; Wrobel & Bauer 2021, *JOSS* 6(61):2964).
 //!
 //! Curves `Yᵢ(t*ᵢⱼ)` — gaussian, binary, gamma or count valued, observed on
 //! curve-specific (irregular) grids — are modelled as

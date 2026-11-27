@@ -27,6 +27,9 @@ Changed below).
   c = 4.0 (fdasrsf 2.7.5: 4.0) and the first joint score has |corr| 0.99 with the shift
   (was c ≈ 3e-4, |corr| 0.42). **Numeric output changes** whenever `balance_c = None`;
   explicit `Some(c)` is unchanged.
+- Literature citations (#85): Wrobel et al. 2019 is *Biometrics* 75(1):48–57 (not
+  *JCGS*), Gertheiss, Goldsmith & Staicu 2017 is *Computational Statistics & Data
+  Analysis* 105:46–52 (not *Stat*), Tucker & Yarger is 2024 (*Environmetrics* 35(1)).
 
 ## [0.48.1] - 2026-11-27
 
@@ -494,7 +497,7 @@ crate dependency.
 ### Added
 
 - `alignment::register_fpca` / `register_fpca_regular` — port of R `registr` 2.2.1
-  `register_fpca` (Wrobel et al. 2019 JCGS; Wrobel & Bauer 2021 JOSS, `fpca_type =
+  `register_fpca` (Wrobel et al. 2019 Biometrics; Wrobel & Bauer 2021 JOSS, `fpca_type =
   "variationalEM"`): alternating likelihood-based registration with monotone cubic B-spline
   inverse warps (`kh` basis functions per curve) and variational-EM generalized FPCA of the
   registered data, for gaussian, binomial, gamma and poisson families (`ExpFamily`), irregular

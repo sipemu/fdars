@@ -1,7 +1,8 @@
 //! Elastic changepoint detection for functional data streams.
 //!
-//! Implements the methods from Tucker & Yarger (2023) for detecting changepoints
-//! in the amplitude, phase, or joint structure of functional data.
+//! Implements the methods from Tucker & Yarger (2024, *Environmetrics*
+//! 35(1):e2826, doi:10.1002/env.2826) for detecting changepoints in the
+//! amplitude, phase, or joint structure of functional data.
 //!
 //! Key capabilities:
 //! - [`elastic_amp_changepoint`] — Amplitude changepoint via CUSUM on aligned curves

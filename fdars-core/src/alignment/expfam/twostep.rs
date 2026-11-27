@@ -1,5 +1,7 @@
 //! Two-step generalized FPCA (R registr 2.2.1 `gfpca_twoStep`, `cov_hall`;
-//! Gertheiss, Goldsmith & Staicu 2017, *Stat* 6(1)), implemented natively:
+//! Gertheiss, Goldsmith & Staicu 2017, "A note on modeling sparse
+//! exponential-family functional response curves", *Computational Statistics
+//! & Data Analysis* 105:46–52, doi:10.1016/j.csda.2016.07.010), implemented natively:
 //!
 //! 1. **Covariance** (registr `cov_hall`, after Hall, Müller & Yao 2008): a
 //!    P-spline GLM mean `μ(t)` (mgcv `gam(value ~ s(index, bs = "ps", k = Kt))`,

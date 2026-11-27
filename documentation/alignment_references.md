@@ -224,9 +224,9 @@ This document maps each public function in the `alignment` and `elastic_*` modul
 
 | Function | Method | Reference |
 |----------|--------|-----------|
-| `elastic_amp_changepoint` | Amplitude CUSUM changepoint detection | Tucker & Yarger (2023) |
-| `elastic_ph_changepoint` | Phase CUSUM changepoint detection | Tucker & Yarger (2023) |
-| `elastic_fpca_changepoint` | FPCA-based Hotelling T-squared CUSUM changepoint | Tucker & Yarger (2023) |
+| `elastic_amp_changepoint` | Amplitude CUSUM changepoint detection | Tucker & Yarger (2024) |
+| `elastic_ph_changepoint` | Phase CUSUM changepoint detection | Tucker & Yarger (2024) |
+| `elastic_fpca_changepoint` | FPCA-based Hotelling T-squared CUSUM changepoint | Tucker & Yarger (2024) |
 
 ### Scalar-on-Shape Regression
 
@@ -254,7 +254,7 @@ This document maps each public function in the `alignment` and `elastic_*` modul
 - Srivastava, A. & Klassen, E. P. (2016). *Functional and Shape Data Analysis*. Springer. [doi:10.1007/978-1-4939-4020-2](https://doi.org/10.1007/978-1-4939-4020-2)
 - Srivastava, A., Wu, W., Kurtek, S., Klassen, E., & Marron, J. S. (2011). Registration of functional data using Fisher-Rao metric. [arXiv:1103.3817](https://arxiv.org/abs/1103.3817)
 - Su, J., Kurtek, S., Klassen, E., & Srivastava, A. (2014). Statistical analysis of trajectories on Riemannian manifolds: bird migration, hurricane tracking and video surveillance. *Annals of Applied Statistics*, 8(1), 530--552. [doi:10.1214/13-AOAS701](https://doi.org/10.1214/13-AOAS701)
-- Tucker, J. D. & Yarger, D. (2023). Elastic functional changepoint detection of climate impacts from localized sources. *Environmetrics*, 35(1), e2826. [doi:10.1002/env.2826](https://doi.org/10.1002/env.2826)
+- Tucker, J. D. & Yarger, D. (2024). Elastic functional changepoint detection of climate impacts from localized sources. *Environmetrics*, 35(1), e2826. [doi:10.1002/env.2826](https://doi.org/10.1002/env.2826)
 - Tucker, J. D., Wu, W., & Srivastava, A. (2013). Generative models for functional data using phase and amplitude separation. *Computational Statistics & Data Analysis*, 61, 50--66. [doi:10.1016/j.csda.2012.11.015](https://doi.org/10.1016/j.csda.2012.11.015)
 - Tucker, J. D., Wu, W., & Srivastava, A. (2014). Analysis of proteomics data: Bayesian alignment of functions. *Electronic Journal of Statistics*, 8(2), 1769--1797. [doi:10.1214/14-EJS937](https://doi.org/10.1214/14-EJS937)
 - Tukey, J. W. (1977). *Exploratory Data Analysis*. Addison-Wesley.
