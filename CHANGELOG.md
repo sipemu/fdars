@@ -13,27 +13,9 @@ Changed below).
 
 ## [Unreleased]
 
-### Fixed
-
-- **Automatic `balance_c` in joint elastic FPCA no longer collapses to c ≈ 0 (#84).**
-  `joint_fpca`, `joint_fpca_from_alignment`, `jfpca_fit` and everything built on them
-  with `balance_c = None` (`elastic_pfi`, `veesa_pipeline`, elastic PCR / changepoint)
-  used to minimise the residual variance of `[q | c·v]`, which shrinks with c and drove
-  the search to the lower bracket end — the joint model then ignored phase. C is now
-  chosen as in fdasrsf `jointFPCA` (`find_C`): minimise the reconstruction error of the
-  original SRSFs from the rank-`ncomp` joint reconstruction (amplitude via the SRSF
-  block, phase via shooting vector → warp), over `(0, round(max q_aug) + 1]`, by a grid
-  scan plus golden-section refinement. On a pure phase-shift example fdars now selects
-  c = 4.0 (fdasrsf 2.7.5: 4.0) and the first joint score has |corr| 0.99 with the shift
-  (was c ≈ 3e-4, |corr| 0.42). **Numeric output changes** whenever `balance_c = None`;
-  explicit `Some(c)` is unchanged.
-- Literature citations (#85): Wrobel et al. 2019 is *Biometrics* 75(1):48–57 (not
-  *JCGS*), Gertheiss, Goldsmith & Staicu 2017 is *Computational Statistics & Data
-  Analysis* 105:46–52 (not *Stat*), Tucker & Yarger is 2024 (*Environmetrics* 35(1)).
-
 ## [0.48.1] - 2026-11-27
 
-**Bug-fix release.** Fixes GH #77–#83 and the `itp_two_pop` permutation scheme, and adds
+**Bug-fix release.** Fixes GH #77–#85 and the `itp_two_pop` permutation scheme, and adds
 localised group-difference testing (GH #76, additive). No public signature changes; new
 fields only on `#[non_exhaustive]` results. Several fixes intentionally change numeric
 output — see *Fixed* below:
@@ -51,6 +33,9 @@ output — see *Fixed* below:
   genuine convergence (#83).
 - `itp_two_pop` permutes both groups (it permuted only group B) and excludes all-zero basis
   functions from the adjustment.
+- Automatic `balance_c` in joint elastic FPCA / `jfpca_fit` no longer collapses to
+  c ≈ 0; it minimises the SRSF reconstruction error as fdasrsf does (#84).
+- Corrected journal venues in the exp-family registration and changepoint citations (#85).
 - New (#76): `elastic_local_difference_test`, `scb_two_sample_band`,
   `itp_two_pop_regions`, `itp_pointwise_pvalues`, `fdars_core::regions`.
 
@@ -80,6 +65,21 @@ Detailed entries follow.
   (these types now also derive serde under the `serde` feature).
 
 ### Fixed
+- **Automatic `balance_c` in joint elastic FPCA no longer collapses to c ≈ 0 (#84).**
+  `joint_fpca`, `joint_fpca_from_alignment`, `jfpca_fit` and everything built on them
+  with `balance_c = None` (`elastic_pfi`, `veesa_pipeline`, elastic PCR / changepoint)
+  used to minimise the residual variance of `[q | c·v]`, which shrinks with c and drove
+  the search to the lower bracket end — the joint model then ignored phase. C is now
+  chosen as in fdasrsf `jointFPCA` (`find_C`): minimise the reconstruction error of the
+  original SRSFs from the rank-`ncomp` joint reconstruction (amplitude via the SRSF
+  block, phase via shooting vector → warp), over `(0, round(max q_aug) + 1]`, by a grid
+  scan plus golden-section refinement. On a pure phase-shift example fdars now selects
+  c = 4.0 (fdasrsf 2.7.5: 4.0) and the first joint score has |corr| 0.99 with the shift
+  (was c ≈ 3e-4, |corr| 0.42). **Numeric output changes** whenever `balance_c = None`;
+  explicit `Some(c)` is unchanged.
+- Literature citations (#85): Wrobel et al. 2019 is *Biometrics* 75(1):48–57 (not
+  *JCGS*), Gertheiss, Goldsmith & Staicu 2017 is *Computational Statistics & Data
+  Analysis* 105:46–52 (not *Stat*), Tucker & Yarger is 2024 (*Environmetrics* 35(1)).
 - `alignment::tsrvf_transform_with_method` / `tsrvf_from_alignment_with_method`:
   the Schild's and pole ladder transports were mis-constructed — `PoleLadder`
   returned exactly 0 and `SchildsLadder` exactly 2× the `LogMap` tangent vectors.
