@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 milestone: v0.47.0
 status: Awaiting next milestone
 stopped_at: Phase 117 complete — all phases complete
-last_updated: "2026-11-26T22:59:40.032Z"
+last_updated: "2026-11-27T00:01:47.350Z"
 last_activity: 2026-11-26
 last_activity_desc: Milestone v0.47.0 completed and archived
-state_head: 8cd24b456c3231d5b7b52db030627afc092a8472
+state_head: d168d2f2d465bac571193b7a09b745ad656daab5
 progress:
   total_phases: 6
   completed_phases: 6
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-09-30)
 Phase: Milestone v0.47.0 complete
 Plan: —
 Status: Awaiting next milestone
-Last activity: 2026-11-26 - Completed quick task 261126-vzq: GH #77 transfer_alignment warp order, #78 landmark identity warps, #79 TSRVF Schild/pole ladders
+Last activity: 2026-11-27 - Completed quick task 261127-13d: GH #84 jfpca automatic balance_c (reconstruction-error objective), #85 citation venues
 
 ## Milestone Roadmap (v0.47.0)
 
@@ -215,6 +215,7 @@ Decisions relevant to current work (v0.47.0):
 | 261126-t4g | ALN localised group differences: SCB band, ITP regions, elastic_local_difference_test (#76) | 2026-11-26 | 222ac2e2 | [261126-t4g-aln-localised-group-differences-scb-band](./quick/261126-t4g-aln-localised-group-differences-scb-band/) |
 | 261126-vzq | Fix alignment bugs #77 transfer warp order, #78 landmark_register zero warps, #79 TSRVF ladders | 2026-11-26 | 3ade8a99 | [261126-vzq-fix-alignment-bugs-77-transfer-warp-orde](./quick/261126-vzq-fix-alignment-bugs-77-transfer-warp-orde/) |
 | 261126-vzj | GH #82 wcr/wnet beta_t via DWT adjoint | 2026-11-26 | 8cd24b45 | [261126-vzj-wcr-wnet-symmetric-boundary-beta-t-adjoi](./quick/261126-vzj-wcr-wnet-symmetric-boundary-beta-t-adjoi/) |
+| 261127-13d | Fix jfpca automatic balance_c collapse (#84) and expfam citation venues (#85) | 2026-11-27 | d168d2f2 | [261127-13d-fix-jfpca-automatic-balance-c-collapse-8](./quick/261127-13d-fix-jfpca-automatic-balance-c-collapse-8/) |
 
 ## Deferred Items
 
